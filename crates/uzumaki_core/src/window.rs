@@ -1,11 +1,11 @@
 use anyhow::{Context, Result};
 use std::sync::Arc;
-use vello::kurbo::{Affine, Circle, RoundedRect, Stroke};
 use vello::peniko::Color;
 use vello::{RenderParams, RendererOptions, Scene};
 
 use winit::window::Window as WinitWindow;
 
+use crate::element::Dom;
 use crate::gpu::GpuContext;
 
 pub struct Window {
@@ -73,7 +73,12 @@ impl Window {
         self.winit_window.id()
     }
 
-    pub(crate) fn paint_and_present(&mut self, device: &wgpu::Device, queue: &wgpu::Queue) {
+    pub(crate) fn paint_and_present(
+        &mut self,
+        device: &wgpu::Device,
+        queue: &wgpu::Queue,
+        dom: &mut Dom,
+    ) {
         if !self.valid_surface {
             return;
         }
@@ -81,11 +86,14 @@ impl Window {
         let width = self.surface_config.width;
         let height = self.surface_config.height;
 
-        // Build the scene
-        self.scene.reset();
-        Self::build_scene(&mut self.scene, width as f64, height as f64);
+        // Compute layout for current window size
+        dom.compute_layout(width as f32, height as f32);
 
-        // 1. Create an Rgba8Unorm intermediate texture with STORAGE_BINDING
+        // Build scene from DOM
+        self.scene.reset();
+        dom.render(&mut self.scene);
+
+        // Render vello scene into an intermediate STORAGE texture
         let target = device.create_texture(&wgpu::TextureDescriptor {
             label: Some("vello_target"),
             size: wgpu::Extent3d {
@@ -102,9 +110,8 @@ impl Window {
         });
         let target_view = target.create_view(&wgpu::TextureViewDescriptor::default());
 
-        // 2. Render vello into the intermediate texture
         let render_params = RenderParams {
-            base_color: Color::from_rgba8(30, 30, 46, 255),
+            base_color: Color::from_rgba8(24, 24, 37, 255),
             width,
             height,
             antialiasing_method: vello::AaConfig::Msaa16,
@@ -113,7 +120,7 @@ impl Window {
             .render_to_texture(device, queue, &self.scene, &target_view, &render_params)
             .expect("Failed to render");
 
-        // 3. Blit from intermediate texture to surface
+        // Blit to surface
         let surface_texture = match self.surface.get_current_texture() {
             Ok(t) => t,
             Err(_) => {
@@ -135,73 +142,11 @@ impl Window {
             });
 
         let blitter = wgpu::util::TextureBlitter::new(device, self.surface_config.format);
-        let mut encoder = device.create_command_encoder(&wgpu::CommandEncoderDescriptor::default());
+        let mut encoder =
+            device.create_command_encoder(&wgpu::CommandEncoderDescriptor::default());
         blitter.copy(device, &mut encoder, &target_view, &surface_view);
         queue.submit([encoder.finish()]);
         surface_texture.present();
-    }
-
-    fn build_scene(scene: &mut Scene, w: f64, h: f64) {
-        use vello::kurbo::Rect;
-
-        // Background rounded rect
-        let bg_rect = RoundedRect::from_rect(Rect::new(20.0, 20.0, w - 20.0, h - 20.0), 12.0);
-        scene.fill(
-            vello::peniko::Fill::NonZero,
-            Affine::IDENTITY,
-            Color::from_rgba8(45, 45, 65, 255),
-            None,
-            &bg_rect,
-        );
-        scene.stroke(
-            &Stroke::new(2.0),
-            Affine::IDENTITY,
-            Color::from_rgba8(100, 100, 180, 255),
-            None,
-            &bg_rect,
-        );
-
-        // Circle in center
-        let cx = w / 2.0;
-        let cy = h / 2.0;
-        let radius = w.min(h) * 0.15;
-        let circle = Circle::new((cx, cy), radius);
-        scene.fill(
-            vello::peniko::Fill::NonZero,
-            Affine::IDENTITY,
-            Color::from_rgba8(180, 100, 255, 200),
-            None,
-            &circle,
-        );
-        scene.stroke(
-            &Stroke::new(3.0),
-            Affine::IDENTITY,
-            Color::from_rgba8(220, 180, 255, 255),
-            None,
-            &circle,
-        );
-
-        // Smaller decorative circles
-        for i in 0..4 {
-            let angle = std::f64::consts::TAU * (i as f64) / 4.0;
-            let dist = radius * 1.8;
-            let small_cx = cx + angle.cos() * dist;
-            let small_cy = cy + angle.sin() * dist;
-            let small_circle = Circle::new((small_cx, small_cy), radius * 0.3);
-            let colors = [
-                Color::from_rgba8(255, 100, 100, 200),
-                Color::from_rgba8(100, 255, 150, 200),
-                Color::from_rgba8(100, 180, 255, 200),
-                Color::from_rgba8(255, 220, 100, 200),
-            ];
-            scene.fill(
-                vello::peniko::Fill::NonZero,
-                Affine::IDENTITY,
-                colors[i],
-                None,
-                &small_circle,
-            );
-        }
     }
 
     fn resize_surface(&mut self, device: &wgpu::Device, width: u32, height: u32) {
