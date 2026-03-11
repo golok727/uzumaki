@@ -3,7 +3,8 @@
     "allow": [
       "Bash(cd \"C:/Users/Radha/dev/kimi/uzumaki\" && grep -A5 'name = \"vello\"' Cargo.lock | head -20)",
       "WebFetch(domain:raw.githubusercontent.com)",
-      "Bash(cargo build:*)"
+      "Bash(cargo build:*)",
+      "Bash(grep -r \"Dimension::\" crates/uzumaki_core/src/ --include=\"*.rs\" 2>/dev/null | head -5)"
     ]
   }
 }

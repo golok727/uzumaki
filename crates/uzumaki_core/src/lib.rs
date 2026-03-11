@@ -1,30 +1,31 @@
 use napi::bindgen_prelude::*;
-use std::{ collections::HashMap, sync::Arc };
+use std::{collections::HashMap, sync::Arc};
 
 use napi_derive::napi;
 use parking_lot::Mutex;
 use winit::{
     application::ApplicationHandler,
-    event_loop::{ EventLoop, EventLoopProxy },
+    event_loop::{EventLoop, EventLoopProxy},
     window::WindowId,
 };
 
 pub mod element;
 pub mod geometry;
 pub mod gpu;
+pub mod interactivity;
+pub mod style;
 pub mod text;
 pub mod window;
 use window::Window;
 
-use crate::element::{ build_demo_tree, Dom };
+use crate::element::build_demo_tree;
 use crate::gpu::GpuContext;
-use crate::text::TextRenderer;
 
 static LOOP_PROXY: Mutex<Option<EventLoopProxy<UserEvent>>> = Mutex::new(None);
 
 enum UserEvent {
     CreateWindow {
-        label: String, // should be unique
+        label: String,
         width: u32,
         height: u32,
         title: String,
@@ -66,10 +67,8 @@ pub struct Application {
     on_init: Option<Function<'static, ()>>,
     on_window_event: Option<Function<'static, ()>>,
     gpu: GpuContext,
-    dom: Dom,
-    text_renderer: TextRenderer,
     windows: HashMap<WindowId, Window>,
-    window_label_to_id: HashMap<String, WindowId>, // for js lookup
+    window_label_to_id: HashMap<String, WindowId>,
 }
 
 #[napi]
@@ -80,8 +79,6 @@ impl Application {
 
         Self {
             gpu,
-            dom: build_demo_tree(),
-            text_renderer: TextRenderer::new(),
             on_init: None,
             on_window_event: None,
             windows: Default::default(),
@@ -96,12 +93,17 @@ impl Application {
             label
         );
 
-        match Window::new(&self.gpu, winit_window) {
+        // Each window gets its own DOM
+        let dom = build_demo_tree();
+
+        match Window::new(&self.gpu, winit_window, dom) {
             Ok(window) => {
                 self.window_label_to_id.insert(label, window.id());
                 self.windows.insert(window.id(), window);
             }
-            Err(e) => { println!("Error creating window : {:#?}", e) }
+            Err(e) => {
+                println!("Error creating window : {:#?}", e)
+            }
         }
     }
 
@@ -117,8 +119,7 @@ impl Application {
 
     #[napi]
     pub fn run(&mut self) {
-        let event_loop = EventLoop::<UserEvent>
-            ::with_user_event()
+        let event_loop = EventLoop::<UserEvent>::with_user_event()
             .build()
             .expect("Error creating event loop");
 
@@ -127,12 +128,11 @@ impl Application {
             *lock = Some(event_loop.create_proxy());
         }
 
-        ctrlc
-            ::set_handler(|| {
-                println!("SIGINT received, exiting...");
-                request_quit();
-            })
-            .expect("error setting quit handler");
+        ctrlc::set_handler(|| {
+            println!("SIGINT received, exiting...");
+            request_quit();
+        })
+        .expect("error setting quit handler");
 
         println!("Starting event loop ");
         event_loop.run_app(self).expect("Error running event loop ");
@@ -155,16 +155,20 @@ impl ApplicationHandler<UserEvent> for Application {
 
     fn user_event(&mut self, event_loop: &winit::event_loop::ActiveEventLoop, event: UserEvent) {
         match event {
-            UserEvent::CreateWindow { label, width, height, title } => {
-                let attributes = winit::window::WindowAttributes
-                    ::default()
+            UserEvent::CreateWindow {
+                label,
+                width,
+                height,
+                title,
+            } => {
+                let attributes = winit::window::WindowAttributes::default()
                     .with_title(title)
-                    .with_inner_size(
-                        winit::dpi::Size::new(winit::dpi::LogicalSize::new(width, height))
-                    )
-                    .with_min_inner_size(
-                        winit::dpi::Size::new(winit::dpi::LogicalSize::new(400, 300))
-                    );
+                    .with_inner_size(winit::dpi::Size::new(winit::dpi::LogicalSize::new(
+                        width, height,
+                    )))
+                    .with_min_inner_size(winit::dpi::Size::new(winit::dpi::LogicalSize::new(
+                        400, 300,
+                    )));
 
                 println!("Creating window");
                 let Ok(winit_window) = event_loop.create_window(attributes) else {
@@ -186,9 +190,11 @@ impl ApplicationHandler<UserEvent> for Application {
         &mut self,
         event_loop: &winit::event_loop::ActiveEventLoop,
         window_id: winit::window::WindowId,
-        event: winit::event::WindowEvent
+        event: winit::event::WindowEvent,
     ) {
         use winit::event::WindowEvent;
+
+        let mut needs_redraw = false;
 
         match event {
             WindowEvent::Resized(size) => {
@@ -200,12 +206,56 @@ impl ApplicationHandler<UserEvent> for Application {
             }
             WindowEvent::RedrawRequested => {
                 if let Some(window) = self.windows.get_mut(&window_id) {
-                    window.paint_and_present(
-                        &self.gpu.device,
-                        &self.gpu.queue,
-                        &mut self.dom,
-                        &mut self.text_renderer
-                    );
+                    window.paint_and_present(&self.gpu.device, &self.gpu.queue);
+                }
+            }
+            WindowEvent::CursorMoved { position, .. } => {
+                if let Some(window) = self.windows.get_mut(&window_id) {
+                    let old_top = window.dom.hit_state.top_hit;
+                    window.dom.update_hit_test(position.x, position.y);
+                    let new_top = window.dom.hit_state.top_hit;
+                    if old_top != new_top {
+                        needs_redraw = true;
+                    }
+                }
+            }
+            WindowEvent::MouseInput { state, button, .. } => {
+                use winit::event::ElementState;
+
+                let mouse_button = match button {
+                    winit::event::MouseButton::Left => crate::interactivity::MouseButton::Left,
+                    winit::event::MouseButton::Right => crate::interactivity::MouseButton::Right,
+                    winit::event::MouseButton::Middle => crate::interactivity::MouseButton::Middle,
+                    _ => crate::interactivity::MouseButton::Left,
+                };
+
+                if let Some(window) = self.windows.get_mut(&window_id) {
+                    if let Some((mx, my)) = window.dom.hit_state.mouse_position {
+                        match state {
+                            ElementState::Pressed => {
+                                let top = window.dom.hit_state.top_hit;
+                                window.dom.set_active(top);
+                                window.dom.dispatch_mouse_down(mx, my, mouse_button);
+                                needs_redraw = true;
+                            }
+                            ElementState::Released => {
+                                window.dom.dispatch_mouse_up(mx, my, mouse_button);
+                                if let Some(active) = window.dom.hit_state.active_hitbox {
+                                    if window.dom.hit_state.is_hovered(active) {
+                                        window.dom.dispatch_click(mx, my, mouse_button);
+                                    }
+                                }
+                                window.dom.set_active(None);
+                                needs_redraw = true;
+                            }
+                        }
+                    }
+                }
+            }
+            WindowEvent::CursorLeft { .. } => {
+                if let Some(window) = self.windows.get_mut(&window_id) {
+                    window.dom.hit_state = Default::default();
+                    needs_redraw = true;
                 }
             }
             WindowEvent::CloseRequested => {
@@ -217,6 +267,13 @@ impl ApplicationHandler<UserEvent> for Application {
             }
             _ => {}
         }
+
+        if needs_redraw {
+            if let Some(window) = self.windows.get(&window_id) {
+                window.winit_window.request_redraw();
+            }
+        }
+
         if let Some(f) = &mut self.on_window_event {
             let _ = f.call(());
         }

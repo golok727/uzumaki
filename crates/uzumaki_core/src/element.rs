@@ -1,93 +1,42 @@
 use cosmic_text::Attrs;
-use slotmap::{ new_key_type, SlotMap };
-use vello::kurbo::{ Affine, Rect, RoundedRect, RoundedRectRadii, Stroke };
-use vello::peniko::Color;
+use slotmap::{new_key_type, SlotMap};
 use vello::Scene;
 
+use crate::interactivity::{HitTestState, HitboxStore, Interactivity};
+use crate::style::{Bounds, Color, Style};
 use crate::text::TextRenderer;
 
 new_key_type! {
     pub struct NodeId;
 }
 
-#[derive(Clone, Copy, Debug)]
-pub struct ViewProps {
-    pub background_color: Color,
-    pub border_radii: BorderRadii,
-    pub border_color: Color,
-    pub border_widths: BorderWidths,
-}
-
-#[derive(Clone, Copy, Debug, Default)]
-pub struct BorderWidths {
-    pub top: f64,
-    pub right: f64,
-    pub bottom: f64,
-    pub left: f64,
-}
-
-impl BorderWidths {
-    pub fn all(val: f64) -> Self {
-        Self { top: val, right: val, bottom: val, left: val }
-    }
-}
-
-#[derive(Clone, Copy, Debug, Default)]
-pub struct BorderRadii {
-    pub top_left: f64,
-    pub top_right: f64,
-    pub bottom_right: f64,
-    pub bottom_left: f64,
-}
-
-impl BorderRadii {
-    pub fn uniform(val: f64) -> Self {
-        Self {
-            top_left: val,
-            top_right: val,
-            bottom_right: val,
-            bottom_left: val,
-        }
-    }
-
-    pub fn any_nonzero(&self) -> bool {
-        self.top_left > 0.0 ||
-            self.top_right > 0.0 ||
-            self.bottom_right > 0.0 ||
-            self.bottom_left > 0.0
-    }
-}
-
-impl Default for ViewProps {
-    fn default() -> Self {
-        Self {
-            background_color: Color::TRANSPARENT,
-            border_radii: BorderRadii::default(),
-            border_color: Color::TRANSPARENT,
-            border_widths: BorderWidths::default(),
-        }
-    }
-}
+// ── Text content ─────────────────────────────────────────────────────
 
 #[derive(Clone, Debug)]
-pub struct TextProps {
+pub struct TextContent {
     pub content: String,
-    pub font_size: f32,
-    pub color: Color,
 }
 
+// ── Element kind ─────────────────────────────────────────────────────
+
 #[derive(Clone, Debug)]
-pub enum Element {
-    Root,
-    View(ViewProps),
-    Text(TextProps),
+pub enum ElementKind {
+    /// Container element (div). Has visual style + children.
+    View,
+    /// Text leaf element.
+    Text(TextContent),
 }
+
+// ── NodeContext for taffy ────────────────────────────────────────────
 
 #[derive(Clone, Debug)]
 pub struct NodeContext {
     pub dom_id: NodeId,
-    pub text: Option<TextProps>,
+    pub text: Option<TextContent>,
+    pub font_size: f32,
 }
+
+// ── Node ─────────────────────────────────────────────────────────────
 
 pub struct Node {
     pub parent: Option<NodeId>,
@@ -96,13 +45,23 @@ pub struct Node {
     pub next_sibling: Option<NodeId>,
     pub prev_sibling: Option<NodeId>,
     pub taffy_node: taffy::NodeId,
-    pub element: Element,
+    pub kind: ElementKind,
+    /// The base style for this element. Converted to taffy for layout.
+    pub style: Style,
+    /// Interactivity: hover/active style overrides, hitbox, event listeners.
+    pub interactivity: Interactivity,
 }
+
+// ── Dom ──────────────────────────────────────────────────────────────
 
 pub struct Dom {
     pub nodes: SlotMap<NodeId, Node>,
     pub taffy: taffy::TaffyTree<NodeContext>,
     pub root: Option<NodeId>,
+    /// Hitboxes registered during the last paint pass.
+    pub hitbox_store: HitboxStore,
+    /// Current hit test state (updated on mouse move).
+    pub hit_state: HitTestState,
 }
 
 impl Dom {
@@ -111,15 +70,15 @@ impl Dom {
             nodes: SlotMap::with_key(),
             taffy: taffy::TaffyTree::new(),
             root: None,
+            hitbox_store: HitboxStore::default(),
+            hit_state: HitTestState::default(),
         }
     }
 
-    pub fn create_element(&mut self, element: Element, style: taffy::Style) -> NodeId {
-        let text_context = match &element {
-            Element::Text(props) => Some(props.clone()),
-            _ => None,
-        };
-        let taffy_node = self.taffy.new_leaf(style).unwrap();
+    /// Create a View element with a style.
+    pub fn create_view(&mut self, style: Style) -> NodeId {
+        let taffy_style = style.to_taffy();
+        let taffy_node = self.taffy.new_leaf(taffy_style).unwrap();
         let node_id = self.nodes.insert(Node {
             parent: None,
             first_child: None,
@@ -127,18 +86,61 @@ impl Dom {
             next_sibling: None,
             prev_sibling: None,
             taffy_node,
-            element,
+            kind: ElementKind::View,
+            style,
+            interactivity: Interactivity::new(),
         });
         self.taffy
             .set_node_context(
                 taffy_node,
                 Some(NodeContext {
                     dom_id: node_id,
-                    text: text_context,
-                })
+                    text: None,
+                    font_size: 16.0,
+                }),
             )
             .unwrap();
         node_id
+    }
+
+    /// Create a Text element.
+    pub fn create_text(&mut self, content: String, style: Style) -> NodeId {
+        let taffy_style = style.to_taffy();
+        let taffy_node = self.taffy.new_leaf(taffy_style).unwrap();
+        let text = TextContent {
+            content: content.clone(),
+        };
+        let font_size = style.text.font_size;
+        let node_id = self.nodes.insert(Node {
+            parent: None,
+            first_child: None,
+            last_child: None,
+            next_sibling: None,
+            prev_sibling: None,
+            taffy_node,
+            kind: ElementKind::Text(text.clone()),
+            style,
+            interactivity: Interactivity::new(),
+        });
+        self.taffy
+            .set_node_context(
+                taffy_node,
+                Some(NodeContext {
+                    dom_id: node_id,
+                    text: Some(text),
+                    font_size,
+                }),
+            )
+            .unwrap();
+        node_id
+    }
+
+    /// Update a node's style (also syncs taffy).
+    pub fn set_style(&mut self, node_id: NodeId, style: Style) {
+        let node = &mut self.nodes[node_id];
+        let taffy_style = style.to_taffy();
+        node.style = style;
+        self.taffy.set_style(node.taffy_node, taffy_style).unwrap();
     }
 
     pub fn set_root(&mut self, node_id: NodeId) {
@@ -146,12 +148,10 @@ impl Dom {
     }
 
     pub fn append_child(&mut self, parent_id: NodeId, child_id: NodeId) {
-        // Sync taffy tree
         let parent_taffy = self.nodes[parent_id].taffy_node;
         let child_taffy = self.nodes[child_id].taffy_node;
         self.taffy.add_child(parent_taffy, child_taffy).unwrap();
 
-        // Update linked list
         let old_last = self.nodes[parent_id].last_child;
         self.nodes[child_id].parent = Some(parent_id);
         self.nodes[child_id].prev_sibling = old_last;
@@ -166,7 +166,6 @@ impl Dom {
     }
 
     pub fn insert_before(&mut self, parent_id: NodeId, child_id: NodeId, before_id: NodeId) {
-        // Sync taffy tree
         let parent_taffy = self.nodes[parent_id].taffy_node;
         let child_taffy = self.nodes[child_id].taffy_node;
         let before_taffy = self.nodes[before_id].taffy_node;
@@ -176,9 +175,10 @@ impl Dom {
             .iter()
             .position(|&c| c == before_taffy)
             .expect("before node not found in parent");
-        self.taffy.insert_child_at_index(parent_taffy, idx, child_taffy).unwrap();
+        self.taffy
+            .insert_child_at_index(parent_taffy, idx, child_taffy)
+            .unwrap();
 
-        // Update linked list
         let prev = self.nodes[before_id].prev_sibling;
         self.nodes[child_id].parent = Some(parent_id);
         self.nodes[child_id].next_sibling = Some(before_id);
@@ -193,12 +193,10 @@ impl Dom {
     }
 
     pub fn remove_child(&mut self, parent_id: NodeId, child_id: NodeId) {
-        // Sync taffy tree
         let parent_taffy = self.nodes[parent_id].taffy_node;
         let child_taffy = self.nodes[child_id].taffy_node;
         self.taffy.remove_child(parent_taffy, child_taffy).unwrap();
 
-        // Update linked list
         let prev = self.nodes[child_id].prev_sibling;
         let next = self.nodes[child_id].next_sibling;
 
@@ -234,197 +232,133 @@ impl Dom {
                             text_renderer,
                             known_dimensions,
                             available_space,
-                            node_context
+                            node_context,
                         )
-                    }
+                    },
                 )
                 .unwrap();
         }
     }
 
-    pub fn render(&self, scene: &mut Scene, text_renderer: &mut TextRenderer) {
+    /// Run hit test at the given mouse position and update hit_state.
+    pub fn update_hit_test(&mut self, x: f64, y: f64) {
+        let active = self.hit_state.active_hitbox;
+        self.hit_state = self.hitbox_store.hit_test(x, y);
+        self.hit_state.active_hitbox = active;
+    }
+
+    /// Set active hitbox (mouse down on an element).
+    pub fn set_active(&mut self, hitbox_id: Option<crate::interactivity::HitboxId>) {
+        self.hit_state.active_hitbox = hitbox_id;
+    }
+
+    /// Render the DOM tree into the scene. Also rebuilds hitboxes.
+    pub fn render(&mut self, scene: &mut Scene, text_renderer: &mut TextRenderer) {
+        self.hitbox_store.clear();
+
         if let Some(root) = self.root {
-            self.render_node(scene, text_renderer, root, 0.0, 0.0);
+            self.render_tree(scene, text_renderer, root);
         }
     }
 
-    fn render_node(
-        &self,
+    fn render_tree(
+        &mut self,
         scene: &mut Scene,
         text_renderer: &mut TextRenderer,
-        node_id: NodeId,
-        parent_x: f64,
-        parent_y: f64
+        root_id: NodeId,
     ) {
-        let node = &self.nodes[node_id];
-        let Ok(layout) = self.taffy.layout(node.taffy_node) else {
-            return;
-        };
+        // Collect render info for all nodes in DFS order
+        struct RenderInfo {
+            node_id: NodeId,
+            x: f64,
+            y: f64,
+            w: f64,
+            h: f64,
+            style: Style,
+            text: Option<(String, f32, Color)>,
+            needs_hitbox: bool,
+        }
 
-        let x = parent_x + (layout.location.x as f64);
-        let y = parent_y + (layout.location.y as f64);
-        let w = layout.size.width as f64;
-        let h = layout.size.height as f64;
+        let mut render_list: Vec<RenderInfo> = Vec::new();
+        let mut stack: Vec<(NodeId, f64, f64)> = vec![(root_id, 0.0, 0.0)];
 
-        match &node.element {
-            Element::View(props) => {
-                if props.border_radii.any_nonzero() {
-                    let shape = rounded_rect_from(x, y, w, h, &props.border_radii);
-                    scene.fill(
-                        vello::peniko::Fill::NonZero,
-                        Affine::IDENTITY,
-                        props.background_color,
-                        None,
-                        &shape
-                    );
-                    Self::draw_rounded_borders(scene, props, &shape);
-                } else {
-                    let shape = Rect::new(x, y, x + w, y + h);
-                    scene.fill(
-                        vello::peniko::Fill::NonZero,
-                        Affine::IDENTITY,
-                        props.background_color,
-                        None,
-                        &shape
-                    );
-                    Self::draw_rect_borders(scene, props, x, y, w, h);
+        while let Some((node_id, parent_x, parent_y)) = stack.pop() {
+            let node = &self.nodes[node_id];
+            let Ok(layout) = self.taffy.layout(node.taffy_node) else {
+                continue;
+            };
+
+            let x = parent_x + layout.location.x as f64;
+            let y = parent_y + layout.location.y as f64;
+            let w = layout.size.width as f64;
+            let h = layout.size.height as f64;
+
+            let computed_style = node.interactivity.compute_style(&node.style, &self.hit_state);
+
+            let text = match &node.kind {
+                ElementKind::Text(tc) => Some((
+                    tc.content.clone(),
+                    computed_style.text.font_size,
+                    computed_style.text.color,
+                )),
+                _ => None,
+            };
+
+            let needs_hitbox = node.interactivity.needs_hitbox();
+
+            // Collect children in order, push in reverse for correct DFS
+            let mut children = Vec::new();
+            let mut child = node.first_child;
+            while let Some(child_id) = child {
+                children.push(child_id);
+                child = self.nodes[child_id].next_sibling;
+            }
+            for &child_id in children.iter().rev() {
+                stack.push((child_id, x, y));
+            }
+
+            render_list.push(RenderInfo {
+                node_id,
+                x,
+                y,
+                w,
+                h,
+                style: computed_style,
+                text,
+                needs_hitbox,
+            });
+        }
+
+        // Paint all nodes in tree order
+        for info in &render_list {
+            let bounds = Bounds::new(info.x, info.y, info.w, info.h);
+
+            // Register hitbox if needed
+            if info.needs_hitbox {
+                let hitbox_id = self.hitbox_store.insert(info.node_id, bounds);
+                self.nodes[info.node_id].interactivity.hitbox_id = Some(hitbox_id);
+            }
+
+            match &info.text {
+                Some((content, font_size, color)) => {
+                    info.style.paint(bounds, scene, |scene| {
+                        text_renderer.draw_text(
+                            scene,
+                            content,
+                            Attrs::new(),
+                            *font_size,
+                            info.w as f32,
+                            info.h as f32,
+                            (info.x as f32, info.y as f32),
+                            color.to_vello(),
+                        );
+                    });
+                }
+                None => {
+                    // View: paint bg + borders, children paint themselves in order
+                    info.style.paint(bounds, scene, |_scene| {});
                 }
             }
-            Element::Root => {}
-            Element::Text(props) => {
-                text_renderer.draw_text(
-                    scene,
-                    &props.content,
-                    Attrs::new(),
-                    props.font_size,
-                    w as f32,
-                    h as f32,
-                    (x as f32, y as f32),
-                    props.color
-                );
-            }
-        }
-
-        // Traverse children via linked list
-        let mut child = node.first_child;
-        while let Some(child_id) = child {
-            self.render_node(scene, text_renderer, child_id, x, y);
-            child = self.nodes[child_id].next_sibling;
-        }
-    }
-
-    fn border_widths_equal(widths: &BorderWidths) -> Option<f64> {
-        let first = widths.top;
-        if
-            first > 0.0 &&
-            (widths.right - first).abs() < f64::EPSILON &&
-            (widths.bottom - first).abs() < f64::EPSILON &&
-            (widths.left - first).abs() < f64::EPSILON
-        {
-            Some(first)
-        } else {
-            None
-        }
-    }
-
-    fn draw_rounded_borders(scene: &mut Scene, props: &ViewProps, outer: &RoundedRect) {
-        if let Some(width) = Self::border_widths_equal(&props.border_widths) {
-            if width > 0.0 {
-                scene.stroke(
-                    &Stroke::new(width),
-                    Affine::IDENTITY,
-                    props.border_color,
-                    None,
-                    outer
-                );
-            }
-            return;
-        }
-
-        // Fill outer border region.
-        scene.fill(vello::peniko::Fill::NonZero, Affine::IDENTITY, props.border_color, None, outer);
-
-        // Carve inner area using inset rect + radii.
-        let bounds = outer.rect();
-        let BorderWidths { top, right, bottom, left } = props.border_widths;
-        let inner_rect = Rect::new(
-            bounds.x0 + left,
-            bounds.y0 + top,
-            bounds.x1 - right,
-            bounds.y1 - bottom
-        );
-        if inner_rect.width() <= 0.0 || inner_rect.height() <= 0.0 {
-            return;
-        }
-
-        let inner_radii = inset_radii(&props.border_radii, &props.border_widths);
-        let inner = rounded_rect_from(
-            inner_rect.x0,
-            inner_rect.y0,
-            inner_rect.width(),
-            inner_rect.height(),
-            &inner_radii
-        );
-        scene.fill(
-            vello::peniko::Fill::NonZero,
-            Affine::IDENTITY,
-            props.background_color,
-            None,
-            &inner
-        );
-    }
-
-    fn draw_rect_borders(scene: &mut Scene, props: &ViewProps, x: f64, y: f64, w: f64, h: f64) {
-        if let Some(width) = Self::border_widths_equal(&props.border_widths) {
-            if width > 0.0 {
-                let shape = Rect::new(x, y, x + w, y + h);
-                scene.stroke(
-                    &Stroke::new(width),
-                    Affine::IDENTITY,
-                    props.border_color,
-                    None,
-                    &shape
-                );
-            }
-            return;
-        }
-
-        let BorderWidths { top, right, bottom, left } = props.border_widths;
-        if top > 0.0 {
-            scene.fill(
-                vello::peniko::Fill::NonZero,
-                Affine::IDENTITY,
-                props.border_color,
-                None,
-                &Rect::new(x, y, x + w, y + top)
-            );
-        }
-        if bottom > 0.0 {
-            scene.fill(
-                vello::peniko::Fill::NonZero,
-                Affine::IDENTITY,
-                props.border_color,
-                None,
-                &Rect::new(x, y + h - bottom, x + w, y + h)
-            );
-        }
-        if left > 0.0 {
-            scene.fill(
-                vello::peniko::Fill::NonZero,
-                Affine::IDENTITY,
-                props.border_color,
-                None,
-                &Rect::new(x, y, x + left, y + h)
-            );
-        }
-        if right > 0.0 {
-            scene.fill(
-                vello::peniko::Fill::NonZero,
-                Affine::IDENTITY,
-                props.border_color,
-                None,
-                &Rect::new(x + w - right, y, x + w, y + h)
-            );
         }
     }
 
@@ -432,7 +366,7 @@ impl Dom {
         text_renderer: &mut TextRenderer,
         known_dimensions: taffy::Size<Option<f32>>,
         available_space: taffy::Size<taffy::AvailableSpace>,
-        node_context: Option<&mut NodeContext>
+        node_context: Option<&mut NodeContext>,
     ) -> taffy::Size<f32> {
         let default_size = taffy::Size {
             width: known_dimensions.width.unwrap_or(0.0),
@@ -447,9 +381,13 @@ impl Dom {
             let (measured_width, measured_height) = text_renderer.measure_text(
                 &text.content,
                 Attrs::new(),
-                text.font_size,
-                known_dimensions.width.or_else(|| available_as_option(available_space.width)),
-                known_dimensions.height.or_else(|| available_as_option(available_space.height))
+                ctx.font_size,
+                known_dimensions
+                    .width
+                    .or_else(|| available_as_option(available_space.width)),
+                known_dimensions
+                    .height
+                    .or_else(|| available_as_option(available_space.height)),
             );
 
             return taffy::Size {
@@ -460,9 +398,59 @@ impl Dom {
 
         default_size
     }
+
+    /// Dispatch mouse down event to listeners on hovered elements.
+    pub fn dispatch_mouse_down(&self, x: f64, y: f64, button: crate::interactivity::MouseButton) {
+        let event = crate::interactivity::MouseEvent {
+            position: (x, y),
+            button,
+        };
+
+        for hitbox in self.hitbox_store.hitboxes().iter().rev() {
+            if hitbox.bounds.contains(x, y) {
+                let node = &self.nodes[hitbox.node_id];
+                for listener in &node.interactivity.mouse_down_listeners {
+                    listener(&event, &hitbox.bounds);
+                }
+            }
+        }
+    }
+
+    /// Dispatch mouse up event.
+    pub fn dispatch_mouse_up(&self, x: f64, y: f64, button: crate::interactivity::MouseButton) {
+        let event = crate::interactivity::MouseEvent {
+            position: (x, y),
+            button,
+        };
+
+        for hitbox in self.hitbox_store.hitboxes().iter().rev() {
+            if hitbox.bounds.contains(x, y) {
+                let node = &self.nodes[hitbox.node_id];
+                for listener in &node.interactivity.mouse_up_listeners {
+                    listener(&event, &hitbox.bounds);
+                }
+            }
+        }
+    }
+
+    /// Dispatch click event.
+    pub fn dispatch_click(&self, x: f64, y: f64, button: crate::interactivity::MouseButton) {
+        let event = crate::interactivity::MouseEvent {
+            position: (x, y),
+            button,
+        };
+
+        for hitbox in self.hitbox_store.hitboxes().iter().rev() {
+            if hitbox.bounds.contains(x, y) {
+                let node = &self.nodes[hitbox.node_id];
+                for listener in &node.interactivity.click_listeners {
+                    listener(&event, &hitbox.bounds);
+                }
+            }
+        }
+    }
 }
 
-// Helpers for uniform taffy geometry
 fn available_as_option(space: taffy::AvailableSpace) -> Option<f32> {
     match space {
         taffy::AvailableSpace::Definite(v) => Some(v),
@@ -470,476 +458,409 @@ fn available_as_option(space: taffy::AvailableSpace) -> Option<f32> {
     }
 }
 
-fn length_rect(val: f32) -> taffy::Rect<taffy::LengthPercentage> {
-    let v = taffy::LengthPercentage::length(val);
-    taffy::Rect {
-        left: v,
-        right: v,
-        top: v,
-        bottom: v,
-    }
-}
+// ── Demo tree using the new Style system ─────────────────────────────
 
-fn length_size(val: f32) -> taffy::Size<taffy::LengthPercentage> {
-    let v = taffy::LengthPercentage::length(val);
-    taffy::Size {
-        width: v,
-        height: v,
-    }
-}
-
-fn rounded_rect_from(x: f64, y: f64, w: f64, h: f64, radii: &BorderRadii) -> RoundedRect {
-    let clamp = |r: f64|
-        r
-            .max(0.0)
-            .min(w * 0.5)
-            .min(h * 0.5);
-    let rect = Rect::new(x, y, x + w, y + h);
-    let rr = RoundedRectRadii::new(
-        clamp(radii.top_left),
-        clamp(radii.top_right),
-        clamp(radii.bottom_right),
-        clamp(radii.bottom_left)
-    );
-    RoundedRect::from_rect(rect, rr)
-}
-
-fn inset_radii(radii: &BorderRadii, widths: &BorderWidths) -> BorderRadii {
-    BorderRadii {
-        top_left: (radii.top_left - widths.top.max(widths.left)).max(0.0),
-        top_right: (radii.top_right - widths.top.max(widths.right)).max(0.0),
-        bottom_right: (radii.bottom_right - widths.bottom.max(widths.right)).max(0.0),
-        bottom_left: (radii.bottom_left - widths.bottom.max(widths.left)).max(0.0),
-    }
-}
-
-/// Builds a hardcoded demo UI tree: dark-themed dashboard with text.
 pub fn build_demo_tree() -> Dom {
-    use taffy::*;
+    use crate::style::*;
 
     let mut dom = Dom::new();
 
-    // VS Code Dark+ inspired palette
-    let base = Color::from_rgba8(15, 15, 15, 255); // main background
-    let panel = Color::from_rgba8(20, 20, 20, 255); // surfaces/cards
-    let border = Color::from_rgba8(60, 60, 60, 255); // subtle dividers
-    let text_color = Color::from_rgba8(212, 212, 212, 255); // primary text
-    let subtext = Color::from_rgba8(140, 140, 150, 255); // secondary text
-    let accent_blue = Color::from_rgba8(86, 156, 214, 255); // keyword blue
-    let accent_green = Color::from_rgba8(102, 204, 153, 255);
-    let accent_orange = Color::from_rgba8(206, 145, 120, 255);
-    let nav_active = Color::from_rgba8(45, 45, 48, 255); // selected item
+    let base_bg = Color::rgb(15, 15, 15);
+    let panel = Color::rgb(20, 20, 20);
+    let border = Color::rgb(60, 60, 60);
+    let text_color = Color::rgb(212, 212, 212);
+    let subtext = Color::rgb(140, 140, 150);
+    let accent_blue = Color::rgb(86, 156, 214);
+    let accent_green = Color::rgb(102, 204, 153);
+    let accent_orange = Color::rgb(206, 145, 120);
+    let nav_active = Color::rgb(45, 45, 48);
+    let hover_bg = Color::rgb(55, 55, 60);
+    let active_bg = Color::rgb(65, 65, 70);
 
     // Root
-    let root = dom.create_element(Element::Root, Style {
+    let root = dom.create_view(Style {
         display: Display::Flex,
         flex_direction: FlexDirection::Column,
         size: Size {
-            width: Dimension::percent(1.0),
-            height: Dimension::percent(1.0),
+            width: Length::Percent(1.0),
+            height: Length::Percent(1.0),
         },
+        background: Some(base_bg),
         ..Default::default()
     });
     dom.set_root(root);
 
     // Header
-    let header = dom.create_element(
-        Element::View(ViewProps {
-            background_color: panel,
-            border_color: border,
-            border_widths: BorderWidths::all(1.0),
-            border_radii: BorderRadii::uniform(0.0),
-            ..Default::default()
-        }),
-        Style {
-            display: Display::Flex,
-            flex_direction: FlexDirection::Row,
-            align_items: Some(AlignItems::Center),
-            size: Size {
-                width: Dimension::auto(),
-                height: Dimension::length(48.0),
-            },
-            padding: length_rect(16.0),
-            ..Default::default()
-        }
-    );
+    let header = dom.create_view(Style {
+        display: Display::Flex,
+        flex_direction: FlexDirection::Row,
+        align_items: Some(AlignItems::Center),
+        size: Size {
+            width: Length::Auto,
+            height: Length::Px(48.0),
+        },
+        padding: Edges::all(16.0),
+        background: Some(panel),
+        border_color: Some(border),
+        border_widths: Edges::all(1.0),
+        ..Default::default()
+    });
     dom.append_child(root, header);
 
-    let header_text = dom.create_element(
-        Element::Text(TextProps {
-            content: "Uzumaki".to_string(),
-            font_size: 18.0,
-            color: accent_blue,
-        }),
+    let header_text = dom.create_text(
+        "Uzumaki".to_string(),
         Style {
-            size: Size {
-                width: Dimension::auto(),
-                height: Dimension::auto(),
-            },
             flex_shrink: 0.0,
+            text: TextStyle {
+                font_size: 18.0,
+                color: accent_blue,
+                ..Default::default()
+            },
             ..Default::default()
-        }
+        },
     );
     dom.append_child(header, header_text);
 
     // Body
-    let body = dom.create_element(
-        Element::View(ViewProps {
-            background_color: base,
-            ..Default::default()
-        }),
-        Style {
-            display: Display::Flex,
-            flex_direction: FlexDirection::Row,
-            flex_grow: 1.0,
-            ..Default::default()
-        }
-    );
+    let body = dom.create_view(Style {
+        display: Display::Flex,
+        flex_direction: FlexDirection::Row,
+        flex_grow: 1.0,
+        background: Some(base_bg),
+        ..Default::default()
+    });
     dom.append_child(root, body);
 
     // Sidebar
-    let sidebar = dom.create_element(
-        Element::View(ViewProps {
-            background_color: panel,
-            border_color: border,
-            border_widths: BorderWidths { top: 0.0, right: 1.0, bottom: 0.0, left: 0.0 },
-            ..Default::default()
-        }),
-        Style {
-            display: Display::Flex,
-            flex_direction: FlexDirection::Column,
-            size: Size {
-                width: Dimension::length(400.0),
-                height: Dimension::auto(),
-            },
-            padding: length_rect(12.0),
-            gap: length_size(4.0),
-            ..Default::default()
-        }
-    );
+    let sidebar = dom.create_view(Style {
+        display: Display::Flex,
+        flex_direction: FlexDirection::Column,
+        size: Size {
+            width: Length::Px(400.0),
+            height: Length::Auto,
+        },
+        padding: Edges::all(12.0),
+        gap: GapSize {
+            width: DefiniteLength::Px(4.0),
+            height: DefiniteLength::Px(4.0),
+        },
+        background: Some(panel),
+        border_color: Some(border),
+        border_widths: Edges {
+            top: 0.0,
+            right: 1.0,
+            bottom: 0.0,
+            left: 0.0,
+        },
+        ..Default::default()
+    });
     dom.append_child(body, sidebar);
 
-    // Sidebar nav items
+    // Sidebar nav items with hover/active
     let nav_labels = ["Dashboard", "Analytics", "Projects", "Settings"];
     for (i, label) in nav_labels.iter().enumerate() {
-        let nav = dom.create_element(
-            Element::View(ViewProps {
-                background_color: if i == 0 {
-                    nav_active
-                } else {
-                    Color::TRANSPARENT
-                },
-                border_radii: BorderRadii::uniform(6.0),
-                ..Default::default()
-            }),
-            Style {
-                display: Display::Flex,
-                align_items: Some(AlignItems::Center),
-                size: Size {
-                    width: Dimension::auto(),
-                    height: Dimension::length(36.0),
-                },
-                padding: length_rect(8.0),
-                flex_shrink: 0.0,
-                ..Default::default()
-            }
-        );
+        let nav = dom.create_view(Style {
+            display: Display::Flex,
+            align_items: Some(AlignItems::Center),
+            size: Size {
+                width: Length::Auto,
+                height: Length::Px(36.0),
+            },
+            padding: Edges::all(8.0),
+            flex_shrink: 0.0,
+            background: if i == 0 { Some(nav_active) } else { None },
+            corner_radii: Corners::uniform(6.0),
+            ..Default::default()
+        });
         dom.append_child(sidebar, nav);
 
-        let nav_text = dom.create_element(
-            Element::Text(TextProps {
-                content: label.to_string(),
-                font_size: 20.0,
-                color: if i == 0 {
-                    text_color
-                } else {
-                    subtext
-                },
-            }),
+        // Add hover + active interactivity
+        {
+            let node = &mut dom.nodes[nav];
+            node.interactivity.on_hover({
+                let mut s = StyleRefinement::default();
+                s.background = Some(hover_bg);
+                s
+            });
+            node.interactivity.on_active({
+                let mut s = StyleRefinement::default();
+                s.background = Some(active_bg);
+                s
+            });
+        }
+
+        let nav_text = dom.create_text(
+            label.to_string(),
             Style {
-                size: Size {
-                    width: Dimension::auto(),
-                    height: Dimension::auto(),
+                text: TextStyle {
+                    font_size: 20.0,
+                    color: if i == 0 { text_color } else { subtext },
+                    ..Default::default()
                 },
                 ..Default::default()
-            }
+            },
         );
         dom.append_child(nav, nav_text);
     }
 
     // Main content area
-    let main_area = dom.create_element(Element::Root, Style {
+    let main_area = dom.create_view(Style {
         display: Display::Flex,
         flex_direction: FlexDirection::Column,
         flex_grow: 1.0,
-        padding: length_rect(16.0),
-        gap: length_size(16.0),
+        padding: Edges::all(16.0),
+        gap: GapSize {
+            width: DefiniteLength::Px(16.0),
+            height: DefiniteLength::Px(16.0),
+        },
         ..Default::default()
     });
     dom.append_child(body, main_area);
 
     // Page title
-    let page_title = dom.create_element(
-        Element::Text(TextProps {
-            content: "Dashboard".to_string(),
-            font_size: 22.0,
-            color: text_color,
-        }),
+    let page_title = dom.create_text(
+        "Dashboard".to_string(),
         Style {
-            size: Size {
-                width: Dimension::auto(),
-                height: Dimension::auto(),
+            text: TextStyle {
+                font_size: 22.0,
+                color: text_color,
+                ..Default::default()
             },
             ..Default::default()
-        }
+        },
     );
     dom.append_child(main_area, page_title);
 
-    // Top card row
-    let card_row = dom.create_element(Element::Root, Style {
+    // Card row
+    let card_row = dom.create_view(Style {
         display: Display::Flex,
         flex_direction: FlexDirection::Row,
-        gap: length_size(12.0),
+        gap: GapSize {
+            width: DefiniteLength::Px(12.0),
+            height: DefiniteLength::Px(12.0),
+        },
         size: Size {
-            width: Dimension::auto(),
-            height: Dimension::length(100.0),
+            width: Length::Auto,
+            height: Length::Px(100.0),
         },
         ..Default::default()
     });
     dom.append_child(main_area, card_row);
 
-    // Three metric cards
+    // Metric cards with hover
     let cards = [
         ("Revenue", "$12,400", accent_blue),
         ("Users", "1,240", accent_green),
         ("Growth", "+24%", accent_orange),
     ];
     for (title, value, accent) in cards {
-        let card = dom.create_element(
-            Element::View(ViewProps {
-                background_color: panel,
-                border_radii: BorderRadii::uniform(8.0),
-                border_color: border,
-                border_widths: BorderWidths::all(1.0),
-            }),
-            Style {
-                display: Display::Flex,
-                flex_direction: FlexDirection::Column,
-                flex_grow: 1.0,
-                padding: length_rect(16.0),
-                gap: length_size(8.0),
-                ..Default::default()
-            }
-        );
+        let card = dom.create_view(Style {
+            display: Display::Flex,
+            flex_direction: FlexDirection::Column,
+            flex_grow: 1.0,
+            padding: Edges::all(16.0),
+            gap: GapSize {
+                width: DefiniteLength::Px(8.0),
+                height: DefiniteLength::Px(8.0),
+            },
+            background: Some(panel),
+            corner_radii: Corners::uniform(8.0),
+            border_color: Some(border),
+            border_widths: Edges::all(1.0),
+            ..Default::default()
+        });
         dom.append_child(card_row, card);
 
-        let card_title = dom.create_element(
-            Element::Text(TextProps {
-                content: title.to_string(),
-                font_size: 16.0,
-                color: subtext,
-            }),
+        {
+            let node = &mut dom.nodes[card];
+            node.interactivity.on_hover({
+                let mut s = StyleRefinement::default();
+                s.background = Some(hover_bg);
+                s
+            });
+        }
+
+        let card_title = dom.create_text(
+            title.to_string(),
             Style {
-                size: Size {
-                    width: Dimension::auto(),
-                    height: Dimension::auto(),
+                text: TextStyle {
+                    font_size: 16.0,
+                    color: subtext,
+                    ..Default::default()
                 },
                 ..Default::default()
-            }
+            },
         );
         dom.append_child(card, card_title);
 
-        let card_value = dom.create_element(
-            Element::Text(TextProps {
-                content: value.to_string(),
-                font_size: 24.0,
-                color: accent,
-            }),
+        let card_value = dom.create_text(
+            value.to_string(),
             Style {
-                size: Size {
-                    width: Dimension::auto(),
-                    height: Dimension::auto(),
+                text: TextStyle {
+                    font_size: 24.0,
+                    color: accent,
+                    ..Default::default()
                 },
                 ..Default::default()
-            }
+            },
         );
         dom.append_child(card, card_value);
     }
 
-    // Border radius/edge samples
-    let samples = dom.create_element(Element::Root, Style {
+    // Border radius samples
+    let samples = dom.create_view(Style {
         display: Display::Flex,
         flex_direction: FlexDirection::Row,
-        gap: length_size(12.0),
+        gap: GapSize {
+            width: DefiniteLength::Px(12.0),
+            height: DefiniteLength::Px(12.0),
+        },
         size: Size {
-            width: Dimension::auto(),
-            height: Dimension::length(80.0),
+            width: Length::Auto,
+            height: Length::Px(80.0),
         },
         ..Default::default()
     });
     dom.append_child(main_area, samples);
 
-    let chip = dom.create_element(
-        Element::View(ViewProps {
-            background_color: panel,
-            border_color: border,
-            border_widths: BorderWidths::all(2.0),
-            border_radii: BorderRadii {
-                top_left: 12.0,
-                top_right: 4.0,
-                bottom_right: 12.0,
-                bottom_left: 4.0,
-            },
-        }),
-        Style {
-            display: Display::Flex,
-            align_items: Some(AlignItems::Center),
-            justify_content: Some(JustifyContent::Center),
-            size: Size {
-                width: Dimension::length(180.0),
-                height: Dimension::percent(1.0),
-            },
-            ..Default::default()
-        }
-    );
+    let chip = dom.create_view(Style {
+        display: Display::Flex,
+        align_items: Some(AlignItems::Center),
+        justify_content: Some(JustifyContent::Center),
+        size: Size {
+            width: Length::Px(180.0),
+            height: Length::Percent(1.0),
+        },
+        background: Some(panel),
+        border_color: Some(border),
+        border_widths: Edges::all(2.0),
+        corner_radii: Corners {
+            top_left: 12.0,
+            top_right: 4.0,
+            bottom_right: 12.0,
+            bottom_left: 4.0,
+        },
+        ..Default::default()
+    });
     dom.append_child(samples, chip);
 
-    let chip_text = dom.create_element(
-        Element::Text(TextProps {
-            content: "Asymmetric corners".to_string(),
-            font_size: 14.0,
-            color: text_color,
-        }),
+    let chip_text = dom.create_text(
+        "Asymmetric corners".to_string(),
         Style {
-            size: Size { width: Dimension::auto(), height: Dimension::auto() },
+            text: TextStyle {
+                font_size: 14.0,
+                color: text_color,
+                ..Default::default()
+            },
             ..Default::default()
-        }
+        },
     );
     dom.append_child(chip, chip_text);
 
-    let pill = dom.create_element(
-        Element::View(ViewProps {
-            background_color: panel,
-            border_color: accent_blue,
-            border_widths: BorderWidths::all(5.0),
-            border_radii: BorderRadii {
-                top_left: 20.0,
-                top_right: 20.0,
-                bottom_right: 6.0,
-                bottom_left: 6.0,
-            },
-        }),
-        Style {
-            display: Display::Flex,
-            align_items: Some(AlignItems::Center),
-            justify_content: Some(JustifyContent::Center),
-            size: Size {
-                width: Dimension::length(200.0),
-                height: Dimension::percent(1.0),
-            },
-            ..Default::default()
-        }
-    );
+    let pill = dom.create_view(Style {
+        display: Display::Flex,
+        align_items: Some(AlignItems::Center),
+        justify_content: Some(JustifyContent::Center),
+        size: Size {
+            width: Length::Px(200.0),
+            height: Length::Percent(1.0),
+        },
+        background: Some(panel),
+        border_color: Some(accent_blue),
+        border_widths: Edges::all(5.0),
+        corner_radii: Corners {
+            top_left: 20.0,
+            top_right: 20.0,
+            bottom_right: 6.0,
+            bottom_left: 6.0,
+        },
+        ..Default::default()
+    });
     dom.append_child(samples, pill);
 
-    let pill_text = dom.create_element(
-        Element::Text(TextProps {
-            content: "Edge-specific stroke".to_string(),
-            font_size: 16.0,
-            color: accent_blue,
-        }),
+    let pill_text = dom.create_text(
+        "Edge-specific stroke".to_string(),
         Style {
-            size: Size { width: Dimension::auto(), height: Dimension::auto() },
+            text: TextStyle {
+                font_size: 16.0,
+                color: accent_blue,
+                ..Default::default()
+            },
             ..Default::default()
-        }
+        },
     );
     dom.append_child(pill, pill_text);
 
     // Bottom panel
-    let bottom = dom.create_element(
-        Element::View(ViewProps {
-            background_color: panel,
-            border_radii: BorderRadii::uniform(8.0),
-            border_color: border,
-            border_widths: BorderWidths::all(1.0),
-        }),
-        Style {
-            display: Display::Flex,
-            flex_direction: FlexDirection::Column,
-            flex_grow: 1.0,
-            padding: length_rect(16.0),
-            gap: length_size(8.0),
-            ..Default::default()
-        }
-    );
+    let bottom = dom.create_view(Style {
+        display: Display::Flex,
+        flex_direction: FlexDirection::Column,
+        flex_grow: 1.0,
+        padding: Edges::all(16.0),
+        gap: GapSize {
+            width: DefiniteLength::Px(8.0),
+            height: DefiniteLength::Px(8.0),
+        },
+        background: Some(panel),
+        corner_radii: Corners::uniform(8.0),
+        border_color: Some(border),
+        border_widths: Edges::all(1.0),
+        ..Default::default()
+    });
     dom.append_child(main_area, bottom);
 
-    let panel_title = dom.create_element(
-        Element::Text(TextProps {
-            content: "Recent Activity".to_string(),
-            font_size: 16.0,
-            color: text_color,
-        }),
+    let panel_title = dom.create_text(
+        "Recent Activity".to_string(),
         Style {
-            size: Size {
-                width: Dimension::auto(),
-                height: Dimension::auto(),
+            text: TextStyle {
+                font_size: 16.0,
+                color: text_color,
+                ..Default::default()
             },
             ..Default::default()
-        }
+        },
     );
     dom.append_child(bottom, panel_title);
 
-    let panel_text = dom.create_element(
-        Element::Text(TextProps {
-            content: "No recent activity to display.".to_string(),
-            font_size: 16.0,
-            color: subtext,
-        }),
+    let panel_text = dom.create_text(
+        "No recent activity to display.".to_string(),
         Style {
-            size: Size {
-                width: Dimension::auto(),
-                height: Dimension::auto(),
+            text: TextStyle {
+                font_size: 16.0,
+                color: subtext,
+                ..Default::default()
             },
             ..Default::default()
-        }
+        },
     );
     dom.append_child(bottom, panel_text);
 
     // Footer
-    let footer = dom.create_element(
-        Element::View(ViewProps {
-            background_color: panel,
-            border_color: border,
-            border_widths: BorderWidths::all(1.0),
-            ..Default::default()
-        }),
-        Style {
-            display: Display::Flex,
-            align_items: Some(AlignItems::Center),
-            size: Size {
-                width: Dimension::auto(),
-                height: Dimension::length(32.0),
-            },
-            padding: length_rect(16.0),
-            ..Default::default()
-        }
-    );
+    let footer = dom.create_view(Style {
+        display: Display::Flex,
+        align_items: Some(AlignItems::Center),
+        size: Size {
+            width: Length::Auto,
+            height: Length::Px(32.0),
+        },
+        padding: Edges::all(16.0),
+        background: Some(panel),
+        border_color: Some(border),
+        border_widths: Edges::all(1.0),
+        ..Default::default()
+    });
     dom.append_child(root, footer);
 
-    let footer_text = dom.create_element(
-        Element::Text(TextProps {
-            content: "Uzumaki v0.1.0".to_string(),
-            font_size: 16.0,
-            color: subtext,
-        }),
+    let footer_text = dom.create_text(
+        "Uzumaki v0.1.0".to_string(),
         Style {
-            size: Size {
-                width: Dimension::auto(),
-                height: Dimension::auto(),
+            text: TextStyle {
+                font_size: 16.0,
+                color: subtext,
+                ..Default::default()
             },
             ..Default::default()
-        }
+        },
     );
     dom.append_child(footer, footer_text);
 
