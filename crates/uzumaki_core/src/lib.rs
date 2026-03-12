@@ -1,4 +1,5 @@
 use napi::bindgen_prelude::*;
+use napi::threadsafe_function::{ThreadsafeFunction, ThreadsafeFunctionCallMode};
 use std::{collections::HashMap, sync::Arc, sync::LazyLock};
 
 use napi_derive::napi;
@@ -25,6 +26,20 @@ use crate::style::*;
 static LOOP_PROXY: Mutex<Option<EventLoopProxy<UserEvent>>> = Mutex::new(None);
 static DOM_REGISTRY: LazyLock<Mutex<HashMap<String, Arc<Mutex<Dom>>>>> =
     LazyLock::new(|| Mutex::new(HashMap::new()));
+static DOM_EVENT_CB: Mutex<Option<ThreadsafeFunction<DomEventData>>> = Mutex::new(None);
+
+#[napi(object)]
+pub struct DomEventData {
+    pub label: String,
+    pub node_id: String,
+    pub event_type: String,
+}
+
+#[napi]
+pub fn register_dom_event_listener(callback: ThreadsafeFunction<DomEventData>) {
+    let mut lock = DOM_EVENT_CB.lock();
+    *lock = Some(callback);
+}
 
 enum UserEvent {
     CreateWindow {
@@ -102,9 +117,7 @@ fn with_dom<R>(label: &str, f: impl FnOnce(&mut Dom) -> R) -> R {
 
 #[napi]
 pub fn get_root_node_id(label: String) -> String {
-    with_dom(&label, |dom| {
-        dom.root.expect("no root node").to_string_id()
-    })
+    with_dom(&label, |dom| dom.root.expect("no root node").to_string_id())
 }
 
 #[napi]
@@ -412,8 +425,6 @@ fn parse_justify_content(s: &str) -> JustifyContent {
 #[napi]
 pub struct Application {
     on_init: Option<Function<'static, ()>>,
-    on_window_event: Option<Function<'static, ()>>,
-    on_dom_event: Option<Function<'static, (String, String, String)>>,
     gpu: GpuContext,
     windows: HashMap<WindowId, Window>,
     window_label_to_id: HashMap<String, WindowId>,
@@ -429,8 +440,6 @@ impl Application {
         Self {
             gpu,
             on_init: None,
-            on_window_event: None,
-            on_dom_event: None,
             windows: Default::default(),
             window_label_to_id: Default::default(),
             window_id_to_label: Default::default(),
@@ -444,14 +453,10 @@ impl Application {
             label
         );
 
-        let dom = DOM_REGISTRY
-            .lock()
-            .get(&label)
-            .cloned()
-            .unwrap_or_else(|| {
-                // Fallback: create a demo tree if no pre-created DOM exists
-                Arc::new(Mutex::new(crate::element::build_demo_tree()))
-            });
+        let dom = DOM_REGISTRY.lock().get(&label).cloned().unwrap_or_else(|| {
+            // Fallback: create a demo tree if no pre-created DOM exists
+            Arc::new(Mutex::new(crate::element::build_demo_tree()))
+        });
 
         match Window::new(&self.gpu, winit_window, dom) {
             Ok(window) => {
@@ -469,16 +474,6 @@ impl Application {
     #[napi]
     pub fn on_init(&mut self, f: Function<'static, ()>) {
         self.on_init = Some(f);
-    }
-
-    #[napi]
-    pub fn on_window_event(&mut self, f: Function<'static, ()>) {
-        self.on_window_event = Some(f);
-    }
-
-    #[napi]
-    pub fn on_dom_event(&mut self, f: Function<'static, (String, String, String)>) {
-        self.on_dom_event = Some(f);
     }
 
     #[napi]
@@ -657,13 +652,20 @@ impl ApplicationHandler<UserEvent> for Application {
             _ => {}
         }
 
-        // Dispatch JS click events directly via callback
+        // Dispatch JS click events via global ThreadsafeFunction
         if !js_click_node_ids.is_empty() {
             if let Some(label) = self.window_id_to_label.get(&window_id) {
-                if let Some(cb) = &self.on_dom_event {
+                let lock = DOM_EVENT_CB.lock();
+                if let Some(cb) = &*lock {
                     for node_id_str in js_click_node_ids {
-                        let _ =
-                            cb.call((label.clone(), node_id_str, "click".to_string()));
+                        let _ = cb.call(
+                            Ok(DomEventData {
+                                label: label.clone(),
+                                node_id: node_id_str,
+                                event_type: "click".to_string(),
+                            }),
+                            ThreadsafeFunctionCallMode::NonBlocking,
+                        );
                     }
                 }
             }
@@ -673,10 +675,6 @@ impl ApplicationHandler<UserEvent> for Application {
             if let Some(window) = self.windows.get(&window_id) {
                 window.winit_window.request_redraw();
             }
-        }
-
-        if let Some(f) = &mut self.on_window_event {
-            let _ = f.call(());
         }
     }
 }

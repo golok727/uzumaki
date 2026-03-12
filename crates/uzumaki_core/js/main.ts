@@ -1,4 +1,5 @@
 import { dispatchEvent } from './react/reconciler';
+import { registerDomEventListener } from './bindings';
 
 console.log('worker started');
 const entryPoint = process.env.entryPoint;
@@ -7,12 +8,13 @@ if (!entryPoint) {
   throw new Error('entryPoint not set');
 }
 
-// Handle DOM events from main thread
-self.addEventListener('message', (event: MessageEvent) => {
-  const data = event.data;
-  if (data?.type === 'domEvent') {
-    dispatchEvent(data.nodeId, data.eventType, data.payload);
+// Register DOM event listener via ThreadsafeFunction so Rust can call us directly
+registerDomEventListener((err, event) => {
+  if (err) {
+    console.error('DOM event error:', err);
+    return;
   }
+  dispatchEvent(event.nodeId, event.eventType);
 });
 
 try {

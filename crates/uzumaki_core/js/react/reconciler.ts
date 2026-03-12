@@ -285,19 +285,15 @@ const reconciler = ReactReconciler<
     unregisterEvents(child.id);
   },
 
-  prepareUpdate() {
-    return true;
-  },
 
   commitUpdate(
     instance,
-    _updatePayload,
     type,
     oldProps,
     newProps,
-    rootContainer,
+    _internalHandle,
   ) {
-    const label = getLabel(rootContainer);
+    const label = instance.label;
 
     // Parse new props
     const newStyles: Record<string, string> = {};
@@ -428,15 +424,15 @@ const reconciler = ReactReconciler<
     currentContainer = null;
   },
 
-  preparePortalMount: () => {},
+  preparePortalMount: () => { },
   scheduleTimeout: (fn, delay) => setTimeout(fn, delay),
   cancelTimeout: (id) => clearTimeout(id),
   noTimeout: undefined,
   isPrimaryRenderer: true,
   getInstanceFromNode: () => null,
-  beforeActiveInstanceBlur: () => {},
-  afterActiveInstanceBlur: () => {},
-  prepareScopeUpdate: () => {},
+  beforeActiveInstanceBlur: () => { },
+  afterActiveInstanceBlur: () => { },
+  prepareScopeUpdate: () => { },
   getInstanceFromScope: () => null,
   supportsHydration: false,
   NotPendingTransition: undefined,
@@ -450,16 +446,16 @@ const reconciler = ReactReconciler<
   },
   getCurrentUpdatePriority: () => currentPriority,
   resolveUpdatePriority: () => DefaultEventPriority,
-  resetFormInstance: () => {},
-  requestPostPaintCallback: () => {},
+  resetFormInstance: () => { },
+  requestPostPaintCallback: () => { },
   shouldAttemptEagerTransition: () => false,
-  trackSchedulerEvent: () => {},
+  trackSchedulerEvent: () => { },
   resolveEventType: () => null,
   resolveEventTimeStamp: () => Date.now(),
   maySuspendCommit: () => false,
   preloadInstance: () => false,
   startSuspendingCommit: () => false,
-  suspendInstance: () => {},
+  suspendInstance: () => { },
   waitForCommitToBeReady: () => null,
 });
 
@@ -479,7 +475,7 @@ export function render(window: Window, element: JSX.Element) {
     console.error,
     console.error,
     console.error,
-    () => {},
+    () => { },
   );
 
   reconciler.updateContainer(element, root, null, null);
