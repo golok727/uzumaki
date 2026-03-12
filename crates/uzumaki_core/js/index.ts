@@ -64,12 +64,11 @@ export function runApp({
   const worker = new Worker(fileURLToPath(new URL('./main', import.meta.url)), {
     env: { ...process.env, entryPoint: entryFilePath },
   });
+
   worker.onerror = (e) => {
     console.error(e);
     process.exit(1);
   };
-
-  app.onInit(() => {});
 
   app.run();
 
