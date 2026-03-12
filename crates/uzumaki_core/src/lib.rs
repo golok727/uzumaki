@@ -106,8 +106,6 @@ pub fn request_redraw(label: String) {
     }
 }
 
-// ── DOM manipulation napi functions ──────────────────────────────────
-
 fn with_dom<R>(label: &str, f: impl FnOnce(&mut Dom) -> R) -> R {
     let registry = DOM_REGISTRY.lock();
     let dom_arc = registry.get(label).expect("window not found");
@@ -182,8 +180,6 @@ pub fn set_property(label: String, node_id: String, prop: String, value: String)
         apply_property(dom, nid, &prop, &value);
     })
 }
-
-// ── Property application ─────────────────────────────────────────────
 
 fn apply_property(dom: &mut Dom, node_id: NodeId, prop: &str, value: &str) {
     if let Some(hover_prop) = prop.strip_prefix("hover:") {
@@ -343,8 +339,6 @@ fn apply_style_refinement(r: &mut StyleRefinement, prop: &str, value: &str) {
         _ => {}
     }
 }
-
-// ── Value parsing helpers ────────────────────────────────────────────
 
 fn parse_f32(s: &str) -> f32 {
     s.parse().unwrap_or(0.0)

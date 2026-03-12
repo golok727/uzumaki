@@ -83,7 +83,7 @@ function App() {
         border="1"
       >
         <text fontSize="18" color={ACCENT_BLUE} flexShrink="0">
-          Uzumaki
+          Hello Uzumaki
         </text>
       </view>
 
@@ -109,7 +109,7 @@ function App() {
         {/* Main content area */}
         <view display="flex" flexDir="col" flexGrow="1" p="16" gap="16">
           {/* Page title */}
-          <text fontSize="22" color={TEXT_COLOR}>
+          <text fontSize="60" color={TEXT_COLOR}>
             Dashboard
           </text>
 
