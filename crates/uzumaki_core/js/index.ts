@@ -47,6 +47,9 @@ export class Window {
   }
 }
 
+export { render } from './react';
+export { dispatchEvent } from './react/reconciler';
+
 export function runApp({
   entryFilePath,
   title = 'uzumaki',
@@ -69,11 +72,16 @@ export function runApp({
 
   app.onInit(() => {});
 
-  app.onWindowEvent(() => {
-    // console.log("window event")
+  // Route DOM events from Rust to the worker
+  app.onDomEvent((label: string, nodeId: string, eventType: string) => {
+    worker.postMessage({ type: 'domEvent', label, nodeId, eventType });
   });
 
+  app.onWindowEvent(() => {});
+
   app.run();
+
+  worker.terminate();
 
   console.log('Reach here');
 }

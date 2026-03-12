@@ -10,6 +10,17 @@ new_key_type! {
     pub struct NodeId;
 }
 
+impl NodeId {
+    pub fn to_string_id(self) -> String {
+        self.0.as_ffi().to_string()
+    }
+
+    pub fn from_string_id(s: &str) -> Self {
+        let ffi: u64 = s.parse().expect("invalid node id");
+        Self(slotmap::KeyData::from_ffi(ffi))
+    }
+}
+
 // ── Text content ─────────────────────────────────────────────────────
 
 #[derive(Clone, Debug)]
@@ -63,6 +74,12 @@ pub struct Dom {
     /// Current hit test state (updated on mouse move).
     pub hit_state: HitTestState,
 }
+
+// Safety: Dom contains taffy's CompactLength which uses *const () as a tagged pointer
+// for float storage. It never actually dereferences these pointers and is safe to send
+// across threads. All other fields are Send+Sync.
+unsafe impl Send for Dom {}
+unsafe impl Sync for Dom {}
 
 impl Dom {
     pub fn new() -> Self {
@@ -223,6 +240,27 @@ impl Dom {
         self.nodes[child_id].parent = None;
         self.nodes[child_id].prev_sibling = None;
         self.nodes[child_id].next_sibling = None;
+    }
+
+    /// Update a text node's content.
+    pub fn set_text_content(&mut self, node_id: NodeId, text: String) {
+        let node = &mut self.nodes[node_id];
+        let tc = TextContent {
+            content: text,
+        };
+        node.kind = ElementKind::Text(tc.clone());
+        let taffy_node = node.taffy_node;
+        let font_size = node.style.text.font_size;
+        self.taffy
+            .set_node_context(
+                taffy_node,
+                Some(NodeContext {
+                    dom_id: node_id,
+                    text: Some(tc),
+                    font_size,
+                }),
+            )
+            .unwrap();
     }
 
     pub fn compute_layout(&mut self, width: f32, height: f32, text_renderer: &mut TextRenderer) {
@@ -849,7 +887,7 @@ pub fn build_demo_tree() -> Dom {
     );
     dom.append_child(bottom, panel_text);
 
-    // Footer
+    // Footer (keeping original demo intact)
     let footer = dom.create_view(Style {
         display: Display::Flex,
         align_items: Some(AlignItems::Center),

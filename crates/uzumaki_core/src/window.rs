@@ -3,6 +3,7 @@ use std::sync::Arc;
 use vello::peniko::Color;
 use vello::{RenderParams, RendererOptions, Scene};
 
+use parking_lot::Mutex;
 use winit::window::Window as WinitWindow;
 
 use crate::element::Dom;
@@ -15,13 +16,13 @@ pub struct Window {
     pub(crate) surface_config: wgpu::SurfaceConfiguration,
     pub(crate) renderer: vello::Renderer,
     pub(crate) scene: Scene,
-    pub(crate) dom: Dom,
+    pub(crate) dom: Arc<Mutex<Dom>>,
     pub(crate) text_renderer: TextRenderer,
     valid_surface: bool,
 }
 
 impl Window {
-    pub fn new(gpu: &GpuContext, winit_window: Arc<WinitWindow>, dom: Dom) -> Result<Self> {
+    pub fn new(gpu: &GpuContext, winit_window: Arc<WinitWindow>, dom: Arc<Mutex<Dom>>) -> Result<Self> {
         let surface = gpu
             .instance
             .create_surface(winit_window.clone())
@@ -90,12 +91,13 @@ impl Window {
         let width = self.surface_config.width;
         let height = self.surface_config.height;
 
-        // Compute layout for current window size
-        self.dom.compute_layout(width as f32, height as f32, &mut self.text_renderer);
-
-        // Build scene from DOM
-        self.scene.reset();
-        self.dom.render(&mut self.scene, &mut self.text_renderer);
+        // Lock DOM for layout + scene building
+        {
+            let mut dom = self.dom.lock();
+            dom.compute_layout(width as f32, height as f32, &mut self.text_renderer);
+            self.scene.reset();
+            dom.render(&mut self.scene, &mut self.text_renderer);
+        }
 
         // Render vello scene into an intermediate STORAGE texture
         let target = device.create_texture(&wgpu::TextureDescriptor {

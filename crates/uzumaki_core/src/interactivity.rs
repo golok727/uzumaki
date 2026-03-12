@@ -141,6 +141,9 @@ pub struct Interactivity {
     pub mouse_down_listeners: Vec<MouseEventListener>,
     pub mouse_up_listeners: Vec<MouseEventListener>,
     pub click_listeners: Vec<MouseEventListener>,
+
+    /// Set from JS side when a node has JS event listeners.
+    pub js_interactive: bool,
 }
 
 impl Default for Interactivity {
@@ -153,6 +156,7 @@ impl Default for Interactivity {
             mouse_down_listeners: Vec::new(),
             mouse_up_listeners: Vec::new(),
             click_listeners: Vec::new(),
+            js_interactive: false,
         }
     }
 }
@@ -164,7 +168,8 @@ impl Interactivity {
 
     /// Returns true if this element needs a hitbox (has hover/active styles or listeners).
     pub fn needs_hitbox(&self) -> bool {
-        self.hover_style.is_some()
+        self.js_interactive
+            || self.hover_style.is_some()
             || self.active_style.is_some()
             || !self.mouse_down_listeners.is_empty()
             || !self.mouse_up_listeners.is_empty()
