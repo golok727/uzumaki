@@ -574,8 +574,11 @@ impl ApplicationHandler<UserEvent> for Application {
                         400, 300,
                     )));
 
+                let is_visible = attributes.visible;
+
                 println!("Creating window");
-                let Ok(winit_window) = event_loop.create_window(attributes) else {
+                let Ok(winit_window) = event_loop.create_window(attributes.with_visible(false))
+                else {
                     println!("Failed to create window");
                     return;
                 };
@@ -590,9 +593,18 @@ impl ApplicationHandler<UserEvent> for Application {
                         label
                     );
                     match Window::new(&state.gpu, winit_window) {
-                        Ok(window) => {
+                        Ok(mut window) => {
                             state.winit_id_to_label.insert(wid, label.clone());
-                            state.windows.get_mut(&label).unwrap().handle = Some(window);
+                            let entry = state.windows.get_mut(&label).unwrap();
+
+                            window.paint_and_present(
+                                &state.gpu.device,
+                                &state.gpu.queue,
+                                &mut entry.dom,
+                            );
+
+                            window.winit_window.set_visible(is_visible);
+                            entry.handle = Some(window);
                         }
                         Err(e) => println!("Error creating window : {:#?}", e),
                     }

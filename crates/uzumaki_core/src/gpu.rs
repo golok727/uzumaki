@@ -10,7 +10,14 @@ pub struct GpuContext {
 
 impl GpuContext {
     pub async fn new() -> Result<Self> {
-        let backends = wgpu::Backends::from_env().unwrap_or_default();
+        let backends = if cfg!(target_os = "windows") {
+            wgpu::Backends::DX12
+        } else if cfg!(target_os = "macos") {
+            wgpu::Backends::METAL
+        } else {
+            wgpu::Backends::from_env().unwrap_or_default()
+        };
+
         let flags = wgpu::InstanceFlags::from_build_config().with_env();
         let memory_budget_thresholds = wgpu::MemoryBudgetThresholds::default();
         let backend_options = wgpu::BackendOptions::from_env_or_default();

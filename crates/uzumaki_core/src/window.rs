@@ -149,8 +149,7 @@ impl Window {
             });
 
         let blitter = wgpu::util::TextureBlitter::new(device, self.surface_config.format);
-        let mut encoder =
-            device.create_command_encoder(&wgpu::CommandEncoderDescriptor::default());
+        let mut encoder = device.create_command_encoder(&wgpu::CommandEncoderDescriptor::default());
         blitter.copy(device, &mut encoder, &target_view, &surface_view);
         queue.submit([encoder.finish()]);
         surface_texture.present();
