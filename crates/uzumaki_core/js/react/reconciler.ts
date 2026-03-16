@@ -3,88 +3,182 @@ import { DefaultEventPriority } from 'react-reconciler/constants';
 import type { JSX } from './jsx/runtime';
 import type { Window } from '..';
 import * as core from '../bindings';
+import { PropKey } from '../bindings';
 
-const STYLE_PROPS = new Set([
-  'h',
-  'w',
-  'p',
-  'px',
-  'py',
-  'pt',
-  'pb',
-  'pl',
-  'pr',
-  'm',
-  'mx',
-  'my',
-  'mt',
-  'mb',
-  'ml',
-  'mr',
-  'flex',
-  'flexDir',
-  'flexGrow',
-  'flexShrink',
-  'items',
-  'justify',
-  'gap',
-  'bg',
-  'color',
-  'fontSize',
-  'fontWeight',
-  'rounded',
-  'roundedTL',
-  'roundedTR',
-  'roundedBR',
-  'roundedBL',
-  'border',
-  'borderTop',
-  'borderRight',
-  'borderBottom',
-  'borderLeft',
-  'borderColor',
-  'opacity',
-  'cursor',
-  'display',
+// ── Prop key mapping ─────────────────────────────────────────────────
+
+const PROP_NAME_TO_KEY: Record<string, number> = {
+  w: PropKey.W, h: PropKey.H,
+  p: PropKey.P, px: PropKey.Px, py: PropKey.Py, pt: PropKey.Pt, pb: PropKey.Pb, pl: PropKey.Pl, pr: PropKey.Pr,
+  m: PropKey.M, mx: PropKey.Mx, my: PropKey.My, mt: PropKey.Mt, mb: PropKey.Mb, ml: PropKey.Ml, mr: PropKey.Mr,
+  flex: PropKey.Flex, flexDir: PropKey.FlexDir, flexGrow: PropKey.FlexGrow, flexShrink: PropKey.FlexShrink,
+  items: PropKey.Items, justify: PropKey.Justify, gap: PropKey.Gap,
+  bg: PropKey.Bg, color: PropKey.Color, fontSize: PropKey.FontSize, fontWeight: PropKey.FontWeight,
+  rounded: PropKey.Rounded, roundedTL: PropKey.RoundedTL, roundedTR: PropKey.RoundedTR, roundedBR: PropKey.RoundedBR, roundedBL: PropKey.RoundedBL,
+  border: PropKey.Border, borderTop: PropKey.BorderTop, borderRight: PropKey.BorderRight, borderBottom: PropKey.BorderBottom, borderLeft: PropKey.BorderLeft,
+  borderColor: PropKey.BorderColor, opacity: PropKey.Opacity,
+  display: PropKey.Display, cursor: PropKey.Cursor,
+  'hover:bg': PropKey.HoverBg, 'hover:color': PropKey.HoverColor, 'hover:opacity': PropKey.HoverOpacity, 'hover:borderColor': PropKey.HoverBorderColor,
+  'active:bg': PropKey.ActiveBg, 'active:color': PropKey.ActiveColor, 'active:opacity': PropKey.ActiveOpacity, 'active:borderColor': PropKey.ActiveBorderColor,
+};
+
+// ── Prop type categorization ─────────────────────────────────────────
+
+const LENGTH_KEYS = new Set([PropKey.W, PropKey.H]);
+const COLOR_KEYS = new Set([
+  PropKey.Bg, PropKey.Color, PropKey.BorderColor,
+  PropKey.HoverBg, PropKey.HoverColor, PropKey.HoverBorderColor,
+  PropKey.ActiveBg, PropKey.ActiveColor, PropKey.ActiveBorderColor,
 ]);
+const ENUM_KEYS = new Set([PropKey.FlexDir, PropKey.Items, PropKey.Justify, PropKey.Display]);
+
+// ── Value conversion helpers ─────────────────────────────────────────
+
+function toJsLength(value: any): { value: number; unit: number } {
+  if (typeof value === 'number') return { value, unit: 0 };
+  const s = String(value);
+  if (s === 'auto') return { value: 0, unit: 3 };
+  if (s === 'full') return { value: 1.0, unit: 1 };
+  if (s.endsWith('rem')) return { value: parseFloat(s), unit: 2 };
+  if (s.endsWith('%')) return { value: parseFloat(s) / 100, unit: 1 };
+  return { value: parseFloat(s) || 0, unit: 0 };
+}
+
+function toJsColor(value: any): { r: number; g: number; b: number; a: number } {
+  if (typeof value === 'string') {
+    if (value.startsWith('#')) {
+      const hex = value.slice(1);
+      if (hex.length === 6) {
+        return {
+          r: parseInt(hex.slice(0, 2), 16),
+          g: parseInt(hex.slice(2, 4), 16),
+          b: parseInt(hex.slice(4, 6), 16),
+          a: 255,
+        };
+      }
+      if (hex.length === 8) {
+        return {
+          r: parseInt(hex.slice(0, 2), 16),
+          g: parseInt(hex.slice(2, 4), 16),
+          b: parseInt(hex.slice(4, 6), 16),
+          a: parseInt(hex.slice(6, 8), 16),
+        };
+      }
+    }
+    if (value === 'transparent') return { r: 0, g: 0, b: 0, a: 0 };
+  }
+  return { r: 255, g: 255, b: 255, a: 255 };
+}
+
+const FLEX_DIR_MAP: Record<string, number> = {
+  row: 0, col: 1, column: 1, 'row-reverse': 2, 'col-reverse': 3, 'column-reverse': 3,
+};
+
+function toEnumValue(key: number, value: any): number {
+  if (typeof value === 'number') return value;
+  const s = String(value);
+  switch (key) {
+    case PropKey.FlexDir:
+      return FLEX_DIR_MAP[s] ?? 0;
+    case PropKey.Items:
+      return ({ 'flex-start': 0, start: 0, 'flex-end': 1, end: 1, center: 2, stretch: 3, baseline: 4 } as any)[s] ?? 3;
+    case PropKey.Justify:
+      return ({ 'flex-start': 0, start: 0, 'flex-end': 1, end: 1, center: 2, 'space-between': 3, between: 3, 'space-around': 4, around: 4, 'space-evenly': 5, evenly: 5 } as any)[s] ?? 0;
+    case PropKey.Display:
+      return ({ none: 0, flex: 1, block: 2 } as any)[s] ?? 1;
+    default:
+      return 0;
+  }
+}
+
+// ── Typed prop setters ───────────────────────────────────────────────
+
+function setProp(windowId: number, nodeId: any, propName: string, value: any): void {
+  // Special: flex with string direction value
+  if (propName === 'flex' && typeof value === 'string') {
+    const dir = FLEX_DIR_MAP[value];
+    if (dir !== undefined) {
+      core.setEnumProp(windowId, nodeId, PropKey.Display, 1); // Flex
+      core.setEnumProp(windowId, nodeId, PropKey.FlexDir, dir);
+      return;
+    }
+  }
+
+  const key = PROP_NAME_TO_KEY[propName];
+  if (key === undefined) return;
+
+  if (LENGTH_KEYS.has(key)) {
+    core.setLengthProp(windowId, nodeId, key, toJsLength(value));
+  } else if (COLOR_KEYS.has(key)) {
+    core.setColorProp(windowId, nodeId, key, toJsColor(value));
+  } else if (ENUM_KEYS.has(key)) {
+    core.setEnumProp(windowId, nodeId, key, toEnumValue(key, value));
+  } else {
+    core.setF32Prop(windowId, nodeId, key, typeof value === 'number' ? value : parseFloat(String(value)) || 0);
+  }
+}
+
+function clearProp(windowId: number, nodeId: any, propName: string): void {
+  // Special: flex clear doesn't need special handling
+  const key = PROP_NAME_TO_KEY[propName];
+  if (key === undefined) return;
+
+  if (LENGTH_KEYS.has(key)) {
+    core.setLengthProp(windowId, nodeId, key, { value: 0, unit: 3 }); // Auto
+  } else if (COLOR_KEYS.has(key)) {
+    core.setColorProp(windowId, nodeId, key, { r: 255, g: 255, b: 255, a: 255 });
+  } else if (ENUM_KEYS.has(key)) {
+    core.setEnumProp(windowId, nodeId, key, 0);
+  } else {
+    core.setF32Prop(windowId, nodeId, key, 0);
+  }
+}
+
+// ── Event registry ───────────────────────────────────────────────────
+
+function nodeKey(nodeId: any): string {
+  return JSON.stringify(nodeId);
+}
 
 const eventRegistry = new Map<string, Map<string, Function>>();
 
-export function registerEvent(nodeId: string, eventType: string, cb: Function) {
-  if (!eventRegistry.has(nodeId)) eventRegistry.set(nodeId, new Map());
-  eventRegistry.get(nodeId)!.set(eventType, cb);
+export function registerEvent(nodeId: any, eventType: string, cb: Function) {
+  const key = nodeKey(nodeId);
+  if (!eventRegistry.has(key)) eventRegistry.set(key, new Map());
+  eventRegistry.get(key)!.set(eventType, cb);
 }
 
-export function unregisterEvents(nodeId: string) {
-  eventRegistry.delete(nodeId);
+export function unregisterEvents(nodeId: any) {
+  eventRegistry.delete(nodeKey(nodeId));
 }
 
 export function dispatchEvent(
-  nodeId: string,
+  nodeId: any,
   eventType: string,
   payload?: unknown,
 ) {
-  eventRegistry.get(nodeId)?.get(eventType)?.(payload);
+  eventRegistry.get(nodeKey(nodeId))?.get(eventType)?.(payload);
 }
 
+// ── UElement ─────────────────────────────────────────────────────────
+
 class UElement {
-  id: string;
+  id: any;
   type: string;
-  label: string;
-  styles: Record<string, string> = {};
-  hoverStyles: Record<string, string> = {};
+  windowId: number;
+  styles: Record<string, any> = {};
   eventListeners: Map<string, Function> = new Map();
   children: UElement[] = [];
 
   constructor(
-    id: string,
+    id: any,
     type: string,
-    label: string,
+    windowId: number,
     props: Record<string, any>,
   ) {
     this.id = id;
     this.type = type;
-    this.label = label;
+    this.windowId = windowId;
     this.parseProps(props);
   }
 
@@ -104,26 +198,22 @@ class UElement {
         // Event listener: onClick → click
         const eventName = key.slice(2).toLowerCase();
         this.eventListeners.set(eventName, value);
-      } else if (key.startsWith('hover:')) {
-        this.hoverStyles[key.slice(6)] = String(value);
-      } else if (key.startsWith('active:')) {
-        // Store active styles as hover: prefix in styles map
-        this.styles['active:' + key.slice(7)] = String(value);
-      } else if (STYLE_PROPS.has(key)) {
-        this.styles[key] = String(value);
+      } else if (PROP_NAME_TO_KEY[key] !== undefined) {
+        this.styles[key] = value;
       }
-      // else: ignore
     }
   }
 }
 
+// ── Reconciler ───────────────────────────────────────────────────────
+
 type Container = {
   window: Window;
-  rootNodeId: string;
+  rootNodeId: any;
 };
 
-function getLabel(container: Container): string {
-  return container.window.label;
+function getWindowId(container: Container): number {
+  return container.window.id;
 }
 
 function getTextContent(children: any): string {
@@ -169,24 +259,18 @@ const reconciler = ReactReconciler<
   supportsPersistence: false,
 
   createInstance(type, props, rootContainer) {
-    const label = getLabel(rootContainer);
+    const windowId = getWindowId(rootContainer);
     if (type === 'text' || type === 'p') {
-      // Text-like elements: create a native text node
       const text = getTextContent(props.children);
-      const id = core.createTextNode(label, text);
-      const el = new UElement(id, type, label, props);
+      const id = core.createTextNode(windowId, text);
+      const el = new UElement(id, type, windowId, props);
 
-      // Apply styles
       for (const [key, val] of Object.entries(el.styles)) {
-        core.setProperty(label, id, key, val);
-      }
-      for (const [key, val] of Object.entries(el.hoverStyles)) {
-        core.setProperty(label, id, 'hover:' + key, val);
+        setProp(windowId, id, key, val);
       }
 
-      // Register events
       if (el.eventListeners.size > 0) {
-        core.setProperty(label, id, 'interactive', 'true');
+        core.setF32Prop(windowId, id, PropKey.Interactive, 1);
         for (const [event, cb] of el.eventListeners) {
           registerEvent(id, event, cb);
         }
@@ -196,18 +280,15 @@ const reconciler = ReactReconciler<
     }
 
     // View-like elements
-    const id = core.createElement(label, type);
-    const el = new UElement(id, type, label, props);
+    const id = core.createElement(windowId, type);
+    const el = new UElement(id, type, windowId, props);
 
     for (const [key, val] of Object.entries(el.styles)) {
-      core.setProperty(label, id, key, val);
-    }
-    for (const [key, val] of Object.entries(el.hoverStyles)) {
-      core.setProperty(label, id, 'hover:' + key, val);
+      setProp(windowId, id, key, val);
     }
 
     if (el.eventListeners.size > 0) {
-      core.setProperty(label, id, 'interactive', 'true');
+      core.setF32Prop(windowId, id, PropKey.Interactive, 1);
       for (const [event, cb] of el.eventListeners) {
         registerEvent(id, event, cb);
       }
@@ -217,9 +298,9 @@ const reconciler = ReactReconciler<
   },
 
   createTextInstance(text, rootContainer) {
-    const label = getLabel(rootContainer);
-    const id = core.createTextNode(label, text);
-    return new UElement(id, '#text', label, {});
+    const windowId = getWindowId(rootContainer);
+    const id = core.createTextNode(windowId, text);
+    return new UElement(id, '#text', windowId, {});
   },
 
   shouldSetTextContent(type) {
@@ -228,7 +309,7 @@ const reconciler = ReactReconciler<
 
   appendInitialChild(parent, child) {
     parent.children.push(child);
-    core.appendChild(parent.label, parent.id, child.id);
+    core.appendChild(parent.windowId, parent.id, child.id);
   },
 
   finalizeInitialChildren() {
@@ -236,13 +317,13 @@ const reconciler = ReactReconciler<
   },
 
   appendChildToContainer(container, child) {
-    const label = getLabel(container);
-    core.appendChild(label, container.rootNodeId, child.id);
+    const windowId = getWindowId(container);
+    core.appendChild(windowId, container.rootNodeId, child.id);
   },
 
   appendChild(parent, child) {
     parent.children.push(child);
-    core.appendChild(parent.label, parent.id, child.id);
+    core.appendChild(parent.windowId, parent.id, child.id);
   },
 
   insertBefore(parent, child, before) {
@@ -252,38 +333,38 @@ const reconciler = ReactReconciler<
     } else {
       parent.children.push(child);
     }
-    core.insertBefore(parent.label, parent.id, child.id, before.id);
+    core.insertBefore(parent.windowId, parent.id, child.id, before.id);
   },
 
   insertInContainerBefore(container, child, before) {
-    const label = getLabel(container);
-    core.insertBefore(label, container.rootNodeId, child.id, before.id);
+    const windowId = getWindowId(container);
+    core.insertBefore(windowId, container.rootNodeId, child.id, before.id);
   },
 
   removeChild(parent, child) {
     const idx = parent.children.indexOf(child);
     if (idx >= 0) parent.children.splice(idx, 1);
-    core.removeChild(parent.label, parent.id, child.id);
+    core.removeChild(parent.windowId, parent.id, child.id);
     unregisterEvents(child.id);
   },
 
   removeChildFromContainer(container, child) {
-    const label = getLabel(container);
-    core.removeChild(label, container.rootNodeId, child.id);
+    const windowId = getWindowId(container);
+    core.removeChild(windowId, container.rootNodeId, child.id);
     unregisterEvents(child.id);
   },
 
   commitUpdate(instance, type, oldProps, newProps, _internalHandle) {
-    const label = instance.label;
+    const windowId = instance.windowId;
 
     // Parse new props
-    const newStyles: Record<string, string> = {};
-    const newHoverStyles: Record<string, string> = {};
+    const newStyles: Record<string, any> = {};
     const newEventListeners: Map<string, Function> = new Map();
 
     for (const key in newProps) {
       if (key === 'children' || key === 'key' || key === 'ref') continue;
       const value = newProps[key];
+      if (value == null) continue;
 
       if (
         key.length >= 3 &&
@@ -294,38 +375,23 @@ const reconciler = ReactReconciler<
       ) {
         const eventName = key.slice(2).toLowerCase();
         newEventListeners.set(eventName, value);
-      } else if (key.startsWith('hover:')) {
-        newHoverStyles[key.slice(6)] = String(value);
-      } else if (STYLE_PROPS.has(key)) {
-        newStyles[key] = String(value);
+      } else if (PROP_NAME_TO_KEY[key] !== undefined) {
+        newStyles[key] = value;
       }
     }
 
     // Diff styles
     for (const [key, val] of Object.entries(newStyles)) {
       if (instance.styles[key] !== val) {
-        core.setProperty(label, instance.id, key, val);
+        setProp(windowId, instance.id, key, val);
       }
     }
     for (const key of Object.keys(instance.styles)) {
-      if (!(key in newStyles) && !key.startsWith('active:')) {
-        core.setProperty(label, instance.id, key, '');
+      if (!(key in newStyles)) {
+        clearProp(windowId, instance.id, key);
       }
     }
     instance.styles = newStyles;
-
-    // Diff hover styles
-    for (const [key, val] of Object.entries(newHoverStyles)) {
-      if (instance.hoverStyles[key] !== val) {
-        core.setProperty(label, instance.id, 'hover:' + key, val);
-      }
-    }
-    for (const key of Object.keys(instance.hoverStyles)) {
-      if (!(key in newHoverStyles)) {
-        core.setProperty(label, instance.id, 'hover:' + key, '');
-      }
-    }
-    instance.hoverStyles = newHoverStyles;
 
     // Diff event listeners
     for (const [event, cb] of newEventListeners) {
@@ -333,16 +399,16 @@ const reconciler = ReactReconciler<
     }
     for (const [event] of instance.eventListeners) {
       if (!newEventListeners.has(event)) {
-        eventRegistry.get(instance.id)?.delete(event);
+        eventRegistry.get(nodeKey(instance.id))?.delete(event);
       }
     }
     if (newEventListeners.size > 0 && instance.eventListeners.size === 0) {
-      core.setProperty(label, instance.id, 'interactive', 'true');
+      core.setF32Prop(windowId, instance.id, PropKey.Interactive, 1);
     } else if (
       newEventListeners.size === 0 &&
       instance.eventListeners.size > 0
     ) {
-      core.setProperty(label, instance.id, 'interactive', 'false');
+      core.setF32Prop(windowId, instance.id, PropKey.Interactive, 0);
     }
     instance.eventListeners = newEventListeners;
 
@@ -351,14 +417,14 @@ const reconciler = ReactReconciler<
       const oldText = getTextContent(oldProps.children);
       const newText = getTextContent(newProps.children);
       if (oldText !== newText) {
-        core.setText(label, instance.id, newText);
+        core.setText(windowId, instance.id, newText);
       }
     }
   },
 
   commitTextUpdate(instance, oldText, newText) {
     if (oldText !== newText) {
-      core.setText(instance.label, instance.id, newText);
+      core.setText(instance.windowId, instance.id, newText);
     }
   },
 
@@ -368,28 +434,27 @@ const reconciler = ReactReconciler<
   },
 
   hideInstance(instance) {
-    core.setProperty(instance.label, instance.id, 'visible', 'false');
+    core.setF32Prop(instance.windowId, instance.id, PropKey.Visible, 0);
   },
 
   unhideInstance(instance) {
-    core.setProperty(instance.label, instance.id, 'visible', 'true');
+    core.setF32Prop(instance.windowId, instance.id, PropKey.Visible, 1);
   },
 
   hideTextInstance(instance) {
-    core.setProperty(instance.label, instance.id, 'visible', 'false');
+    core.setF32Prop(instance.windowId, instance.id, PropKey.Visible, 0);
   },
 
   unhideTextInstance(instance) {
-    core.setProperty(instance.label, instance.id, 'visible', 'true');
+    core.setF32Prop(instance.windowId, instance.id, PropKey.Visible, 1);
   },
 
   resetTextContent(instance) {
-    core.setText(instance.label, instance.id, '');
+    core.setText(instance.windowId, instance.id, '');
   },
 
   clearContainer(container) {
     console.log('[reconciler]: clear container');
-    // No-op: React handles removing children individually
   },
 
   getRootHostContext: () => ({}),
@@ -402,7 +467,7 @@ const reconciler = ReactReconciler<
   },
 
   resetAfterCommit(container) {
-    core.requestRedraw(container.window.label);
+    core.requestRedraw(container.window.id);
     currentContainer = null;
   },
 
@@ -444,7 +509,7 @@ const reconciler = ReactReconciler<
 const roots = new Map<string, { root: any; container: Container }>();
 
 export function render(window: Window, element: JSX.Element) {
-  const rootNodeId = core.getRootNodeId(window.label);
+  const rootNodeId = core.getRootNodeId(window.id);
   const container: Container = { window, rootNodeId };
 
   const root = reconciler.createContainer(
@@ -472,8 +537,6 @@ export function render(window: Window, element: JSX.Element) {
 }
 
 export function disposeAllRoots() {
-  // Don't trigger React unmount (which would call removeChild on already-cleared nodes).
-  // Just drop the references — the Rust DOM is reset separately via resetDom.
   roots.clear();
 }
 

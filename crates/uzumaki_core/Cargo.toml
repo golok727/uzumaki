@@ -14,7 +14,7 @@ anyhow.workspace = true
 cosmic-text = "0.18.2"
 napi = { version = "3", features = ["serde-json"] }
 napi-derive = "3"
-slotmap = "1.1.1"
+slotmap = { version = "1.1.1", features = ["serde"] }
 taffy = "0.9.2"
 vello = "0.7.0"
 wgpu = "27.0.1"

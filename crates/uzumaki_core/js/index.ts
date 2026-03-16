@@ -1,4 +1,4 @@
-import { Application, createWindow, pollEvents, resetDom } from './bindings';
+import { Application, createWindow, pollEvents, resetDom, setRemBase } from './bindings';
 import { dispatchEvent } from './react/reconciler';
 import { requestQuit } from './bindings';
 
@@ -14,6 +14,8 @@ export class Window {
   private _width!: number;
   private _height!: number;
   private _label!: string;
+  private _id!: number;
+  private _remBase: number = 16;
 
   constructor(
     label: string,
@@ -32,8 +34,7 @@ export class Window {
     this._width = width;
     this._height = height;
     this._label = label;
-
-    createWindow({ width, height, label, title });
+    this._id = createWindow({ width, height, title });
     windowRegistry.set(label, this);
   }
 
@@ -55,14 +56,27 @@ export class Window {
   get label(): string {
     return this._label;
   }
+
+  get id(): number {
+    return this._id;
+  }
+
+  get remBase(): number {
+    return this._remBase;
+  }
+
+  set remBase(value: number) {
+    this._remBase = value;
+    setRemBase(this._id, value);
+  }
 }
 
 export { render } from './react';
 
 interface AppEvent {
   type: string;
-  windowLabel?: string;
-  nodeId?: string;
+  windowId?: number;
+  nodeId?: any;
   key?: string;
   width?: number;
   height?: number;
@@ -110,7 +124,7 @@ export async function runApp({
         case 'click':
         case 'mouseDown':
         case 'mouseUp':
-          if (event.nodeId) {
+          if (event.nodeId != null) {
             dispatchEvent(event.nodeId, event.type);
           }
           break;

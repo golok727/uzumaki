@@ -2,6 +2,7 @@ use napi::bindgen_prelude::*;
 use serde::Serialize;
 use std::cell::RefCell;
 use std::collections::HashMap;
+use std::sync::atomic::{AtomicU32, Ordering};
 use std::time::Duration;
 
 use napi_derive::napi;
@@ -24,16 +25,20 @@ use crate::element::{Dom, NodeId};
 use crate::gpu::GpuContext;
 use crate::style::*;
 
+static NEXT_WINDOW_ID: AtomicU32 = AtomicU32::new(1);
+
 struct WindowEntry {
     dom: Dom,
     /// Present once the winit window has been created by the event loop
     handle: Option<Window>,
+    /// Root font size for rem unit resolution (default 16.0)
+    rem_base: f32,
 }
 
 struct AppState {
     gpu: GpuContext,
-    windows: HashMap<String, WindowEntry>,
-    winit_id_to_label: HashMap<WindowId, String>,
+    windows: HashMap<u32, WindowEntry>,
+    winit_id_to_id: HashMap<WindowId, u32>,
     pending_events: Vec<AppEvent>,
 }
 
@@ -61,21 +66,21 @@ fn send_proxy_event(event: UserEvent) {
 #[derive(Serialize)]
 #[serde(rename_all = "camelCase")]
 struct NodeEventData {
-    window_label: String,
-    node_id: String,
+    window_id: u32,
+    node_id: NodeId,
 }
 
 #[derive(Serialize)]
 #[serde(rename_all = "camelCase")]
 struct KeyEventData {
-    window_label: String,
+    window_id: u32,
     key: String,
 }
 
 #[derive(Serialize)]
 #[serde(rename_all = "camelCase")]
 struct ResizeEventData {
-    window_label: String,
+    window_id: u32,
     width: u32,
     height: u32,
 }
@@ -101,9 +106,9 @@ pub fn poll_events() -> serde_json::Value {
 }
 
 #[napi]
-pub fn reset_dom(label: String) {
+pub fn reset_dom(window_id: u32) {
     with_state(|state| {
-        if let Some(entry) = state.windows.get_mut(&label) {
+        if let Some(entry) = state.windows.get_mut(&window_id) {
             let root = entry.dom.root.expect("no root node");
             entry.dom.clear_children(root);
         }
@@ -112,29 +117,29 @@ pub fn reset_dom(label: String) {
 
 enum UserEvent {
     CreateWindow {
-        label: String,
+        id: u32,
         width: u32,
         height: u32,
         title: String,
     },
     RequestRedraw {
-        label: String,
+        id: u32,
     },
     Quit,
 }
 
 #[napi(object)]
 pub struct WindowOptions {
-    pub label: String,
     pub width: u32,
     pub height: u32,
     pub title: String,
 }
 
 #[napi]
-pub fn create_window(options: WindowOptions) {
+pub fn create_window(options: WindowOptions) -> u32 {
+    let id = NEXT_WINDOW_ID.fetch_add(1, Ordering::Relaxed);
+
     with_state(|state| {
-        // Create DOM immediately so JS can call getRootNodeId right after
         let mut dom = Dom::new();
         let root = dom.create_view(Style {
             display: Display::Flex,
@@ -146,17 +151,24 @@ pub fn create_window(options: WindowOptions) {
         });
         dom.set_root(root);
 
-        state
-            .windows
-            .insert(options.label.clone(), WindowEntry { dom, handle: None });
+        state.windows.insert(
+            id,
+            WindowEntry {
+                dom,
+                handle: None,
+                rem_base: 16.0,
+            },
+        );
     });
 
     send_proxy_event(UserEvent::CreateWindow {
-        label: options.label,
+        id,
         width: options.width,
         height: options.height,
         title: options.title,
     });
+
+    id
 }
 
 #[napi]
@@ -165,225 +177,429 @@ pub fn request_quit() {
 }
 
 #[napi]
-pub fn request_redraw(label: String) {
-    send_proxy_event(UserEvent::RequestRedraw { label });
+pub fn request_redraw(window_id: u32) {
+    send_proxy_event(UserEvent::RequestRedraw { id: window_id });
 }
 
 #[napi]
-pub fn get_root_node_id(label: String) -> String {
+pub fn get_root_node_id(window_id: u32) -> serde_json::Value {
     with_state(|state| {
-        let entry = state.windows.get(&label).expect("window not found");
-        entry.dom.root.expect("no root node").to_string_id()
+        let entry = state.windows.get(&window_id).expect("window not found");
+        serde_json::to_value(entry.dom.root.expect("no root node")).unwrap()
     })
 }
 
 #[napi]
-pub fn create_element(label: String, element_type: String) -> String {
+pub fn create_element(window_id: u32, element_type: String) -> serde_json::Value {
     let _ = element_type;
     with_state(|state| {
-        let entry = state.windows.get_mut(&label).expect("window not found");
-        entry.dom.create_view(Style::default()).to_string_id()
+        let entry = state.windows.get_mut(&window_id).expect("window not found");
+        serde_json::to_value(entry.dom.create_view(Style::default())).unwrap()
     })
 }
 
 #[napi]
-pub fn create_text_node(label: String, text: String) -> String {
+pub fn create_text_node(window_id: u32, text: String) -> serde_json::Value {
     with_state(|state| {
-        let entry = state.windows.get_mut(&label).expect("window not found");
-        entry.dom.create_text(text, Style::default()).to_string_id()
+        let entry = state.windows.get_mut(&window_id).expect("window not found");
+        serde_json::to_value(entry.dom.create_text(text, Style::default())).unwrap()
     })
 }
 
 #[napi]
-pub fn append_child(label: String, parent_id: String, child_id: String) {
+pub fn append_child(window_id: u32, parent_id: serde_json::Value, child_id: serde_json::Value) {
+    let pid = serde_json::from_value::<NodeId>(parent_id).unwrap();
+    let cid = serde_json::from_value::<NodeId>(child_id).unwrap();
     with_state(|state| {
-        let entry = state.windows.get_mut(&label).expect("window not found");
-        entry.dom.append_child(
-            NodeId::from_string_id(&parent_id),
-            NodeId::from_string_id(&child_id),
-        );
+        let entry = state.windows.get_mut(&window_id).expect("window not found");
+        entry.dom.append_child(pid, cid);
     })
 }
 
 #[napi]
-pub fn insert_before(label: String, parent_id: String, child_id: String, before_id: String) {
+pub fn insert_before(
+    window_id: u32,
+    parent_id: serde_json::Value,
+    child_id: serde_json::Value,
+    before_id: serde_json::Value,
+) {
+    let pid = serde_json::from_value::<NodeId>(parent_id).unwrap();
+    let cid = serde_json::from_value::<NodeId>(child_id).unwrap();
+    let bid = serde_json::from_value::<NodeId>(before_id).unwrap();
     with_state(|state| {
-        let entry = state.windows.get_mut(&label).expect("window not found");
-        entry.dom.insert_before(
-            NodeId::from_string_id(&parent_id),
-            NodeId::from_string_id(&child_id),
-            NodeId::from_string_id(&before_id),
-        );
+        let entry = state.windows.get_mut(&window_id).expect("window not found");
+        entry.dom.insert_before(pid, cid, bid);
     })
 }
 
 #[napi]
-pub fn remove_child(label: String, parent_id: String, child_id: String) {
+pub fn remove_child(window_id: u32, parent_id: serde_json::Value, child_id: serde_json::Value) {
+    let pid = serde_json::from_value::<NodeId>(parent_id).unwrap();
+    let cid = serde_json::from_value::<NodeId>(child_id).unwrap();
     with_state(|state| {
-        let entry = state.windows.get_mut(&label).expect("window not found");
-        entry.dom.remove_child(
-            NodeId::from_string_id(&parent_id),
-            NodeId::from_string_id(&child_id),
-        );
+        let entry = state.windows.get_mut(&window_id).expect("window not found");
+        entry.dom.remove_child(pid, cid);
     })
 }
 
 #[napi]
-pub fn set_text(label: String, node_id: String, text: String) {
+pub fn set_text(window_id: u32, node_id: serde_json::Value, text: String) {
+    let nid = serde_json::from_value::<NodeId>(node_id).unwrap();
     with_state(|state| {
-        let entry = state.windows.get_mut(&label).expect("window not found");
-        entry
-            .dom
-            .set_text_content(NodeId::from_string_id(&node_id), text);
+        let entry = state.windows.get_mut(&window_id).expect("window not found");
+        entry.dom.set_text_content(nid, text);
     })
 }
 
+// ── Prop key enum ────────────────────────────────────────────────────
+
 #[napi]
-pub fn set_property(label: String, node_id: String, prop: String, value: String) {
+pub enum PropKey {
+    W = 0,
+    H = 1,
+    P = 2,
+    Px = 3,
+    Py = 4,
+    Pt = 5,
+    Pb = 6,
+    Pl = 7,
+    Pr = 8,
+    M = 9,
+    Mx = 10,
+    My = 11,
+    Mt = 12,
+    Mb = 13,
+    Ml = 14,
+    Mr = 15,
+    Flex = 16,
+    FlexDir = 17,
+    FlexGrow = 18,
+    FlexShrink = 19,
+    Items = 20,
+    Justify = 21,
+    Gap = 22,
+    Bg = 23,
+    Color = 24,
+    FontSize = 25,
+    FontWeight = 26,
+    Rounded = 27,
+    RoundedTL = 28,
+    RoundedTR = 29,
+    RoundedBR = 30,
+    RoundedBL = 31,
+    Border = 32,
+    BorderTop = 33,
+    BorderRight = 34,
+    BorderBottom = 35,
+    BorderLeft = 36,
+    BorderColor = 37,
+    Opacity = 38,
+    Display = 39,
+    Cursor = 40,
+    Interactive = 41,
+    Visible = 42,
+    HoverBg = 43,
+    HoverColor = 44,
+    HoverOpacity = 45,
+    HoverBorderColor = 46,
+    ActiveBg = 47,
+    ActiveColor = 48,
+    ActiveOpacity = 49,
+    ActiveBorderColor = 50,
+}
+
+// ── Typed value structs ──────────────────────────────────────────────
+
+#[napi(object)]
+pub struct JsLength {
+    pub value: f64,
+    /// 0 = px, 1 = percent, 2 = rem, 3 = auto
+    pub unit: u8,
+}
+
+#[napi(object)]
+pub struct JsColor {
+    pub r: u8,
+    pub g: u8,
+    pub b: u8,
+    pub a: u8,
+}
+
+// ── Enum value types ─────────────────────────────────────────────────
+
+#[napi]
+pub enum FlexDirectionValue {
+    Row = 0,
+    Column = 1,
+    RowReverse = 2,
+    ColumnReverse = 3,
+}
+
+#[napi]
+pub enum AlignItemsValue {
+    FlexStart = 0,
+    FlexEnd = 1,
+    Center = 2,
+    Stretch = 3,
+    Baseline = 4,
+}
+
+#[napi]
+pub enum JustifyContentValue {
+    FlexStart = 0,
+    FlexEnd = 1,
+    Center = 2,
+    SpaceBetween = 3,
+    SpaceAround = 4,
+    SpaceEvenly = 5,
+}
+
+#[napi]
+pub enum DisplayValue {
+    None = 0,
+    Flex = 1,
+    Block = 2,
+}
+
+// ── Typed property setters ───────────────────────────────────────────
+
+#[napi]
+pub fn set_length_prop(window_id: u32, node_id: serde_json::Value, prop: PropKey, value: JsLength) {
+    let nid = serde_json::from_value::<NodeId>(node_id).unwrap();
     with_state(|state| {
-        let entry = state.windows.get_mut(&label).expect("window not found");
-        let nid = NodeId::from_string_id(&node_id);
-        apply_property(&mut entry.dom, nid, &prop, &value);
-    })
+        let entry = state.windows.get_mut(&window_id).expect("window not found");
+        let length = match value.unit {
+            0 => Length::Px(value.value as f32),
+            1 => Length::Percent(value.value as f32),
+            2 => Length::Px(value.value as f32 * entry.rem_base),
+            _ => Length::Auto,
+        };
+        {
+            let s = &mut entry.dom.nodes[nid].style;
+            match prop {
+                PropKey::W => s.size.width = length,
+                PropKey::H => s.size.height = length,
+                _ => return,
+            }
+        }
+        sync_taffy(&mut entry.dom, nid);
+    });
+}
+
+#[napi]
+pub fn set_color_prop(window_id: u32, node_id: serde_json::Value, prop: PropKey, value: JsColor) {
+    let nid = serde_json::from_value::<NodeId>(node_id).unwrap();
+    let color = Color::rgba(value.r, value.g, value.b, value.a);
+    with_state(|state| {
+        let entry = state.windows.get_mut(&window_id).expect("window not found");
+
+        match prop {
+            PropKey::HoverBg | PropKey::HoverColor | PropKey::HoverBorderColor => {
+                let r = entry.dom.nodes[nid]
+                    .interactivity
+                    .hover_style
+                    .get_or_insert_with(|| Box::new(StyleRefinement::default()));
+                match prop {
+                    PropKey::HoverBg => r.background = Some(color),
+                    PropKey::HoverColor => r.text.color = Some(color),
+                    PropKey::HoverBorderColor => r.border_color = Some(color),
+                    _ => unreachable!(),
+                }
+                return;
+            }
+            PropKey::ActiveBg | PropKey::ActiveColor | PropKey::ActiveBorderColor => {
+                let r = entry.dom.nodes[nid]
+                    .interactivity
+                    .active_style
+                    .get_or_insert_with(|| Box::new(StyleRefinement::default()));
+                match prop {
+                    PropKey::ActiveBg => r.background = Some(color),
+                    PropKey::ActiveColor => r.text.color = Some(color),
+                    PropKey::ActiveBorderColor => r.border_color = Some(color),
+                    _ => unreachable!(),
+                }
+                return;
+            }
+            _ => {}
+        }
+
+        {
+            let s = &mut entry.dom.nodes[nid].style;
+            match prop {
+                PropKey::Bg => s.background = Some(color),
+                PropKey::Color => s.text.color = color,
+                PropKey::BorderColor => s.border_color = Some(color),
+                _ => return,
+            }
+        }
+        sync_taffy(&mut entry.dom, nid);
+    });
+}
+
+#[napi]
+pub fn set_f32_prop(window_id: u32, node_id: serde_json::Value, prop: PropKey, value: f64) {
+    let nid = serde_json::from_value::<NodeId>(node_id).unwrap();
+    let v = value as f32;
+    with_state(|state| {
+        let entry = state.windows.get_mut(&window_id).expect("window not found");
+
+        // Props that don't need sync_taffy
+        match prop {
+            PropKey::HoverOpacity => {
+                let r = entry.dom.nodes[nid]
+                    .interactivity
+                    .hover_style
+                    .get_or_insert_with(|| Box::new(StyleRefinement::default()));
+                r.opacity = Some(v);
+                return;
+            }
+            PropKey::ActiveOpacity => {
+                let r = entry.dom.nodes[nid]
+                    .interactivity
+                    .active_style
+                    .get_or_insert_with(|| Box::new(StyleRefinement::default()));
+                r.opacity = Some(v);
+                return;
+            }
+            PropKey::Interactive => {
+                entry.dom.nodes[nid].interactivity.js_interactive = v > 0.5;
+                return;
+            }
+            _ => {}
+        }
+
+        {
+            let s = &mut entry.dom.nodes[nid].style;
+            match prop {
+                PropKey::P => s.padding = Edges::all(v),
+                PropKey::Px => {
+                    s.padding.left = v;
+                    s.padding.right = v;
+                }
+                PropKey::Py => {
+                    s.padding.top = v;
+                    s.padding.bottom = v;
+                }
+                PropKey::Pt => s.padding.top = v,
+                PropKey::Pb => s.padding.bottom = v,
+                PropKey::Pl => s.padding.left = v,
+                PropKey::Pr => s.padding.right = v,
+                PropKey::M => s.margin = Edges::all(v),
+                PropKey::Mx => {
+                    s.margin.left = v;
+                    s.margin.right = v;
+                }
+                PropKey::My => {
+                    s.margin.top = v;
+                    s.margin.bottom = v;
+                }
+                PropKey::Mt => s.margin.top = v,
+                PropKey::Mb => s.margin.bottom = v,
+                PropKey::Ml => s.margin.left = v,
+                PropKey::Mr => s.margin.right = v,
+                PropKey::Flex => {
+                    s.display = Display::Flex;
+                    s.flex_grow = v;
+                }
+                PropKey::FlexGrow => s.flex_grow = v,
+                PropKey::FlexShrink => s.flex_shrink = v,
+                PropKey::Gap => {
+                    s.gap = GapSize {
+                        width: DefiniteLength::Px(v),
+                        height: DefiniteLength::Px(v),
+                    };
+                }
+                PropKey::FontSize => s.text.font_size = v,
+                PropKey::FontWeight => {}
+                PropKey::Rounded => s.corner_radii = Corners::uniform(v),
+                PropKey::RoundedTL => s.corner_radii.top_left = v,
+                PropKey::RoundedTR => s.corner_radii.top_right = v,
+                PropKey::RoundedBR => s.corner_radii.bottom_right = v,
+                PropKey::RoundedBL => s.corner_radii.bottom_left = v,
+                PropKey::Border => s.border_widths = Edges::all(v),
+                PropKey::BorderTop => s.border_widths.top = v,
+                PropKey::BorderRight => s.border_widths.right = v,
+                PropKey::BorderBottom => s.border_widths.bottom = v,
+                PropKey::BorderLeft => s.border_widths.left = v,
+                PropKey::Opacity => s.opacity = v,
+                PropKey::Visible => {
+                    s.visibility = if v > 0.5 {
+                        Visibility::Visible
+                    } else {
+                        Visibility::Hidden
+                    };
+                }
+                PropKey::Cursor => {}
+                _ => return,
+            }
+        }
+        sync_taffy(&mut entry.dom, nid);
+    });
+}
+
+#[napi]
+pub fn set_enum_prop(window_id: u32, node_id: serde_json::Value, prop: PropKey, value: i32) {
+    let nid = serde_json::from_value::<NodeId>(node_id).unwrap();
+    with_state(|state| {
+        let entry = state.windows.get_mut(&window_id).expect("window not found");
+        {
+            let s = &mut entry.dom.nodes[nid].style;
+            match prop {
+                PropKey::FlexDir => {
+                    s.flex_direction = match value {
+                        0 => FlexDirection::Row,
+                        1 => FlexDirection::Column,
+                        2 => FlexDirection::RowReverse,
+                        3 => FlexDirection::ColumnReverse,
+                        _ => FlexDirection::Row,
+                    };
+                }
+                PropKey::Items => {
+                    s.align_items = Some(match value {
+                        0 => AlignItems::FlexStart,
+                        1 => AlignItems::FlexEnd,
+                        2 => AlignItems::Center,
+                        3 => AlignItems::Stretch,
+                        4 => AlignItems::Baseline,
+                        _ => AlignItems::Stretch,
+                    });
+                }
+                PropKey::Justify => {
+                    s.justify_content = Some(match value {
+                        0 => JustifyContent::FlexStart,
+                        1 => JustifyContent::FlexEnd,
+                        2 => JustifyContent::Center,
+                        3 => JustifyContent::SpaceBetween,
+                        4 => JustifyContent::SpaceAround,
+                        5 => JustifyContent::SpaceEvenly,
+                        _ => JustifyContent::FlexStart,
+                    });
+                }
+                PropKey::Display => {
+                    s.display = match value {
+                        0 => Display::None,
+                        1 => Display::Flex,
+                        2 => Display::Block,
+                        _ => Display::Flex,
+                    };
+                }
+                _ => return,
+            }
+        }
+        sync_taffy(&mut entry.dom, nid);
+    });
+}
+
+#[napi]
+pub fn set_rem_base(window_id: u32, value: f64) {
+    with_state(|state| {
+        if let Some(entry) = state.windows.get_mut(&window_id) {
+            entry.rem_base = value as f32;
+        }
+    });
 }
 
 // ── Style helpers ────────────────────────────────────────────────────
-
-fn apply_property(dom: &mut Dom, node_id: NodeId, prop: &str, value: &str) {
-    if let Some(hover_prop) = prop.strip_prefix("hover:") {
-        let node = &mut dom.nodes[node_id];
-        let refinement = node
-            .interactivity
-            .hover_style
-            .get_or_insert_with(|| Box::new(StyleRefinement::default()));
-        apply_style_refinement(refinement, hover_prop, value);
-        return;
-    }
-
-    if let Some(active_prop) = prop.strip_prefix("active:") {
-        let node = &mut dom.nodes[node_id];
-        let refinement = node
-            .interactivity
-            .active_style
-            .get_or_insert_with(|| Box::new(StyleRefinement::default()));
-        apply_style_refinement(refinement, active_prop, value);
-        return;
-    }
-
-    match prop {
-        "interactive" => {
-            dom.nodes[node_id].interactivity.js_interactive = value == "true";
-            return;
-        }
-        "visible" => {
-            dom.nodes[node_id].style.visibility = if value == "true" {
-                Visibility::Visible
-            } else {
-                Visibility::Hidden
-            };
-            sync_taffy(dom, node_id);
-            return;
-        }
-        _ => {}
-    }
-
-    apply_base_style(dom, node_id, prop, value);
-}
-
-fn apply_base_style(dom: &mut Dom, node_id: NodeId, prop: &str, value: &str) {
-    let node = &mut dom.nodes[node_id];
-    let s = &mut node.style;
-
-    match prop {
-        "h" => s.size.height = parse_length(value),
-        "w" => s.size.width = parse_length(value),
-        "p" => s.padding = Edges::all(parse_f32(value)),
-        "px" => {
-            let v = parse_f32(value);
-            s.padding.left = v;
-            s.padding.right = v;
-        }
-        "py" => {
-            let v = parse_f32(value);
-            s.padding.top = v;
-            s.padding.bottom = v;
-        }
-        "pt" => s.padding.top = parse_f32(value),
-        "pb" => s.padding.bottom = parse_f32(value),
-        "pl" => s.padding.left = parse_f32(value),
-        "pr" => s.padding.right = parse_f32(value),
-        "m" => s.margin = Edges::all(parse_f32(value)),
-        "mx" => {
-            let v = parse_f32(value);
-            s.margin.left = v;
-            s.margin.right = v;
-        }
-        "my" => {
-            let v = parse_f32(value);
-            s.margin.top = v;
-            s.margin.bottom = v;
-        }
-        "mt" => s.margin.top = parse_f32(value),
-        "mb" => s.margin.bottom = parse_f32(value),
-        "ml" => s.margin.left = parse_f32(value),
-        "mr" => s.margin.right = parse_f32(value),
-        "flex" => {
-            s.display = Display::Flex;
-            match value {
-                "col" | "column" => s.flex_direction = FlexDirection::Column,
-                "row" => s.flex_direction = FlexDirection::Row,
-                _ => {
-                    if let Ok(v) = value.parse::<f32>() {
-                        s.flex_grow = v;
-                    }
-                }
-            }
-        }
-        "flexDir" => s.flex_direction = parse_flex_direction(value),
-        "flexGrow" => s.flex_grow = parse_f32(value),
-        "flexShrink" => s.flex_shrink = parse_f32(value),
-        "items" => s.align_items = Some(parse_align_items(value)),
-        "justify" => s.justify_content = Some(parse_justify_content(value)),
-        "gap" => {
-            let v = parse_f32(value);
-            s.gap = GapSize {
-                width: DefiniteLength::Px(v),
-                height: DefiniteLength::Px(v),
-            };
-        }
-        "bg" => s.background = Some(parse_color(value)),
-        "color" => s.text.color = parse_color(value),
-        "fontSize" => {
-            let fs = parse_f32(value);
-            s.text.font_size = fs;
-        }
-        "fontWeight" => {}
-        "rounded" => s.corner_radii = Corners::uniform(parse_f32(value)),
-        "roundedTL" => s.corner_radii.top_left = parse_f32(value),
-        "roundedTR" => s.corner_radii.top_right = parse_f32(value),
-        "roundedBR" => s.corner_radii.bottom_right = parse_f32(value),
-        "roundedBL" => s.corner_radii.bottom_left = parse_f32(value),
-        "border" => s.border_widths = Edges::all(parse_f32(value)),
-        "borderTop" => s.border_widths.top = parse_f32(value),
-        "borderRight" => s.border_widths.right = parse_f32(value),
-        "borderBottom" => s.border_widths.bottom = parse_f32(value),
-        "borderLeft" => s.border_widths.left = parse_f32(value),
-        "borderColor" => s.border_color = Some(parse_color(value)),
-        "opacity" => s.opacity = parse_f32(value),
-        "display" => {
-            s.display = match value {
-                "none" => Display::None,
-                "flex" => Display::Flex,
-                "block" => Display::Block,
-                _ => Display::Flex,
-            }
-        }
-        "cursor" => {}
-        _ => return,
-    }
-
-    sync_taffy(dom, node_id);
-}
 
 fn sync_taffy(dom: &mut Dom, node_id: NodeId) {
     let node = &dom.nodes[node_id];
@@ -394,92 +610,6 @@ fn sync_taffy(dom: &mut Dom, node_id: NodeId) {
     let font_size = node.style.text.font_size;
     if let Some(ctx) = dom.taffy.get_node_context_mut(tn) {
         ctx.font_size = font_size;
-    }
-}
-
-fn apply_style_refinement(r: &mut StyleRefinement, prop: &str, value: &str) {
-    match prop {
-        "bg" => r.background = Some(parse_color(value)),
-        "color" => r.text.color = Some(parse_color(value)),
-        "opacity" => r.opacity = Some(parse_f32(value)),
-        "borderColor" => r.border_color = Some(parse_color(value)),
-        _ => {}
-    }
-}
-
-fn parse_f32(s: &str) -> f32 {
-    s.parse().unwrap_or(0.0)
-}
-
-fn parse_length(s: &str) -> Length {
-    match s {
-        "auto" => Length::Auto,
-        "full" => Length::Percent(1.0),
-        _ => {
-            if let Some(pct) = s.strip_suffix('%') {
-                Length::Percent(pct.parse::<f32>().unwrap_or(0.0) / 100.0)
-            } else {
-                Length::Px(parse_f32(s))
-            }
-        }
-    }
-}
-
-fn parse_color(s: &str) -> Color {
-    if let Some(hex) = s.strip_prefix('#') {
-        match hex.len() {
-            6 => {
-                let r = u8::from_str_radix(&hex[0..2], 16).unwrap_or(0);
-                let g = u8::from_str_radix(&hex[2..4], 16).unwrap_or(0);
-                let b = u8::from_str_radix(&hex[4..6], 16).unwrap_or(0);
-                Color::rgb(r, g, b)
-            }
-            8 => {
-                let r = u8::from_str_radix(&hex[0..2], 16).unwrap_or(0);
-                let g = u8::from_str_radix(&hex[2..4], 16).unwrap_or(0);
-                let b = u8::from_str_radix(&hex[4..6], 16).unwrap_or(0);
-                let a = u8::from_str_radix(&hex[6..8], 16).unwrap_or(255);
-                Color::rgba(r, g, b, a)
-            }
-            _ => Color::WHITE,
-        }
-    } else if s == "transparent" {
-        Color::TRANSPARENT
-    } else {
-        Color::WHITE
-    }
-}
-
-fn parse_flex_direction(s: &str) -> FlexDirection {
-    match s {
-        "row" => FlexDirection::Row,
-        "col" | "column" => FlexDirection::Column,
-        "row-reverse" => FlexDirection::RowReverse,
-        "col-reverse" | "column-reverse" => FlexDirection::ColumnReverse,
-        _ => FlexDirection::Row,
-    }
-}
-
-fn parse_align_items(s: &str) -> AlignItems {
-    match s {
-        "start" | "flex-start" => AlignItems::FlexStart,
-        "end" | "flex-end" => AlignItems::FlexEnd,
-        "center" => AlignItems::Center,
-        "stretch" => AlignItems::Stretch,
-        "baseline" => AlignItems::Baseline,
-        _ => AlignItems::Stretch,
-    }
-}
-
-fn parse_justify_content(s: &str) -> JustifyContent {
-    match s {
-        "start" | "flex-start" => JustifyContent::FlexStart,
-        "end" | "flex-end" => JustifyContent::FlexEnd,
-        "center" => JustifyContent::Center,
-        "between" | "space-between" => JustifyContent::SpaceBetween,
-        "around" | "space-around" => JustifyContent::SpaceAround,
-        "evenly" | "space-evenly" => JustifyContent::SpaceEvenly,
-        _ => JustifyContent::FlexStart,
     }
 }
 
@@ -509,7 +639,7 @@ impl Application {
             *s.borrow_mut() = Some(AppState {
                 gpu,
                 windows: HashMap::new(),
-                winit_id_to_label: HashMap::new(),
+                winit_id_to_id: HashMap::new(),
                 pending_events: Vec::new(),
             });
         });
@@ -560,7 +690,7 @@ impl ApplicationHandler<UserEvent> for Application {
     fn user_event(&mut self, event_loop: &winit::event_loop::ActiveEventLoop, event: UserEvent) {
         match event {
             UserEvent::CreateWindow {
-                label,
+                id,
                 width,
                 height,
                 title,
@@ -588,14 +718,14 @@ impl ApplicationHandler<UserEvent> for Application {
 
                 with_state(|state| {
                     assert!(
-                        state.windows.contains_key(&label),
+                        state.windows.contains_key(&id),
                         "Window entry '{}' must exist before creating handle",
-                        label
+                        id
                     );
                     match Window::new(&state.gpu, winit_window) {
                         Ok(mut window) => {
-                            state.winit_id_to_label.insert(wid, label.clone());
-                            let entry = state.windows.get_mut(&label).unwrap();
+                            state.winit_id_to_id.insert(wid, id);
+                            let entry = state.windows.get_mut(&id).unwrap();
 
                             window.paint_and_present(
                                 &state.gpu.device,
@@ -610,9 +740,9 @@ impl ApplicationHandler<UserEvent> for Application {
                     }
                 });
             }
-            UserEvent::RequestRedraw { label } => {
+            UserEvent::RequestRedraw { id } => {
                 with_state(|state| {
-                    if let Some(entry) = state.windows.get(&label) {
+                    if let Some(entry) = state.windows.get(&id) {
                         if let Some(ref handle) = entry.handle {
                             handle.winit_window.request_redraw();
                         }
@@ -622,7 +752,7 @@ impl ApplicationHandler<UserEvent> for Application {
             UserEvent::Quit => {
                 with_state(|state| {
                     state.windows.clear();
-                    state.winit_id_to_label.clear();
+                    state.winit_id_to_id.clear();
                 });
                 event_loop.exit();
             }
@@ -638,16 +768,16 @@ impl ApplicationHandler<UserEvent> for Application {
         use winit::event::WindowEvent;
 
         with_state(|state| {
-            let Some(label) = state.winit_id_to_label.get(&window_id).cloned() else {
+            let Some(&wid) = state.winit_id_to_id.get(&window_id) else {
                 return;
             };
 
             let mut needs_redraw = false;
-            let mut js_node_events: Vec<(String, &str)> = Vec::new();
+            let mut js_node_events: Vec<(NodeId, &str)> = Vec::new();
 
             match event {
                 WindowEvent::Resized(size) => {
-                    if let Some(entry) = state.windows.get_mut(&label) {
+                    if let Some(entry) = state.windows.get_mut(&wid) {
                         if let Some(ref mut handle) = entry.handle {
                             if handle.on_resize(&state.gpu.device, size.width, size.height) {
                                 handle.winit_window.request_redraw();
@@ -655,22 +785,22 @@ impl ApplicationHandler<UserEvent> for Application {
                         }
                     }
                     state.pending_events.push(AppEvent::Resize(ResizeEventData {
-                        window_label: label.clone(),
+                        window_id: wid,
                         width: size.width,
                         height: size.height,
                     }));
                 }
                 WindowEvent::RedrawRequested => {
-                    if let Some(entry) = state.windows.get_mut(&label) {
-                        let WindowEntry { handle, dom } = entry;
+                    if let Some(entry) = state.windows.get_mut(&wid) {
+                        let WindowEntry { handle, dom, .. } = entry;
                         if let Some(handle) = handle {
                             handle.paint_and_present(&state.gpu.device, &state.gpu.queue, dom);
                         }
                     }
                 }
                 WindowEvent::CursorMoved { position, .. } => {
-                    if let Some(entry) = state.windows.get_mut(&label) {
-                        let WindowEntry { handle, dom } = entry;
+                    if let Some(entry) = state.windows.get_mut(&wid) {
+                        let WindowEntry { handle, dom, .. } = entry;
                         if let Some(handle) = handle {
                             let scale = handle.winit_window.scale_factor();
                             let logical_x = position.x / scale;
@@ -701,7 +831,7 @@ impl ApplicationHandler<UserEvent> for Application {
                         _ => crate::interactivity::MouseButton::Left,
                     };
 
-                    if let Some(entry) = state.windows.get_mut(&label) {
+                    if let Some(entry) = state.windows.get_mut(&wid) {
                         let dom = &mut entry.dom;
                         if let Some((mx, my)) = dom.hit_state.mouse_position {
                             match btn_state {
@@ -709,15 +839,11 @@ impl ApplicationHandler<UserEvent> for Application {
                                     let top = dom.hit_state.top_hit;
                                     dom.set_active(top);
                                     dom.dispatch_mouse_down(mx, my, mouse_button);
-                                    // Collect mousedown JS events
                                     for hitbox in dom.hitbox_store.hitboxes().iter().rev() {
                                         if hitbox.bounds.contains(mx, my) {
                                             let node = &dom.nodes[hitbox.node_id];
                                             if node.interactivity.js_interactive {
-                                                js_node_events.push((
-                                                    hitbox.node_id.to_string_id(),
-                                                    "mousedown",
-                                                ));
+                                                js_node_events.push((hitbox.node_id, "mousedown"));
                                             }
                                         }
                                     }
@@ -725,15 +851,11 @@ impl ApplicationHandler<UserEvent> for Application {
                                 }
                                 ElementState::Released => {
                                     dom.dispatch_mouse_up(mx, my, mouse_button);
-                                    // Collect mouseup JS events
                                     for hitbox in dom.hitbox_store.hitboxes().iter().rev() {
                                         if hitbox.bounds.contains(mx, my) {
                                             let node = &dom.nodes[hitbox.node_id];
                                             if node.interactivity.js_interactive {
-                                                js_node_events.push((
-                                                    hitbox.node_id.to_string_id(),
-                                                    "mouseup",
-                                                ));
+                                                js_node_events.push((hitbox.node_id, "mouseup"));
                                             }
                                         }
                                     }
@@ -744,10 +866,8 @@ impl ApplicationHandler<UserEvent> for Application {
                                                 if hitbox.bounds.contains(mx, my) {
                                                     let node = &dom.nodes[hitbox.node_id];
                                                     if node.interactivity.js_interactive {
-                                                        js_node_events.push((
-                                                            hitbox.node_id.to_string_id(),
-                                                            "click",
-                                                        ));
+                                                        js_node_events
+                                                            .push((hitbox.node_id, "click"));
                                                     }
                                                 }
                                             }
@@ -767,7 +887,6 @@ impl ApplicationHandler<UserEvent> for Application {
                     use winit::keyboard::{Key, NamedKey};
 
                     if key_event.state == ElementState::Pressed {
-                        // F5 == hot reload
                         if key_event.logical_key == Key::Named(NamedKey::F5) {
                             state.pending_events.push(AppEvent::HotReload);
                         } else {
@@ -777,7 +896,7 @@ impl ApplicationHandler<UserEvent> for Application {
                                 _ => return,
                             };
                             state.pending_events.push(AppEvent::KeyDown(KeyEventData {
-                                window_label: label.clone(),
+                                window_id: wid,
                                 key: key_str,
                             }));
                         }
@@ -788,21 +907,21 @@ impl ApplicationHandler<UserEvent> for Application {
                             _ => return,
                         };
                         state.pending_events.push(AppEvent::KeyUp(KeyEventData {
-                            window_label: label.clone(),
+                            window_id: wid,
                             key: key_str,
                         }));
                     }
                 }
                 WindowEvent::CursorLeft { .. } => {
-                    if let Some(entry) = state.windows.get_mut(&label) {
+                    if let Some(entry) = state.windows.get_mut(&wid) {
                         entry.dom.hit_state = Default::default();
                         needs_redraw = true;
                     }
                 }
                 WindowEvent::CloseRequested => {
                     println!("Close window event");
-                    state.winit_id_to_label.remove(&window_id);
-                    state.windows.remove(&label);
+                    state.winit_id_to_id.remove(&window_id);
+                    state.windows.remove(&wid);
                     if state.windows.is_empty() {
                         event_loop.exit();
                     }
@@ -811,19 +930,19 @@ impl ApplicationHandler<UserEvent> for Application {
             }
 
             // Push JS node events
-            for (node_id_str, event_kind) in js_node_events {
+            for (node_id, event_kind) in js_node_events {
                 let event = match event_kind {
                     "click" => AppEvent::Click(NodeEventData {
-                        window_label: label.clone(),
-                        node_id: node_id_str,
+                        window_id: wid,
+                        node_id,
                     }),
                     "mousedown" => AppEvent::MouseDown(NodeEventData {
-                        window_label: label.clone(),
-                        node_id: node_id_str,
+                        window_id: wid,
+                        node_id,
                     }),
                     "mouseup" => AppEvent::MouseUp(NodeEventData {
-                        window_label: label.clone(),
-                        node_id: node_id_str,
+                        window_id: wid,
+                        node_id,
                     }),
                     _ => continue,
                 };
@@ -831,7 +950,7 @@ impl ApplicationHandler<UserEvent> for Application {
             }
 
             if needs_redraw {
-                if let Some(entry) = state.windows.get(&label) {
+                if let Some(entry) = state.windows.get(&wid) {
                     if let Some(ref handle) = entry.handle {
                         handle.winit_window.request_redraw();
                     }

@@ -50,6 +50,7 @@ function Playground() {
         display="flex"
         items="center"
         justify="between"
+        w={'full'}
         h="48"
         p="16"
         gap="16"

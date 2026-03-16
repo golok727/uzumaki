@@ -10,17 +10,6 @@ new_key_type! {
     pub struct NodeId;
 }
 
-impl NodeId {
-    pub fn to_string_id(self) -> String {
-        self.0.as_ffi().to_string()
-    }
-
-    pub fn from_string_id(s: &str) -> Self {
-        let ffi: u64 = s.parse().expect("invalid node id");
-        Self(slotmap::KeyData::from_ffi(ffi))
-    }
-}
-
 // ── Text content ─────────────────────────────────────────────────────
 
 #[derive(Clone, Debug)]
