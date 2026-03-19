@@ -346,6 +346,18 @@ function InputDemo() {
           {`Length: ${password.length}`}
         </text>
       </view>
+      <text fontSize="14" color={SUBTEXT}>
+        Multiline:
+      </text>
+      <input
+        w="400"
+        h="120"
+        placeholder="Write multiple lines here..."
+        fontSize="16"
+        color={TEXT_COLOR}
+        multiline
+        onInput={(e) => setText(e.value)}
+      />
     </view>
   );
 }

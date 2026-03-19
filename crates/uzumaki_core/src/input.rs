@@ -339,6 +339,10 @@ impl InputState {
                     self.move_end(shift);
                     KeyResult::Handled
                 }
+                NamedKey::Space => match self.insert_text(" ") {
+                    Some(edit) => KeyResult::Edit(edit),
+                    None => KeyResult::Handled,
+                },
                 NamedKey::Escape => KeyResult::Blur,
                 NamedKey::Enter => {
                     if self.multiline {
