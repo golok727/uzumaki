@@ -1,9 +1,12 @@
 use cosmic_text::Attrs;
 use slotmap::{SlotMap, new_key_type};
 use vello::Scene;
+use vello::kurbo::{Affine, Rect};
+use vello::peniko::{Color as VelloColor, Fill};
 
+use crate::input::InputState;
 use crate::interactivity::{HitTestState, HitboxStore, Interactivity};
-use crate::style::{Bounds, Color, Style};
+use crate::style::{Bounds, Color, Corners, Edges, Style};
 use crate::text::TextRenderer;
 
 new_key_type! {
@@ -25,6 +28,8 @@ pub enum ElementKind {
     View,
     /// Text leaf element.
     Text(TextContent),
+    /// Input element.
+    Input,
 }
 
 // ── NodeContext for taffy ────────────────────────────────────────────
@@ -34,6 +39,7 @@ pub struct NodeContext {
     pub dom_id: NodeId,
     pub text: Option<TextContent>,
     pub font_size: f32,
+    pub is_input: bool,
 }
 
 // ── Node ─────────────────────────────────────────────────────────────
@@ -50,6 +56,8 @@ pub struct Node {
     pub style: Style,
     /// Interactivity: hover/active style overrides, hitbox, event listeners.
     pub interactivity: Interactivity,
+    /// Input state, present only for Input elements.
+    pub input_state: Option<InputState>,
 }
 
 // ── Dom ──────────────────────────────────────────────────────────────
@@ -62,6 +70,29 @@ pub struct Dom {
     pub hitbox_store: HitboxStore,
     /// Current hit test state (updated on mouse move).
     pub hit_state: HitTestState,
+    /// Currently focused input node.
+    pub focused_node: Option<NodeId>,
+    /// Input node being dragged for selection.
+    pub dragging_input: Option<NodeId>,
+    /// Last click time (for double-click detection).
+    pub last_click_time: Option<std::time::Instant>,
+    /// Last clicked node (for double-click detection).
+    pub last_click_node: Option<NodeId>,
+    /// Whether the OS window is focused.
+    pub window_focused: bool,
+}
+
+struct InputRenderInfo {
+    display_text: String,
+    placeholder: String,
+    font_size: f32,
+    text_color: Color,
+    focused: bool,
+    sel_start: usize,
+    sel_end: usize,
+    cursor_pos: usize,
+    scroll_offset: f32,
+    blink_visible: bool,
 }
 
 // Safety: Dom contains taffy's CompactLength which uses *const () as a tagged pointer
@@ -78,6 +109,11 @@ impl Dom {
             root: None,
             hitbox_store: HitboxStore::default(),
             hit_state: HitTestState::default(),
+            focused_node: None,
+            dragging_input: None,
+            last_click_time: None,
+            last_click_node: None,
+            window_focused: true,
         }
     }
 
@@ -103,6 +139,7 @@ impl Dom {
             kind: ElementKind::View,
             style,
             interactivity: Interactivity::new(),
+            input_state: None,
         });
         self.taffy
             .set_node_context(
@@ -111,6 +148,7 @@ impl Dom {
                     dom_id: node_id,
                     text: None,
                     font_size: 16.0,
+                    is_input: false,
                 }),
             )
             .unwrap();
@@ -135,6 +173,7 @@ impl Dom {
             kind: ElementKind::Text(text.clone()),
             style,
             interactivity: Interactivity::new(),
+            input_state: None,
         });
         self.taffy
             .set_node_context(
@@ -143,9 +182,43 @@ impl Dom {
                     dom_id: node_id,
                     text: Some(text),
                     font_size,
+                    is_input: false,
                 }),
             )
             .unwrap();
+        node_id
+    }
+
+    /// Create an Input element.
+    pub fn create_input(&mut self, style: Style) -> NodeId {
+        let taffy_style = style.to_taffy();
+        let taffy_node = self.taffy.new_leaf(taffy_style).unwrap();
+        let font_size = style.text.font_size;
+        let node_id = self.nodes.insert(Node {
+            parent: None,
+            first_child: None,
+            last_child: None,
+            next_sibling: None,
+            prev_sibling: None,
+            taffy_node,
+            kind: ElementKind::Input,
+            style,
+            interactivity: Interactivity::new(),
+            input_state: Some(InputState::new()),
+        });
+        self.taffy
+            .set_node_context(
+                taffy_node,
+                Some(NodeContext {
+                    dom_id: node_id,
+                    text: None,
+                    font_size,
+                    is_input: true,
+                }),
+            )
+            .unwrap();
+        // Input always needs a hitbox for click-to-focus
+        self.nodes[node_id].interactivity.js_interactive = true;
         node_id
     }
 
@@ -245,6 +318,7 @@ impl Dom {
                     dom_id: node_id,
                     text: Some(tc),
                     font_size,
+                    is_input: false,
                 }),
             )
             .unwrap();
@@ -355,6 +429,7 @@ impl Dom {
             style: Style,
             text: Option<(String, f32, Color)>,
             needs_hitbox: bool,
+            input: Option<InputRenderInfo>,
         }
 
         let mut render_list: Vec<RenderInfo> = Vec::new();
@@ -384,6 +459,25 @@ impl Dom {
                 _ => None,
             };
 
+            let input = if let ElementKind::Input = &node.kind {
+                node.input_state.as_ref().map(|is| {
+                    InputRenderInfo {
+                        display_text: is.display_text(),
+                        placeholder: is.placeholder.clone(),
+                        font_size: computed_style.text.font_size,
+                        text_color: computed_style.text.color,
+                        focused: is.focused,
+                        sel_start: is.selection.start(),
+                        sel_end: is.selection.end(),
+                        cursor_pos: is.selection.active,
+                        scroll_offset: is.scroll_offset,
+                        blink_visible: is.blink_visible(self.window_focused),
+                    }
+                })
+            } else {
+                None
+            };
+
             let needs_hitbox = node.interactivity.needs_hitbox();
 
             // Collect children in order, push in reverse for correct DFS
@@ -406,6 +500,7 @@ impl Dom {
                 style: computed_style,
                 text,
                 needs_hitbox,
+                input,
             });
         }
 
@@ -419,25 +514,29 @@ impl Dom {
                 self.nodes[info.node_id].interactivity.hitbox_id = Some(hitbox_id);
             }
 
-            match &info.text {
-                Some((content, font_size, color)) => {
-                    info.style.paint(bounds, scene, scale, |scene| {
-                        text_renderer.draw_text(
-                            scene,
-                            content,
-                            Attrs::new(),
-                            *font_size,
-                            info.w as f32,
-                            info.h as f32,
-                            (info.x as f32, info.y as f32),
-                            color.to_vello(),
-                            scale,
-                        );
-                    });
-                }
-                None => {
-                    // View: paint bg + borders, children paint themselves in order
-                    info.style.paint(bounds, scene, scale, |_scene| {});
+            if let Some(input_info) = &info.input {
+                paint_input(scene, text_renderer, bounds, &info.style, input_info, scale);
+            } else {
+                match &info.text {
+                    Some((content, font_size, color)) => {
+                        info.style.paint(bounds, scene, scale, |scene| {
+                            text_renderer.draw_text(
+                                scene,
+                                content,
+                                Attrs::new(),
+                                *font_size,
+                                info.w as f32,
+                                info.h as f32,
+                                (info.x as f32, info.y as f32),
+                                color.to_vello(),
+                                scale,
+                            );
+                        });
+                    }
+                    None => {
+                        // View: paint bg + borders, children paint themselves in order
+                        info.style.paint(bounds, scene, scale, |_scene| {});
+                    }
                 }
             }
         }
@@ -457,6 +556,16 @@ impl Dom {
         let Some(ctx) = node_context else {
             return default_size;
         };
+
+        if ctx.is_input {
+            return taffy::Size {
+                width: known_dimensions.width
+                    .or_else(|| available_as_option(available_space.width))
+                    .unwrap_or(200.0),
+                height: known_dimensions.height
+                    .unwrap_or(ctx.font_size * 1.2 + 16.0),
+            };
+        }
 
         if let Some(text) = &ctx.text {
             let (measured_width, measured_height) = text_renderer.measure_text(
@@ -530,6 +639,135 @@ impl Dom {
             }
         }
     }
+}
+
+fn paint_input(
+    scene: &mut vello::Scene,
+    text_renderer: &mut TextRenderer,
+    bounds: Bounds,
+    style: &Style,
+    input: &InputRenderInfo,
+    scale: f64,
+) {
+    let padding: f64 = 8.0;
+    let text_x = bounds.x + padding;
+    let text_y = bounds.y;
+    let text_w = (bounds.width - padding * 2.0).max(0.0);
+    let text_h = bounds.height;
+
+    // Paint background with focus-aware border
+    let mut paint_style = style.clone();
+    if input.focused {
+        paint_style.border_widths = Edges::all(2.0);
+        paint_style.border_color = Some(Color::rgba(86, 156, 214, 255));
+    } else {
+        if !paint_style.border_widths.any_nonzero() {
+            paint_style.border_widths = Edges::all(1.0);
+        }
+        if paint_style.border_color.is_none() {
+            paint_style.border_color = Some(Color::rgba(60, 60, 60, 255));
+        }
+    }
+    if paint_style.background.is_none() {
+        paint_style.background = Some(Color::rgba(30, 30, 30, 255));
+    }
+    if !paint_style.corner_radii.any_nonzero() {
+        paint_style.corner_radii = Corners::uniform(4.0);
+    }
+
+    paint_style.paint(bounds, scene, scale, |_| {});
+
+    // Clip to text area
+    let clip_rect = Rect::new(text_x, text_y, text_x + text_w, text_y + text_h);
+    scene.push_clip_layer(Fill::NonZero, Affine::scale(scale), &clip_rect);
+
+    let is_empty = input.display_text.is_empty();
+    let line_height = input.font_size * 1.2;
+    let text_offset_y = ((text_h as f32 - line_height) / 2.0).max(0.0);
+
+    // Compute glyph positions
+    let positions = if !is_empty {
+        text_renderer.grapheme_x_positions(&input.display_text, input.font_size)
+    } else {
+        vec![0.0]
+    };
+
+    if is_empty && !input.placeholder.is_empty() {
+        // Draw placeholder
+        text_renderer.draw_text(
+            scene,
+            &input.placeholder,
+            Attrs::new(),
+            input.font_size,
+            text_w as f32,
+            text_h as f32,
+            (text_x as f32, text_y as f32 + text_offset_y),
+            VelloColor::from_rgba8(128, 128, 128, 255),
+            scale,
+        );
+    } else if !is_empty {
+        // Draw selection highlight
+        if input.sel_start != input.sel_end
+            && input.sel_start < positions.len()
+            && input.sel_end <= positions.len()
+        {
+            let x1 = (positions[input.sel_start] - input.scroll_offset) as f64;
+            let x2 = (positions[input.sel_end] - input.scroll_offset) as f64;
+            let sel_rect = Rect::new(
+                text_x + x1,
+                text_y + text_offset_y as f64,
+                text_x + x2,
+                text_y + text_offset_y as f64 + line_height as f64,
+            );
+            scene.fill(
+                Fill::NonZero,
+                Affine::scale(scale),
+                VelloColor::from_rgba8(56, 121, 185, 128),
+                None,
+                &sel_rect,
+            );
+        }
+
+        // Draw text (wide max_width so it doesn't wrap, clipping handles overflow)
+        text_renderer.draw_text(
+            scene,
+            &input.display_text,
+            Attrs::new(),
+            input.font_size,
+            text_w as f32 + input.scroll_offset + 10000.0,
+            text_h as f32,
+            (
+                text_x as f32 - input.scroll_offset,
+                text_y as f32 + text_offset_y,
+            ),
+            input.text_color.to_vello(),
+            scale,
+        );
+    }
+
+    // Draw cursor
+    if input.focused && input.blink_visible {
+        let cursor_x = if input.cursor_pos < positions.len() {
+            (positions[input.cursor_pos] - input.scroll_offset) as f64
+        } else {
+            0.0
+        };
+        let cursor_rect = Rect::new(
+            text_x + cursor_x,
+            text_y + text_offset_y as f64 + 2.0,
+            text_x + cursor_x + 1.5,
+            text_y + text_offset_y as f64 + line_height as f64 - 2.0,
+        );
+        scene.fill(
+            Fill::NonZero,
+            Affine::scale(scale),
+            VelloColor::from_rgba8(212, 212, 212, 255),
+            None,
+            &cursor_rect,
+        );
+    }
+
+    scene.pop_layer();
 }
 
 fn available_as_option(space: taffy::AvailableSpace) -> Option<f32> {

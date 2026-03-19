@@ -7,7 +7,9 @@ export const enum EventType {
   Click     = 3,
   KeyDown   = 10,
   KeyUp     = 11,
-  // Input  = 20  — reserved
+  Input     = 20,
+  Focus     = 21,
+  Blur      = 22,
 }
 
 // ── Event interfaces ─────────────────────────────────────────────────
@@ -42,6 +44,14 @@ export interface UzumakiKeyboardEvent extends UzumakiEvent {
   metaKey: boolean;
 }
 
+export interface UzumakiInputEvent extends UzumakiEvent {
+  value: string;
+  inputType: string;
+  data: string | null;
+}
+
+export interface UzumakiFocusEvent extends UzumakiEvent {}
+
 // ── Helpers ──────────────────────────────────────────────────────────
 
 const EVENT_NAME_TO_TYPE: Record<string, EventType> = {
@@ -51,6 +61,9 @@ const EVENT_NAME_TO_TYPE: Record<string, EventType> = {
   click:     EventType.Click,
   keydown:   EventType.KeyDown,
   keyup:     EventType.KeyUp,
+  input:     EventType.Input,
+  focus:     EventType.Focus,
+  blur:      EventType.Blur,
 };
 
 function nodeKey(id: any): string {
@@ -63,6 +76,14 @@ function isMouseType(t: EventType): boolean {
 
 function isKeyboardType(t: EventType): boolean {
   return t >= 10 && t <= 11;
+}
+
+function isInputType(t: EventType): boolean {
+  return t === EventType.Input;
+}
+
+function isFocusType(t: EventType): boolean {
+  return t === EventType.Focus || t === EventType.Blur;
 }
 
 // ── EventManager ─────────────────────────────────────────────────────
@@ -212,6 +233,15 @@ export class EventManager {
         shiftKey: !!(mods & 4),
         metaKey:  !!(mods & 8),
       } as UzumakiKeyboardEvent;
+    } else if (isInputType(type)) {
+      event = {
+        ...base,
+        value: payload?.value ?? '',
+        inputType: payload?.inputType ?? '',
+        data: payload?.data ?? null,
+      } as UzumakiInputEvent;
+    } else if (isFocusType(type)) {
+      event = base as UzumakiFocusEvent;
     } else {
       return;
     }

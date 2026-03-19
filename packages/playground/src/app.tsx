@@ -275,6 +275,9 @@ function Dashboard() {
         </view>
       </view>
 
+      {/* Input demo */}
+      <InputDemo />
+
       {/* Bottom panel */}
       {showRecentActivity && (
         <view
@@ -296,6 +299,53 @@ function Dashboard() {
           </text>
         </view>
       )}
+    </view>
+  );
+}
+
+function InputDemo() {
+  const [text, setText] = useState('');
+  const [password, setPassword] = useState('');
+
+  return (
+    <view
+      display="flex"
+      flexDir="col"
+      p="16"
+      gap="12"
+      bg={PANEL}
+      rounded="8"
+      borderColor={BORDER}
+      border="1"
+    >
+      <text fontSize="16" color={TEXT_COLOR}>
+        Input Demo
+      </text>
+      <view display="flex" gap="12" items="center">
+        <input
+          w="300"
+          placeholder="Type something..."
+          fontSize="16"
+          color={TEXT_COLOR}
+          onInput={(e) => setText(e.value)}
+        />
+        <text fontSize="14" color={SUBTEXT}>
+          {`Value: "${text}"`}
+        </text>
+      </view>
+      <view display="flex" gap="12" items="center">
+        <input
+          w="300"
+          placeholder="Password"
+          fontSize="16"
+          color={TEXT_COLOR}
+          secure
+          onInput={(e) => setPassword(e.value)}
+        />
+        <text fontSize="14" color={SUBTEXT}>
+          {`Length: ${password.length}`}
+        </text>
+      </view>
     </view>
   );
 }

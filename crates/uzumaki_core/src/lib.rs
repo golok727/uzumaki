@@ -15,6 +15,7 @@ use winit::{
 pub mod element;
 pub mod geometry;
 pub mod gpu;
+pub mod input;
 pub mod interactivity;
 pub mod style;
 pub mod text;
@@ -100,6 +101,23 @@ struct ResizeEventData {
 }
 
 #[derive(Serialize)]
+#[serde(rename_all = "camelCase")]
+struct InputEventData {
+    window_id: u32,
+    node_id: NodeId,
+    value: String,
+    input_type: String,
+    data: Option<String>,
+}
+
+#[derive(Serialize)]
+#[serde(rename_all = "camelCase")]
+struct FocusEventData {
+    window_id: u32,
+    node_id: NodeId,
+}
+
+#[derive(Serialize)]
 #[serde(tag = "type", rename_all = "camelCase")]
 enum AppEvent {
     Click(MouseEventData),
@@ -108,6 +126,9 @@ enum AppEvent {
     KeyDown(KeyEventData),
     KeyUp(KeyEventData),
     Resize(ResizeEventData),
+    Input(InputEventData),
+    Focus(FocusEventData),
+    Blur(FocusEventData),
     HotReload,
 }
 
@@ -205,10 +226,13 @@ pub fn get_root_node_id(window_id: u32) -> serde_json::Value {
 
 #[napi]
 pub fn create_element(window_id: u32, element_type: String) -> serde_json::Value {
-    let _ = element_type;
     with_state(|state| {
         let entry = state.windows.get_mut(&window_id).expect("window not found");
-        serde_json::to_value(entry.dom.create_view(Style::default())).unwrap()
+        if element_type == "input" {
+            serde_json::to_value(entry.dom.create_input(Style::default())).unwrap()
+        } else {
+            serde_json::to_value(entry.dom.create_view(Style::default())).unwrap()
+        }
     })
 }
 
@@ -604,6 +628,90 @@ pub fn set_enum_prop(window_id: u32, node_id: serde_json::Value, prop: PropKey, 
     });
 }
 
+// ── Input attribute setters ───────────────────────────────────────────
+
+#[napi]
+pub fn set_input_value(window_id: u32, node_id: serde_json::Value, value: String) {
+    let nid = serde_json::from_value::<NodeId>(node_id).unwrap();
+    with_state(|state| {
+        let entry = state.windows.get_mut(&window_id).expect("window not found");
+        if let Some(node) = entry.dom.nodes.get_mut(nid) {
+            if let Some(is) = &mut node.input_state {
+                is.set_value(value);
+            }
+        }
+    });
+}
+
+#[napi]
+pub fn set_input_placeholder(window_id: u32, node_id: serde_json::Value, placeholder: String) {
+    let nid = serde_json::from_value::<NodeId>(node_id).unwrap();
+    with_state(|state| {
+        let entry = state.windows.get_mut(&window_id).expect("window not found");
+        if let Some(node) = entry.dom.nodes.get_mut(nid) {
+            if let Some(is) = &mut node.input_state {
+                is.placeholder = placeholder;
+            }
+        }
+    });
+}
+
+#[napi]
+pub fn set_input_disabled(window_id: u32, node_id: serde_json::Value, disabled: bool) {
+    let nid = serde_json::from_value::<NodeId>(node_id).unwrap();
+    with_state(|state| {
+        let entry = state.windows.get_mut(&window_id).expect("window not found");
+        if let Some(node) = entry.dom.nodes.get_mut(nid) {
+            if let Some(is) = &mut node.input_state {
+                is.disabled = disabled;
+            }
+        }
+    });
+}
+
+#[napi]
+pub fn set_input_max_length(window_id: u32, node_id: serde_json::Value, max_length: i32) {
+    let nid = serde_json::from_value::<NodeId>(node_id).unwrap();
+    with_state(|state| {
+        let entry = state.windows.get_mut(&window_id).expect("window not found");
+        if let Some(node) = entry.dom.nodes.get_mut(nid) {
+            if let Some(is) = &mut node.input_state {
+                is.max_length = if max_length > 0 {
+                    Some(max_length as usize)
+                } else {
+                    None
+                };
+            }
+        }
+    });
+}
+
+#[napi]
+pub fn set_input_multiline(window_id: u32, node_id: serde_json::Value, multiline: bool) {
+    let nid = serde_json::from_value::<NodeId>(node_id).unwrap();
+    with_state(|state| {
+        let entry = state.windows.get_mut(&window_id).expect("window not found");
+        if let Some(node) = entry.dom.nodes.get_mut(nid) {
+            if let Some(is) = &mut node.input_state {
+                is.multiline = multiline;
+            }
+        }
+    });
+}
+
+#[napi]
+pub fn set_input_secure(window_id: u32, node_id: serde_json::Value, secure: bool) {
+    let nid = serde_json::from_value::<NodeId>(node_id).unwrap();
+    with_state(|state| {
+        let entry = state.windows.get_mut(&window_id).expect("window not found");
+        if let Some(node) = entry.dom.nodes.get_mut(nid) {
+            if let Some(is) = &mut node.input_state {
+                is.secure = secure;
+            }
+        }
+    });
+}
+
 #[napi]
 pub fn set_rem_base(window_id: u32, value: f64) {
     with_state(|state| {
@@ -809,11 +917,51 @@ impl ApplicationHandler<UserEvent> for Application {
                     if let Some(entry) = state.windows.get_mut(&wid) {
                         let WindowEntry { handle, dom, .. } = entry;
                         if let Some(handle) = handle {
+                            // Update scroll offset for focused input before paint
+                            if let Some(focused_id) = dom.focused_node {
+                                let scroll_info = dom.nodes.get(focused_id).and_then(|node| {
+                                    node.input_state.as_ref().map(|is| {
+                                        let display_text = is.display_text();
+                                        let font_size = node.style.text.font_size;
+                                        let padding = node.style.padding.left;
+                                        let input_padding = if padding > 0.0 { padding } else { 8.0 };
+                                        let cursor_pos = is.selection.active;
+                                        let taffy_node = node.taffy_node;
+                                        (display_text, font_size, input_padding, cursor_pos, taffy_node)
+                                    })
+                                });
+                                if let Some((display_text, font_size, input_padding, cursor_pos, taffy_node)) = scroll_info {
+                                    let positions = handle.text_renderer.grapheme_x_positions(
+                                        &display_text,
+                                        font_size,
+                                    );
+                                    let cursor_x = if cursor_pos < positions.len() {
+                                        positions[cursor_pos]
+                                    } else {
+                                        positions.last().copied().unwrap_or(0.0)
+                                    };
+                                    let input_width = dom.taffy.layout(taffy_node)
+                                        .map(|l| l.size.width as f32 - input_padding * 2.0)
+                                        .unwrap_or(200.0);
+                                    if let Some(node) = dom.nodes.get_mut(focused_id) {
+                                        if let Some(is) = &mut node.input_state {
+                                            is.update_scroll(cursor_x, input_width);
+                                        }
+                                    }
+                                }
+                            }
+
                             handle.paint_and_present(&state.gpu.device, &state.gpu.queue, dom);
+
+                            // Keep redrawing for cursor blink when input is focused
+                            if dom.focused_node.is_some() && dom.window_focused {
+                                handle.winit_window.request_redraw();
+                            }
                         }
                     }
                 }
                 WindowEvent::CursorMoved { position, .. } => {
+                    let mouse_buttons = state.mouse_buttons;
                     if let Some(entry) = state.windows.get_mut(&wid) {
                         let WindowEntry { handle, dom, .. } = entry;
                         if let Some(handle) = handle {
@@ -824,6 +972,47 @@ impl ApplicationHandler<UserEvent> for Application {
                             dom.update_hit_test(logical_x, logical_y);
                             if old_top != dom.hit_state.top_hit {
                                 needs_redraw = true;
+                            }
+
+                            // Input drag selection
+                            if mouse_buttons & 1 != 0 {
+                                if let Some(drag_nid) = dom.dragging_input {
+                                    let cursor_info = {
+                                        if let Some(node) = dom.nodes.get(drag_nid) {
+                                            let is = node.input_state.as_ref();
+                                            is.map(|is| {
+                                                let display_text = is.display_text();
+                                                let font_size = node.style.text.font_size;
+                                                let scroll_offset = is.scroll_offset;
+                                                let padding = node.style.padding.left as f64;
+                                                let input_padding = if padding > 0.0 { padding } else { 8.0 };
+                                                let hitbox_bounds = node.interactivity.hitbox_id
+                                                    .and_then(|hid| dom.hitbox_store.get(hid))
+                                                    .map(|hb| hb.bounds);
+                                                (display_text, font_size, scroll_offset, input_padding, hitbox_bounds)
+                                            })
+                                        } else {
+                                            None
+                                        }
+                                    };
+
+                                    if let Some((display_text, font_size, scroll_offset, input_padding, Some(hb))) = cursor_info {
+                                        let relative_x = (logical_x - hb.x - input_padding) as f32 + scroll_offset;
+                                        let grapheme_idx = if !display_text.is_empty() {
+                                            handle.text_renderer.hit_to_grapheme(&display_text, font_size, relative_x)
+                                        } else {
+                                            0
+                                        };
+
+                                        if let Some(node) = dom.nodes.get_mut(drag_nid) {
+                                            if let Some(is) = &mut node.input_state {
+                                                is.selection.active = grapheme_idx;
+                                                is.reset_blink();
+                                            }
+                                        }
+                                        needs_redraw = true;
+                                    }
+                                }
                             }
                         }
                     }
@@ -897,6 +1086,111 @@ impl ApplicationHandler<UserEvent> for Application {
                                             buttons,
                                         }));
                                     }
+
+                                    // Input focus handling (left button)
+                                    if mouse_button == crate::interactivity::MouseButton::Left {
+                                        let clicked_is_input = js_target
+                                            .and_then(|nid| dom.nodes.get(nid))
+                                            .map(|n| matches!(n.kind, crate::element::ElementKind::Input))
+                                            .unwrap_or(false);
+
+                                        let old_focus = dom.focused_node;
+
+                                        if clicked_is_input {
+                                            let nid = js_target.unwrap();
+
+                                            // Double-click detection
+                                            let now = std::time::Instant::now();
+                                            let is_double_click = dom.last_click_node == Some(nid)
+                                                && dom.last_click_time.map_or(false, |t| now.duration_since(t).as_millis() < 400);
+                                            dom.last_click_time = Some(now);
+                                            dom.last_click_node = Some(nid);
+
+                                            // Focus if not already focused
+                                            if old_focus != Some(nid) {
+                                                if let Some(old_id) = old_focus {
+                                                    if let Some(old_node) = dom.nodes.get_mut(old_id) {
+                                                        if let Some(is) = &mut old_node.input_state {
+                                                            is.focused = false;
+                                                        }
+                                                    }
+                                                    mouse_events.push(AppEvent::Blur(FocusEventData {
+                                                        window_id: wid,
+                                                        node_id: old_id,
+                                                    }));
+                                                }
+                                                dom.focused_node = Some(nid);
+                                                if let Some(node) = dom.nodes.get_mut(nid) {
+                                                    if let Some(is) = &mut node.input_state {
+                                                        is.focused = true;
+                                                        is.reset_blink();
+                                                    }
+                                                }
+                                                mouse_events.push(AppEvent::Focus(FocusEventData {
+                                                    window_id: wid,
+                                                    node_id: nid,
+                                                }));
+                                            }
+
+                                            // Place cursor at click position
+                                            let cursor_info = {
+                                                let node = &dom.nodes[nid];
+                                                let is = node.input_state.as_ref().unwrap();
+                                                let display_text = is.display_text();
+                                                let font_size = node.style.text.font_size;
+                                                let scroll_offset = is.scroll_offset;
+                                                let padding = node.style.padding.left as f64;
+                                                let input_padding = if padding > 0.0 { padding } else { 8.0 };
+                                                let hitbox_bounds = node.interactivity.hitbox_id
+                                                    .and_then(|hid| dom.hitbox_store.get(hid))
+                                                    .map(|hb| hb.bounds);
+                                                (display_text, font_size, scroll_offset, input_padding, hitbox_bounds)
+                                            };
+                                            let (display_text, font_size, scroll_offset, input_padding, hitbox_bounds) = cursor_info;
+
+                                            if let Some(hb) = hitbox_bounds {
+                                                let relative_x = (mx - hb.x - input_padding) as f32 + scroll_offset;
+                                                let text_renderer = entry.handle.as_mut().map(|h| &mut h.text_renderer);
+                                                if let Some(tr) = text_renderer {
+                                                    let grapheme_idx = if !display_text.is_empty() {
+                                                        tr.hit_to_grapheme(&display_text, font_size, relative_x)
+                                                    } else {
+                                                        0
+                                                    };
+
+                                                    if let Some(node) = dom.nodes.get_mut(nid) {
+                                                        if let Some(is) = &mut node.input_state {
+                                                            if is_double_click {
+                                                                let (ws, we) = is.word_at(grapheme_idx);
+                                                                is.selection.anchor = ws;
+                                                                is.selection.active = we;
+                                                            } else {
+                                                                is.selection.set_cursor(grapheme_idx);
+                                                            }
+                                                            is.reset_blink();
+                                                        }
+                                                    }
+                                                }
+                                            }
+
+                                            dom.dragging_input = Some(nid);
+                                        } else {
+                                            // Clicked non-input: blur focused
+                                            if let Some(old_id) = old_focus {
+                                                if let Some(old_node) = dom.nodes.get_mut(old_id) {
+                                                    if let Some(is) = &mut old_node.input_state {
+                                                        is.focused = false;
+                                                    }
+                                                }
+                                                dom.focused_node = None;
+                                                mouse_events.push(AppEvent::Blur(FocusEventData {
+                                                    window_id: wid,
+                                                    node_id: old_id,
+                                                }));
+                                            }
+                                        }
+                                    }
+
                                     needs_redraw = true;
                                 }
                                 ElementState::Released => {
@@ -928,6 +1222,7 @@ impl ApplicationHandler<UserEvent> for Application {
                                         }
                                     }
                                     dom.set_active(None);
+                                    dom.dragging_input = None;
                                     needs_redraw = true;
                                 }
                             }
@@ -947,6 +1242,62 @@ impl ApplicationHandler<UserEvent> for Application {
                         && key_event.logical_key == Key::Named(NamedKey::F5)
                     {
                         state.pending_events.push(AppEvent::HotReload);
+                        return;
+                    }
+
+                    // Route keyboard to focused input if present
+                    let mut handled_by_input = false;
+                    if key_event.state == ElementState::Pressed {
+                        let modifiers = state.modifiers;
+                        if let Some(entry) = state.windows.get_mut(&wid) {
+                            if let Some(focused_id) = entry.dom.focused_node {
+                                if let Some(node) = entry.dom.nodes.get_mut(focused_id) {
+                                    if let Some(input_state) = &mut node.input_state {
+                                        use crate::input::KeyResult;
+                                        let result = input_state.handle_key(
+                                            &key_event.logical_key,
+                                            modifiers,
+                                        );
+                                        match result {
+                                            KeyResult::Edit(edit) => {
+                                                let value = input_state.text.clone();
+                                                state.pending_events.push(AppEvent::Input(
+                                                    InputEventData {
+                                                        window_id: wid,
+                                                        node_id: focused_id,
+                                                        value,
+                                                        input_type: edit.input_type.to_string(),
+                                                        data: edit.data,
+                                                    },
+                                                ));
+                                                needs_redraw = true;
+                                                handled_by_input = true;
+                                            }
+                                            KeyResult::Blur => {
+                                                input_state.focused = false;
+                                                entry.dom.focused_node = None;
+                                                state.pending_events.push(AppEvent::Blur(
+                                                    FocusEventData {
+                                                        window_id: wid,
+                                                        node_id: focused_id,
+                                                    },
+                                                ));
+                                                needs_redraw = true;
+                                                handled_by_input = true;
+                                            }
+                                            KeyResult::Handled => {
+                                                needs_redraw = true;
+                                                handled_by_input = true;
+                                            }
+                                            KeyResult::Ignored => {}
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                    }
+
+                    if handled_by_input {
                         return;
                     }
 
@@ -987,6 +1338,22 @@ impl ApplicationHandler<UserEvent> for Application {
                     if m.shift_key() { bits |= 4; }
                     if m.super_key() { bits |= 8; }
                     state.modifiers = bits;
+                }
+                WindowEvent::Focused(focused) => {
+                    if let Some(entry) = state.windows.get_mut(&wid) {
+                        entry.dom.window_focused = focused;
+                        if focused {
+                            // Reset blink on refocus
+                            if let Some(nid) = entry.dom.focused_node {
+                                if let Some(node) = entry.dom.nodes.get_mut(nid) {
+                                    if let Some(is) = &mut node.input_state {
+                                        is.reset_blink();
+                                    }
+                                }
+                            }
+                        }
+                        needs_redraw = true;
+                    }
                 }
                 WindowEvent::CursorLeft { .. } => {
                     if let Some(entry) = state.windows.get_mut(&wid) {

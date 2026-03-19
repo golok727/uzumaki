@@ -92,7 +92,7 @@ export class Window {
 
 export { render } from './react';
 export { eventManager, EventType } from './events';
-export type { UzumakiEvent, UzumakiMouseEvent, UzumakiKeyboardEvent } from './events';
+export type { UzumakiEvent, UzumakiMouseEvent, UzumakiKeyboardEvent, UzumakiInputEvent, UzumakiFocusEvent } from './events';
 
 interface AppEvent {
   type: string;
@@ -162,6 +162,21 @@ export async function runApp({
           break;
         case 'keyUp':
           eventManager.onRawEvent(EventType.KeyUp, null, event);
+          break;
+        case 'input':
+          if (event.nodeId != null) {
+            eventManager.onRawEvent(EventType.Input, event.nodeId, event);
+          }
+          break;
+        case 'focus':
+          if (event.nodeId != null) {
+            eventManager.onRawEvent(EventType.Focus, event.nodeId, event);
+          }
+          break;
+        case 'blur':
+          if (event.nodeId != null) {
+            eventManager.onRawEvent(EventType.Blur, event.nodeId, event);
+          }
           break;
         case 'resize':
           break;

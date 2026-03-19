@@ -6,6 +6,10 @@ import * as core from '../bindings';
 import { PropKey } from '../bindings';
 import { eventManager } from '../events';
 
+// ── Input attribute keys ─────────────────────────────────────────────
+
+const INPUT_ATTRS = new Set(['value', 'placeholder', 'disabled', 'maxLength', 'multiline', 'secure']);
+
 // ── Prop key mapping ─────────────────────────────────────────────────
 
 const PROP_NAME_TO_KEY: Record<string, number> = {
@@ -119,6 +123,29 @@ function setProp(windowId: number, nodeId: any, propName: string, value: any): v
   }
 }
 
+function setInputAttr(windowId: number, nodeId: any, key: string, value: any): void {
+  switch (key) {
+    case 'value':
+      core.setInputValue(windowId, nodeId, String(value ?? ''));
+      break;
+    case 'placeholder':
+      core.setInputPlaceholder(windowId, nodeId, String(value ?? ''));
+      break;
+    case 'disabled':
+      core.setInputDisabled(windowId, nodeId, !!value);
+      break;
+    case 'maxLength':
+      core.setInputMaxLength(windowId, nodeId, typeof value === 'number' ? value : -1);
+      break;
+    case 'multiline':
+      core.setInputMultiline(windowId, nodeId, !!value);
+      break;
+    case 'secure':
+      core.setInputSecure(windowId, nodeId, !!value);
+      break;
+  }
+}
+
 function clearProp(windowId: number, nodeId: any, propName: string): void {
   // Special: flex clear doesn't need special handling
   const key = PROP_NAME_TO_KEY[propName];
@@ -145,6 +172,7 @@ class UElement {
   type: string;
   windowId: number;
   styles: Record<string, any> = {};
+  inputAttrs: Record<string, any> = {};
   eventListeners: Map<string, Function> = new Map();
   children: UElement[] = [];
   parent: UElement | null = null;
@@ -177,6 +205,8 @@ class UElement {
         // Event listener: onClick → click
         const eventName = key.slice(2).toLowerCase();
         this.eventListeners.set(eventName, value);
+      } else if (INPUT_ATTRS.has(key)) {
+        this.inputAttrs[key] = value;
       } else if (PROP_NAME_TO_KEY[key] !== undefined) {
         this.styles[key] = value;
       }
@@ -258,12 +288,17 @@ const reconciler = ReactReconciler<
       return el;
     }
 
-    // View-like elements
+    // View-like elements (including input)
     const id = core.createElement(windowId, type);
     const el = new UElement(id, type, windowId, props);
 
     for (const [key, val] of Object.entries(el.styles)) {
       setProp(windowId, id, key, val);
+    }
+
+    // Set input attributes
+    for (const [key, val] of Object.entries(el.inputAttrs)) {
+      setInputAttr(windowId, id, key, val);
     }
 
     if (el.eventListeners.size > 0) {
@@ -350,6 +385,7 @@ const reconciler = ReactReconciler<
 
     // Parse new props
     const newStyles: Record<string, any> = {};
+    const newInputAttrs: Record<string, any> = {};
     const newEventListeners: Map<string, Function> = new Map();
 
     for (const key in newProps) {
@@ -366,6 +402,8 @@ const reconciler = ReactReconciler<
       ) {
         const eventName = key.slice(2).toLowerCase();
         newEventListeners.set(eventName, value);
+      } else if (INPUT_ATTRS.has(key)) {
+        newInputAttrs[key] = value;
       } else if (PROP_NAME_TO_KEY[key] !== undefined) {
         newStyles[key] = value;
       }
@@ -383,6 +421,14 @@ const reconciler = ReactReconciler<
       }
     }
     instance.styles = newStyles;
+
+    // Diff input attributes
+    for (const [key, val] of Object.entries(newInputAttrs)) {
+      if (instance.inputAttrs[key] !== val) {
+        setInputAttr(windowId, instance.id, key, val);
+      }
+    }
+    instance.inputAttrs = newInputAttrs;
 
     // Diff event listeners
     for (const [event, newCb] of newEventListeners) {

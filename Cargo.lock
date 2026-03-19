@@ -2332,6 +2332,7 @@ dependencies = [
  "slotmap",
  "taffy",
  "tsify",
+ "unicode-segmentation",
  "vello",
  "wgpu",
  "winit",

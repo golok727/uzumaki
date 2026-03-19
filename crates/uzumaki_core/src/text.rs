@@ -3,6 +3,7 @@ use std::sync::Arc;
 
 use cosmic_text::fontdb;
 use cosmic_text::{Attrs, Buffer, FontSystem, Metrics, Shaping};
+use unicode_segmentation::UnicodeSegmentation;
 use vello::kurbo::Affine;
 use vello::peniko::{Blob, Brush, Color, Fill, FontData};
 use vello::{Glyph, Scene};
@@ -130,6 +131,58 @@ impl TextRenderer {
         }
     }
 
+    /// Returns x-positions for each grapheme boundary in the text.
+    /// Result has `grapheme_count + 1` entries: [0] = 0.0, [n] = end of text.
+    pub fn grapheme_x_positions(&mut self, text: &str, font_size: f32) -> Vec<f32> {
+        if text.is_empty() {
+            return vec![0.0];
+        }
+
+        let buffer = self.layout_buffer(text, Attrs::new(), font_size, None, None);
+
+        // Build byte offset → x position mapping from glyphs
+        let mut byte_x: Vec<(usize, f32)> = Vec::new();
+        byte_x.push((0, 0.0));
+
+        for run in buffer.layout_runs() {
+            for glyph in run.glyphs.iter() {
+                byte_x.push((glyph.start, glyph.x));
+                byte_x.push((glyph.end, glyph.x + glyph.w));
+            }
+        }
+
+        byte_x.sort_by_key(|&(offset, _)| offset);
+        byte_x.dedup_by_key(|entry| entry.0);
+
+        // Map grapheme boundaries to x positions
+        let mut positions = Vec::new();
+        positions.push(lookup_byte_x(&byte_x, 0));
+
+        let mut byte_offset = 0;
+        for grapheme in text.graphemes(true) {
+            byte_offset += grapheme.len();
+            positions.push(lookup_byte_x(&byte_x, byte_offset));
+        }
+
+        positions
+    }
+
+    /// Hit-test an x-coordinate against text layout, returning the grapheme index
+    /// (cursor position) closest to that x.
+    pub fn hit_to_grapheme(&mut self, text: &str, font_size: f32, x: f32) -> usize {
+        let positions = self.grapheme_x_positions(text, font_size);
+        let mut best_idx = 0;
+        let mut best_dist = f32::MAX;
+        for (i, &pos) in positions.iter().enumerate() {
+            let dist = (pos - x).abs();
+            if dist < best_dist {
+                best_dist = dist;
+                best_idx = i;
+            }
+        }
+        best_idx
+    }
+
     pub fn measure_text(
         &mut self,
         text: &str,
@@ -160,5 +213,23 @@ impl TextRenderer {
         }
 
         (measured_width.ceil(), measured_height.ceil())
+    }
+}
+
+fn lookup_byte_x(byte_x: &[(usize, f32)], byte_offset: usize) -> f32 {
+    match byte_x.binary_search_by_key(&byte_offset, |&(off, _)| off) {
+        Ok(idx) => byte_x[idx].1,
+        Err(idx) => {
+            if idx == 0 {
+                0.0
+            } else if idx >= byte_x.len() {
+                byte_x.last().map(|&(_, x)| x).unwrap_or(0.0)
+            } else {
+                let (off0, x0) = byte_x[idx - 1];
+                let (off1, x1) = byte_x[idx];
+                let t = (byte_offset - off0) as f32 / (off1 - off0).max(1) as f32;
+                x0 + t * (x1 - x0)
+            }
+        }
     }
 }

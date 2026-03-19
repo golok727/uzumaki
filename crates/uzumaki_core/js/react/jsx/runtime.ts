@@ -1,6 +1,6 @@
 import type { ReactNode } from 'react';
 import { createElement } from 'react';
-import type { UzumakiMouseEvent, UzumakiKeyboardEvent } from '../../events';
+import type { UzumakiMouseEvent, UzumakiKeyboardEvent, UzumakiInputEvent, UzumakiFocusEvent } from '../../events';
 
 interface ElementStyles {
   h?: number | string;
@@ -88,6 +88,20 @@ export namespace JSX {
       };
     button: ElementAttributes &
       EventProps & {
+        children?: any;
+        key?: string | number;
+      };
+    input: ElementAttributes &
+      EventProps & {
+        value?: string;
+        placeholder?: string;
+        disabled?: boolean;
+        maxLength?: number;
+        multiline?: boolean;
+        secure?: boolean;
+        onInput?: (ev: UzumakiInputEvent) => void;
+        onFocus?: (ev: UzumakiFocusEvent) => void;
+        onBlur?: (ev: UzumakiFocusEvent) => void;
         children?: any;
         key?: string | number;
       };
