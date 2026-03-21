@@ -261,7 +261,13 @@ impl TextRenderer {
             byte_pos.push((text.len(), last.0, last.1));
         }
 
-        byte_pos.sort_by_key(|&(off, _, _)| off);
+        // Sort by byte offset, then by y descending so that at soft-wrap boundaries
+        // (where two entries share the same byte offset on different lines), the
+        // start-of-next-line entry comes first and is kept by dedup.
+        byte_pos.sort_by(|a, b| {
+            a.0.cmp(&b.0)
+                .then(b.2.partial_cmp(&a.2).unwrap_or(std::cmp::Ordering::Equal))
+        });
         byte_pos.dedup_by_key(|entry| entry.0);
 
         // Map grapheme boundaries to (x, y)

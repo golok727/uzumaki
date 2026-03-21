@@ -69,6 +69,9 @@ pub struct InputState {
     pub max_length: Option<usize>,
     pub multiline: bool,
     pub secure: bool,
+    /// Preserved X coordinate for vertical navigation (sticky column).
+    /// Set on first Up/Down press, cleared on any horizontal/edit action.
+    pub sticky_x: Option<f32>,
 }
 
 impl InputState {
@@ -85,6 +88,7 @@ impl InputState {
             max_length: None,
             multiline: false,
             secure: false,
+            sticky_x: None,
         }
     }
 
@@ -149,6 +153,7 @@ impl InputState {
     }
 
     pub fn insert_text(&mut self, ch: &str) -> Option<InputEdit> {
+        self.sticky_x = None;
         if self.disabled {
             return None;
         }
@@ -174,6 +179,7 @@ impl InputState {
     }
 
     pub fn backspace(&mut self) -> Option<InputEdit> {
+        self.sticky_x = None;
         if self.disabled {
             return None;
         }
@@ -201,6 +207,7 @@ impl InputState {
     }
 
     pub fn delete(&mut self) -> Option<InputEdit> {
+        self.sticky_x = None;
         if self.disabled {
             return None;
         }
@@ -227,6 +234,7 @@ impl InputState {
     }
 
     pub fn move_left(&mut self, extend: bool) {
+        self.sticky_x = None;
         if !extend && !self.selection.is_collapsed() {
             let pos = self.selection.start();
             self.selection.set_cursor(pos);
@@ -240,6 +248,7 @@ impl InputState {
     }
 
     pub fn move_right(&mut self, extend: bool) {
+        self.sticky_x = None;
         let count = self.grapheme_count();
         if !extend && !self.selection.is_collapsed() {
             let pos = self.selection.end();
@@ -254,6 +263,7 @@ impl InputState {
     }
 
     pub fn move_home(&mut self, extend: bool) {
+        self.sticky_x = None;
         if self.multiline {
             self.move_line_start(extend);
         } else {
@@ -266,6 +276,7 @@ impl InputState {
     }
 
     pub fn move_end(&mut self, extend: bool) {
+        self.sticky_x = None;
         if self.multiline {
             self.move_line_end(extend);
         } else {
@@ -279,6 +290,7 @@ impl InputState {
     }
 
     pub fn move_absolute_home(&mut self, extend: bool) {
+        self.sticky_x = None;
         self.selection.active = 0;
         if !extend {
             self.selection.anchor = 0;
@@ -287,6 +299,7 @@ impl InputState {
     }
 
     pub fn move_absolute_end(&mut self, extend: bool) {
+        self.sticky_x = None;
         let count = self.grapheme_count();
         self.selection.active = count;
         if !extend {
@@ -297,6 +310,7 @@ impl InputState {
 
     /// Move cursor to start of current line (bounded by \n or start of text).
     pub fn move_line_start(&mut self, extend: bool) {
+        self.sticky_x = None;
         let graphemes: Vec<&str> = self.text.graphemes(true).collect();
         let mut pos = self.selection.active;
         while pos > 0 && graphemes[pos - 1] != "\n" {
@@ -311,6 +325,7 @@ impl InputState {
 
     /// Move cursor to end of current line (bounded by \n or end of text).
     pub fn move_line_end(&mut self, extend: bool) {
+        self.sticky_x = None;
         let graphemes: Vec<&str> = self.text.graphemes(true).collect();
         let count = graphemes.len();
         let mut pos = self.selection.active;
@@ -324,8 +339,9 @@ impl InputState {
         self.reset_blink();
     }
 
-    /// Move cursor to a specific grapheme index (used by caller for vertical nav).
+    /// Move cursor to a specific grapheme index (used by caller for vertical nav and mouse clicks).
     pub fn move_to(&mut self, pos: usize, extend: bool) {
+        self.sticky_x = None;
         let count = self.grapheme_count();
         self.selection.active = pos.min(count);
         if !extend {
@@ -335,6 +351,7 @@ impl InputState {
     }
 
     pub fn move_word_left(&mut self, extend: bool) {
+        self.sticky_x = None;
         let graphemes: Vec<&str> = self.text.graphemes(true).collect();
         let mut pos = self.selection.active;
         // Skip whitespace
@@ -353,6 +370,7 @@ impl InputState {
     }
 
     pub fn move_word_right(&mut self, extend: bool) {
+        self.sticky_x = None;
         let graphemes: Vec<&str> = self.text.graphemes(true).collect();
         let count = graphemes.len();
         let mut pos = self.selection.active;
@@ -372,6 +390,7 @@ impl InputState {
     }
 
     pub fn delete_word_backward(&mut self) -> Option<InputEdit> {
+        self.sticky_x = None;
         if self.disabled {
             return None;
         }
@@ -409,6 +428,7 @@ impl InputState {
     }
 
     pub fn delete_word_forward(&mut self) -> Option<InputEdit> {
+        self.sticky_x = None;
         if self.disabled {
             return None;
         }
@@ -446,6 +466,7 @@ impl InputState {
     }
 
     pub fn select_all(&mut self) {
+        self.sticky_x = None;
         self.selection.anchor = 0;
         self.selection.active = self.grapheme_count();
         self.reset_blink();

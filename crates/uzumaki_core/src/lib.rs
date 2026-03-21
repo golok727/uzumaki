@@ -1349,6 +1349,7 @@ impl ApplicationHandler<UserEvent> for Application {
                                                 let display_text = input_state.display_text();
                                                 let font_size = node.style.text.font_size;
                                                 let cursor_pos = input_state.selection.active;
+                                                let saved_sticky_x = input_state.sticky_x;
                                                 let padding = node.style.padding.left;
                                                 let input_padding = if padding > 0.0 { padding } else { 8.0 };
                                                 let taffy_node = node.taffy_node;
@@ -1366,29 +1367,73 @@ impl ApplicationHandler<UserEvent> for Application {
 
                                                     let line_height = (font_size * 1.2).round();
                                                     let cur_pos = if cursor_pos < positions.len() {
-                                                        &positions[cursor_pos]
+                                                        positions[cursor_pos]
                                                     } else {
-                                                        positions.last().unwrap()
+                                                        *positions.last().unwrap()
                                                     };
-                                                    let target_x = cur_pos.x;
-                                                    let target_y = cur_pos.y + direction as f32 * line_height;
 
-                                                    let target_idx = handle.text_renderer.hit_to_grapheme_2d(
-                                                        &display_text,
-                                                        font_size,
-                                                        Some(wrap_width),
-                                                        target_x,
-                                                        target_y,
-                                                    );
+                                                    // Collect unique visual line y-values
+                                                    let mut line_ys: Vec<f32> = Vec::new();
+                                                    for pos in &positions {
+                                                        if line_ys.last().map_or(true, |&last| (pos.y - last).abs() > 1.0) {
+                                                            line_ys.push(pos.y);
+                                                        }
+                                                    }
 
-                                                    // Update cursor via move_to on the input state
-                                                    // Also get the new cursor y for scroll update
+                                                    // Find which visual line the cursor is on
+                                                    let cur_line_idx = line_ys.iter()
+                                                        .rposition(|&ly| cur_pos.y >= ly - 0.5)
+                                                        .unwrap_or(0);
+
+                                                    // Compute target line index
+                                                    let target_line_idx = if direction < 0 {
+                                                        if cur_line_idx == 0 { None } else { Some(cur_line_idx - 1) }
+                                                    } else {
+                                                        if cur_line_idx >= line_ys.len() - 1 { None } else { Some(cur_line_idx + 1) }
+                                                    };
+
+                                                    let target_idx = if let Some(tl_idx) = target_line_idx {
+                                                        // Navigate to adjacent line: find closest x position
+                                                        let target_x = saved_sticky_x.unwrap_or(cur_pos.x);
+                                                        let target_line_y = line_ys[tl_idx];
+                                                        let mut best_idx = 0;
+                                                        let mut best_dist = f32::MAX;
+                                                        for (i, pos) in positions.iter().enumerate() {
+                                                            if (pos.y - target_line_y).abs() < line_height * 0.5 {
+                                                                let dist = (pos.x - target_x).abs();
+                                                                if dist < best_dist {
+                                                                    best_dist = dist;
+                                                                    best_idx = i;
+                                                                }
+                                                            }
+                                                        }
+                                                        // Preserve sticky_x
+                                                        let sticky = saved_sticky_x.unwrap_or(cur_pos.x);
+                                                        if let Some(node) = entry.dom.nodes.get_mut(focused_id) {
+                                                            if let Some(is) = &mut node.input_state {
+                                                                is.move_to(best_idx, extend);
+                                                                is.sticky_x = Some(sticky);
+                                                            }
+                                                        }
+                                                        best_idx
+                                                    } else {
+                                                        // Already on first/last line: go to start/end like browsers
+                                                        let snap_idx = if direction < 0 { 0 } else { positions.len() - 1 };
+                                                        if let Some(node) = entry.dom.nodes.get_mut(focused_id) {
+                                                            if let Some(is) = &mut node.input_state {
+                                                                is.move_to(snap_idx, extend);
+                                                                // Don't preserve sticky_x when snapping to start/end
+                                                            }
+                                                        }
+                                                        snap_idx
+                                                    };
+
+                                                    // Update scroll
                                                     let new_cursor_y = if target_idx < positions.len() {
                                                         positions[target_idx].y
                                                     } else {
                                                         positions.last().map(|p| p.y).unwrap_or(0.0)
                                                     };
-
                                                     let input_height = entry.dom.taffy.layout(taffy_node)
                                                         .map(|l| l.size.height as f32)
                                                         .unwrap_or(100.0);
@@ -1398,10 +1443,8 @@ impl ApplicationHandler<UserEvent> for Application {
                                                             .unwrap_or(0.0);
                                                         if pt > 0.0 { pt } else { 4.0 }
                                                     };
-
                                                     if let Some(node) = entry.dom.nodes.get_mut(focused_id) {
                                                         if let Some(is) = &mut node.input_state {
-                                                            is.move_to(target_idx, extend);
                                                             is.update_scroll_y(new_cursor_y, line_height, input_height - top_pad * 2.0);
                                                         }
                                                     }

@@ -723,64 +723,77 @@ fn paint_input(
                 && input.sel_end <= positions.len()
             {
                 let sel_color = VelloColor::from_rgba8(56, 121, 185, 128);
+                let sel_end_clamped = input.sel_end.min(positions.len() - 1);
                 let start_pos = positions[input.sel_start];
-                let end_pos = positions[input.sel_end.min(positions.len() - 1)];
-                let same_line = (start_pos.y - end_pos.y).abs() < 1.0;
+                let end_pos = positions[sel_end_clamped];
 
-                if same_line {
-                    // Single-line selection
-                    let sy = start_pos.y as f64 + top_pad as f64 - scroll_y as f64;
-                    scene.fill(
-                        Fill::NonZero, Affine::scale(scale), sel_color, None,
-                        &Rect::new(
-                            text_x + start_pos.x as f64, text_y + sy,
-                            text_x + end_pos.x as f64, text_y + sy + line_height as f64,
-                        ),
-                    );
-                } else {
-                    // Multi-line selection: first line, middle lines, last line
+                // Collect unique visual line y-values within the selection range
+                let mut line_ys: Vec<f32> = Vec::new();
+                for i in input.sel_start..=sel_end_clamped {
+                    let y = positions[i].y;
+                    if line_ys.last().map_or(true, |&ly| (y - ly).abs() > 1.0) {
+                        line_ys.push(y);
+                    }
+                }
 
-                    // First line: from sel_start.x to right edge
-                    let sy0 = start_pos.y as f64 + top_pad as f64 - scroll_y as f64;
-                    scene.fill(
-                        Fill::NonZero, Affine::scale(scale), sel_color, None,
-                        &Rect::new(
-                            text_x + start_pos.x as f64, text_y + sy0,
-                            text_x + text_w, text_y + sy0 + line_height as f64,
-                        ),
-                    );
+                // Check if a line has any grapheme with x > 0 (i.e. has visible content)
+                let line_has_content = |ly: f32| -> bool {
+                    (input.sel_start..=sel_end_clamped)
+                        .any(|i| (positions[i].y - ly).abs() < 1.0 && positions[i].x > 0.5)
+                };
 
-                    // Middle lines: full width for each unique line between first and last
-                    let mut mid_ys: Vec<f32> = Vec::new();
-                    for i in input.sel_start..=input.sel_end.min(positions.len() - 1) {
-                        let y = positions[i].y;
-                        if (y - start_pos.y).abs() > 1.0 && (y - end_pos.y).abs() > 1.0 {
-                            if mid_ys.last().map_or(true, |&ly| (y - ly).abs() > 1.0) {
-                                mid_ys.push(y);
-                            }
+                // Find the max x on a given line within the selection
+                let line_max_x = |ly: f32| -> f32 {
+                    let mut max_x: f32 = 0.0;
+                    for i in input.sel_start..=sel_end_clamped {
+                        if (positions[i].y - ly).abs() < 1.0 {
+                            max_x = max_x.max(positions[i].x);
                         }
                     }
-                    for &y in &mid_ys {
-                        let sy = y as f64 + top_pad as f64 - scroll_y as f64;
-                        scene.fill(
-                            Fill::NonZero, Affine::scale(scale), sel_color, None,
-                            &Rect::new(
-                                text_x, text_y + sy,
-                                text_x + text_w, text_y + sy + line_height as f64,
-                            ),
-                        );
-                    }
+                    max_x
+                };
 
-                    // Last line: from left edge to sel_end.x
-                    let ex = end_pos.x as f64;
-                    if ex > 0.5 {
-                        let sy_last = end_pos.y as f64 + top_pad as f64 - scroll_y as f64;
+                let num_lines = line_ys.len();
+                for (idx, &ly) in line_ys.iter().enumerate() {
+                    let sy = ly as f64 + top_pad as f64 - scroll_y as f64;
+                    let has_content = line_has_content(ly);
+
+                    let (rx1, rx2) = if num_lines == 1 {
+                        // Single-line selection
+                        (text_x + start_pos.x as f64, text_x + end_pos.x as f64)
+                    } else if idx == 0 {
+                        // First line
+                        if has_content {
+                            // From sel_start x to right edge of content (or text_w)
+                            let max_x = line_max_x(ly);
+                            (text_x + start_pos.x as f64, text_x + (max_x as f64).max(text_w))
+                        } else {
+                            // Empty first line: small indicator
+                            (text_x + start_pos.x as f64, text_x + start_pos.x as f64 + 8.0)
+                        }
+                    } else if idx == num_lines - 1 {
+                        // Last line
+                        let ex = end_pos.x as f64;
+                        if ex < 0.5 {
+                            // Empty last line: small indicator
+                            (text_x, text_x + 8.0)
+                        } else {
+                            (text_x, text_x + ex)
+                        }
+                    } else {
+                        // Middle line
+                        if has_content {
+                            (text_x, text_x + text_w)
+                        } else {
+                            // Empty middle line: small indicator
+                            (text_x, text_x + 8.0)
+                        }
+                    };
+
+                    if rx2 > rx1 {
                         scene.fill(
                             Fill::NonZero, Affine::scale(scale), sel_color, None,
-                            &Rect::new(
-                                text_x, text_y + sy_last,
-                                text_x + ex, text_y + sy_last + line_height as f64,
-                            ),
+                            &Rect::new(rx1, text_y + sy, rx2, text_y + sy + line_height as f64),
                         );
                     }
                 }

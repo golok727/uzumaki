@@ -349,9 +349,14 @@ function InputDemo() {
           {`Length: ${password.length}`}
         </text>
       </view>
-      <text fontSize="14" color={SUBTEXT}>
-        Multiline:
-      </text>
+      <view display="flex" gap="12" items="center">
+        <text fontSize="14" color={SUBTEXT}>
+          Multiline:
+        </text>
+        <text fontSize="14" color={SUBTEXT}>
+          {`${multiText.length} chars, ${multiText.split('\n').length} lines`}
+        </text>
+      </view>
       <input
         w="400"
         h="120"
