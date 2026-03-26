@@ -1,11 +1,15 @@
 use anyhow::Result;
 use deno_core::*;
+use deno_error::JsErrorBox;
+use deno_node::NodeExtInitServices;
 use deno_resolver::npm::{
     ByonmNpmResolverCreateOptions, CreateInNpmPkgCheckerOptions, DenoInNpmPackageChecker,
     NpmResolver, NpmResolverCreateOptions,
 };
 use futures::task::noop_waker;
 use node_resolver::cache::NodeResolutionSys;
+use std::borrow::Cow;
+use std::path::Path;
 use std::task::{Context, Poll};
 use std::{collections::HashMap, path::PathBuf, rc::Rc, sync::Arc};
 use winit::{
@@ -18,12 +22,34 @@ use winit::{
 mod ts;
 
 type Sys = sys_traits::impls::RealSys;
-type UzumakiNodeResolver = node_resolver::NodeResolver<
-    DenoInNpmPackageChecker,
-    node_resolver::DenoIsBuiltInNodeModuleChecker,
-    NpmResolver<Sys>,
-    Sys,
->;
+
+// Minimal NodeRequireLoader — no permission checks, just reads files.
+struct UzumakiRequireLoader;
+
+impl deno_node::NodeRequireLoader for UzumakiRequireLoader {
+    fn ensure_read_permission<'a>(
+        &self,
+        _permissions: &mut deno_permissions::PermissionsContainer,
+        path: Cow<'a, Path>,
+    ) -> Result<Cow<'a, Path>, JsErrorBox> {
+        Ok(path)
+    }
+
+    fn load_text_file_lossy(&self, path: &Path) -> Result<deno_core::FastString, JsErrorBox> {
+        let text = std::fs::read_to_string(path).map_err(JsErrorBox::from_err)?;
+        Ok(text.into())
+    }
+
+    fn is_maybe_cjs(
+        &self,
+        specifier: &url::Url,
+    ) -> Result<bool, node_resolver::errors::PackageJsonLoadError> {
+        if let Ok(path) = specifier.to_file_path() {
+            return Ok(path.extension().map_or(false, |e| e == "cjs"));
+        }
+        Ok(false)
+    }
+}
 
 fn main() {
     let mut args = std::env::args();
@@ -85,9 +111,13 @@ fn op_request_quit(state: &mut OpState) -> Result<(), deno_error::JsErrorBox> {
     Ok(())
 }
 
+// Stub op expected by deno_io's 12_io.js — TTY raw mode is irrelevant for a GUI runtime.
+#[op2(fast)]
+fn op_set_raw(_state: &mut OpState, _rid: u32, _mode: bool, _cbreak: bool) {}
+
 extension!(
   uzumaki,
-  ops = [op_create_window, op_request_quit],
+  ops = [op_create_window, op_request_quit, op_set_raw],
   esm_entry_point = "ext:uzumaki/00_init.js",
   esm = [ dir "core", "00_init.js" ],
 );
@@ -132,7 +162,7 @@ impl Application {
             },
         ));
 
-        let node_resolver: Rc<UzumakiNodeResolver> = Rc::new(node_resolver::NodeResolver::new(
+        let node_resolver = Rc::new(deno_node::NodeResolver::new(
             in_npm_pkg_checker,
             node_resolver::DenoIsBuiltInNodeModuleChecker,
             npm_resolver,
@@ -141,17 +171,48 @@ impl Application {
             node_resolver::NodeResolverOptions::default(),
         ));
 
-        // --- Create JS runtime ---
+        let fs: deno_fs::FileSystemRc = Rc::new(deno_fs::RealFs);
+
+        let node_init_services = NodeExtInitServices {
+            node_require_loader: Rc::new(UzumakiRequireLoader),
+            node_resolver,
+            pkg_json_resolver,
+            sys: sys.clone(),
+        };
+
+        // --- Create JS runtime with lazy extensions ---
         let js_runtime = JsRuntime::new(RuntimeOptions {
             module_loader: Some(Rc::new(ts::TypescriptModuleLoader {
                 source_maps: ts::SourceMapStore::default(),
-                node_resolver: node_resolver.clone(),
             })),
             extensions: vec![
+                deno_webidl::deno_webidl::init(),
+                deno_web::deno_web::lazy_init(),
+                deno_io::deno_io::lazy_init(),
+                deno_fs::deno_fs::lazy_init(),
+                deno_node::deno_node::lazy_init::<DenoInNpmPackageChecker, NpmResolver<Sys>, Sys>(),
                 uzumaki::init(),
             ],
+            extension_transpiler: Some(Rc::new(|specifier, source| {
+                ts::transpile_extension(specifier, source)
+            })),
             ..Default::default()
         });
+
+        // Provide deferred state to lazy extensions
+        js_runtime.lazy_init_extensions(vec![
+            deno_web::deno_web::args(
+                Arc::new(deno_web::BlobStore::default()),
+                None,
+                deno_web::InMemoryBroadcastChannel::default(),
+            ),
+            deno_io::deno_io::args(None),
+            deno_fs::deno_fs::args(fs.clone()),
+            deno_node::deno_node::args::<DenoInNpmPackageChecker, NpmResolver<Sys>, Sys>(
+                Some(node_init_services),
+                fs,
+            ),
+        ])?;
 
         let event_loop: winit::event_loop::EventLoop<UserEvent> =
             winit::event_loop::EventLoop::with_user_event().build()?;

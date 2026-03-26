@@ -18,11 +18,43 @@ use deno_core::ResolutionKind;
 use deno_core::error::ModuleLoaderError;
 use deno_core::resolve_import;
 use deno_error::JsErrorBox;
+use node_resolver::NodeResolution;
+use node_resolver::NodeResolutionKind;
+use node_resolver::ResolutionMode;
+
+use crate::UzumakiNodeResolver;
+
+/// Try appending TypeScript extensions to a file URL when the path doesn't exist.
+fn try_resolve_ts(url: &ModuleSpecifier) -> Option<ModuleSpecifier> {
+    let path = url.to_file_path().ok()?;
+    if path.is_file() {
+        return Some(url.clone());
+    }
+    for ext in &[".ts", ".tsx", ".js", ".jsx", ".mjs", ".mts"] {
+        let mut candidate = path.as_os_str().to_owned();
+        candidate.push(ext);
+        let candidate = std::path::PathBuf::from(candidate);
+        if candidate.is_file() {
+            return ModuleSpecifier::from_file_path(&candidate).ok();
+        }
+    }
+    // Try index files in directory
+    if path.is_dir() {
+        for name in &["index.ts", "index.tsx", "index.js"] {
+            let candidate = path.join(name);
+            if candidate.is_file() {
+                return ModuleSpecifier::from_file_path(&candidate).ok();
+            }
+        }
+    }
+    None
+}
 
 pub type SourceMapStore = Rc<RefCell<HashMap<String, Vec<u8>>>>;
 
 pub struct TypescriptModuleLoader {
     pub source_maps: SourceMapStore,
+    pub node_resolver: Rc<UzumakiNodeResolver>,
 }
 
 impl ModuleLoader for TypescriptModuleLoader {
@@ -32,7 +64,40 @@ impl ModuleLoader for TypescriptModuleLoader {
         referrer: &str,
         _kind: ResolutionKind,
     ) -> Result<ModuleSpecifier, ModuleLoaderError> {
-        resolve_import(specifier, referrer).map_err(JsErrorBox::from_err)
+        let referrer_url = ModuleSpecifier::parse(referrer).unwrap_or_else(|_| {
+            deno_core::resolve_url_or_path(referrer, &std::env::current_dir().unwrap()).unwrap()
+        });
+
+        // Use node_resolver for everything — it handles bare specifiers,
+        // relative imports with extension resolution, etc.
+        let resolved = match self.node_resolver.resolve(
+            specifier,
+            &referrer_url,
+            ResolutionMode::Import,
+            NodeResolutionKind::Execution,
+        ) {
+            Ok(NodeResolution::Module(url_or_path)) => {
+                url_or_path.into_url().map_err(JsErrorBox::from_err)?
+            }
+            Ok(NodeResolution::BuiltIn(name)) => {
+                return Err(JsErrorBox::generic(format!(
+                    "Built-in Node module '{name}' is not yet supported"
+                )));
+            }
+            Err(_) => {
+                // Fallback to standard URL resolution (ext: schemes, etc.)
+                resolve_import(specifier, referrer).map_err(JsErrorBox::from_err)?
+            }
+        };
+
+        // Node resolver doesn't know about .ts/.tsx — try TS extensions
+        if resolved.scheme() == "file" {
+            if let Some(ts_resolved) = try_resolve_ts(&resolved) {
+                return Ok(ts_resolved);
+            }
+        }
+
+        Ok(resolved)
     }
 
     fn load(
@@ -125,3 +190,4 @@ impl ModuleLoader for TypescriptModuleLoader {
             .map(|v| v.clone().into())
     }
 }
+
