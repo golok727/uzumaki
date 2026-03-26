@@ -23,6 +23,11 @@ use winit::{
 
 mod ts;
 
+pub static UZUMAKI_SNAPSHOT: Option<&[u8]> = Some(include_bytes!(concat!(
+    env!("OUT_DIR"),
+    "/UZUMAKI_SNAPSHOT.bin"
+)));
+
 type Sys = sys_traits::impls::RealSys;
 
 fn main() {
@@ -97,10 +102,6 @@ extension!(
   ops = [op_create_window, op_request_quit],
   esm_entry_point = "ext:uzumaki/00_init.js",
   esm = [ dir "core", "00_init.js" ],
-  state = |state| {
-    // prolly need to create a snapshot before hand
-    state.put(deno_runtime::ops::bootstrap::SnapshotOptions::default());
-  }
 );
 
 // Simple NodeRequireLoader — allow all reads, load from disk
@@ -217,6 +218,7 @@ impl Application {
 
         let options = WorkerOptions {
             extensions: vec![uzumaki::init()],
+            startup_snapshot: UZUMAKI_SNAPSHOT,
             skip_op_registration: false,
             bootstrap: BootstrapOptions {
                 args: vec![],

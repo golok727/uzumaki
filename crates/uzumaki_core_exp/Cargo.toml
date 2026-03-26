@@ -3,6 +3,12 @@ name = "uzumaki_core_exp"
 version = "0.1.0"
 edition.workspace = true
 
+[build-dependencies]
+deno_runtime = { workspace = true, features = ["include_js_files_for_snapshotting", "only_snapshotted_js_sources", "snapshot"] }
+deno_core = { workspace = true, features = ["include_js_files_for_snapshotting"] }
+# https://github.com/denoland/deno/discussions/32444#discussioncomment-15993969
+winapi = { version = "=0.3.9", features = ["std"]}
+
 [dependencies]
 # utils
 refineable.workspace = true
@@ -13,8 +19,9 @@ pollster.workspace = true
 anyhow.workspace = true
 tokio = { version = "1", features = ["rt", "time"] }
 # Deno deps
-deno_core = "0.394.0"
-deno_runtime = { version = "0.249.0", features = ["transpile"] }
+deno_runtime = { workspace = true, features = ["include_js_files_for_snapshotting"] }
+deno_core = { workspace = true, features = ["include_js_files_for_snapshotting"] }
+
 deno_error = "=0.7.1"
 deno_ast = { version = "0.53.1", features = ["transpiling", "typescript", "react"] }
 

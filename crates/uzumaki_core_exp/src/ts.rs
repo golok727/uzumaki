@@ -88,9 +88,8 @@ impl ModuleLoader for TypescriptModuleLoader {
                 url_or_path.into_url().map_err(JsErrorBox::from_err)?
             }
             Ok(NodeResolution::BuiltIn(name)) => {
-                return Err(JsErrorBox::generic(format!(
-                    "Built-in Node module '{name}' is not yet supported"
-                )));
+                return ModuleSpecifier::parse(&format!("node:{name}"))
+                    .map_err(JsErrorBox::from_err);
             }
             Err(_) => {
                 // Fallback to standard URL resolution (ext: schemes, etc.)
@@ -198,4 +197,3 @@ impl ModuleLoader for TypescriptModuleLoader {
             .map(|v: &Vec<u8>| Cow::Owned(v.clone()))
     }
 }
-
