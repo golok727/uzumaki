@@ -1,11 +1,12 @@
 // todo node modules support
 import { Window } from 'uzumaki-ui-exp';
 
-const window = new Window('main', {
-  width: 800,
-  height: 600,
-  title: 'Uzumaki',
-});
+// const window = new Window('main', {
+//   width: 800,
+//   height: 600,
+//   title: 'Uzumaki',
+// });
+console.log(Deno);
 
 let id = setInterval(() => {
   console.log('hooo ');
@@ -16,4 +17,4 @@ setTimeout(() => {
   clearTimeout(id);
 }, 10000);
 
-console.log(window.id);
+// console.log(window.id);

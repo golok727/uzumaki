@@ -2,6 +2,7 @@ use std::borrow::Cow;
 use std::cell::RefCell;
 use std::collections::HashMap;
 use std::rc::Rc;
+use std::sync::Arc;
 
 use deno_ast::MediaType;
 use deno_ast::ParseParams;
@@ -18,11 +19,18 @@ use deno_core::ResolutionKind;
 use deno_core::error::ModuleLoaderError;
 use deno_core::resolve_import;
 use deno_error::JsErrorBox;
+use deno_resolver::npm::{DenoInNpmPackageChecker, NpmResolver};
 use node_resolver::NodeResolution;
 use node_resolver::NodeResolutionKind;
 use node_resolver::ResolutionMode;
 
-use crate::UzumakiNodeResolver;
+type Sys = sys_traits::impls::RealSys;
+type UzumakiNodeResolver = node_resolver::NodeResolver<
+    DenoInNpmPackageChecker,
+    node_resolver::DenoIsBuiltInNodeModuleChecker,
+    NpmResolver<Sys>,
+    Sys,
+>;
 
 /// Try appending TypeScript extensions to a file URL when the path doesn't exist.
 fn try_resolve_ts(url: &ModuleSpecifier) -> Option<ModuleSpecifier> {
@@ -54,7 +62,7 @@ pub type SourceMapStore = Rc<RefCell<HashMap<String, Vec<u8>>>>;
 
 pub struct TypescriptModuleLoader {
     pub source_maps: SourceMapStore,
-    pub node_resolver: Rc<UzumakiNodeResolver>,
+    pub node_resolver: Arc<UzumakiNodeResolver>,
 }
 
 impl ModuleLoader for TypescriptModuleLoader {
@@ -187,7 +195,7 @@ impl ModuleLoader for TypescriptModuleLoader {
         self.source_maps
             .borrow()
             .get(specifier)
-            .map(|v| v.clone().into())
+            .map(|v: &Vec<u8>| Cow::Owned(v.clone()))
     }
 }
 

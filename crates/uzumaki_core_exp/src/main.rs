@@ -4,8 +4,15 @@ use deno_resolver::npm::{
     ByonmNpmResolverCreateOptions, CreateInNpmPkgCheckerOptions, DenoInNpmPackageChecker,
     NpmResolver, NpmResolverCreateOptions,
 };
+use deno_runtime::BootstrapOptions;
+use deno_runtime::deno_fs::FileSystem;
+use deno_runtime::deno_node::NodeExtInitServices;
+use deno_runtime::deno_permissions::PermissionsContainer;
+use deno_runtime::deno_web::{BlobStore, InMemoryBroadcastChannel};
+use deno_runtime::worker::{MainWorker, WorkerOptions, WorkerServiceOptions};
 use node_resolver::cache::NodeResolutionSys;
-use std::task::Poll;
+use std::borrow::Cow;
+use std::path::Path;
 use std::{collections::HashMap, path::PathBuf, rc::Rc, sync::Arc};
 use winit::{
     application::ApplicationHandler,
@@ -17,12 +24,6 @@ use winit::{
 mod ts;
 
 type Sys = sys_traits::impls::RealSys;
-type UzumakiNodeResolver = node_resolver::NodeResolver<
-    DenoInNpmPackageChecker,
-    node_resolver::DenoIsBuiltInNodeModuleChecker,
-    NpmResolver<Sys>,
-    Sys,
->;
 
 fn main() {
     let tokio_runtime = tokio::runtime::Builder::new_current_thread()
@@ -62,7 +63,7 @@ enum UserEvent {
 }
 
 #[op2]
-fn op_create_window(
+pub fn op_create_window(
     state: &mut OpState,
     #[serde] options: CreateWindowOptions,
 ) -> Result<u32, deno_error::JsErrorBox> {
@@ -82,7 +83,7 @@ fn op_create_window(
 }
 
 #[op2(fast)]
-fn op_request_quit(state: &mut OpState) -> Result<(), deno_error::JsErrorBox> {
+pub fn op_request_quit(state: &mut OpState) -> Result<(), deno_error::JsErrorBox> {
     let proxy = state.borrow::<EventLoopProxy<UserEvent>>();
     proxy.send_event(UserEvent::Quit).map_err(|_| {
         deno_error::JsErrorBox::new("UzumakiInternalError", "error quitting window")
@@ -95,8 +96,40 @@ extension!(
   uzumaki,
   ops = [op_create_window, op_request_quit],
   esm_entry_point = "ext:uzumaki/00_init.js",
-  esm = [ dir "core", "00_init.js", "timers.js" ],
+  esm = [ dir "core", "00_init.js" ],
+  state = |state| {
+    // prolly need to create a snapshot before hand
+    state.put(deno_runtime::ops::bootstrap::SnapshotOptions::default());
+  }
 );
+
+// Simple NodeRequireLoader — allow all reads, load from disk
+struct UzumakiRequireLoader;
+
+impl deno_runtime::deno_node::NodeRequireLoader for UzumakiRequireLoader {
+    fn ensure_read_permission<'a>(
+        &self,
+        _permissions: &mut PermissionsContainer,
+        path: Cow<'a, Path>,
+    ) -> Result<Cow<'a, Path>, deno_error::JsErrorBox> {
+        Ok(path)
+    }
+
+    fn load_text_file_lossy(
+        &self,
+        path: &Path,
+    ) -> Result<deno_core::FastString, deno_error::JsErrorBox> {
+        let text = std::fs::read_to_string(path).map_err(deno_error::JsErrorBox::from_err)?;
+        Ok(text.into())
+    }
+
+    fn is_maybe_cjs(
+        &self,
+        _specifier: &deno_core::url::Url,
+    ) -> Result<bool, node_resolver::errors::PackageJsonLoadError> {
+        Ok(false)
+    }
+}
 
 struct Window {
     pub(crate) winit_window: Arc<winit::window::Window>,
@@ -109,7 +142,7 @@ impl Window {
 }
 
 struct Application {
-    js_runtime: JsRuntime,
+    worker: MainWorker,
     windows: HashMap<WindowId, Arc<Window>>,
     main_file: PathBuf,
     event_loop: Option<winit::event_loop::EventLoop<UserEvent>>,
@@ -123,10 +156,10 @@ impl Application {
         let cwd = std::env::current_dir()?;
         let sys = sys_traits::impls::RealSys;
 
-        // Set up BYONM node resolution
+        // --- BYONM node resolution ---
         let root_node_modules = cwd.join("node_modules");
         let pkg_json_resolver: node_resolver::PackageJsonResolverRc<Sys> =
-            Rc::new(node_resolver::PackageJsonResolver::new(sys.clone(), None));
+            Arc::new(node_resolver::PackageJsonResolver::new(sys.clone(), None));
 
         let in_npm_pkg_checker = DenoInNpmPackageChecker::new(CreateInNpmPkgCheckerOptions::Byonm);
 
@@ -139,35 +172,73 @@ impl Application {
             },
         ));
 
-        let node_resolver: Rc<UzumakiNodeResolver> = Rc::new(node_resolver::NodeResolver::new(
-            in_npm_pkg_checker,
+        let node_resolver = Arc::new(node_resolver::NodeResolver::new(
+            in_npm_pkg_checker.clone(),
             node_resolver::DenoIsBuiltInNodeModuleChecker,
-            npm_resolver,
+            npm_resolver.clone(),
             pkg_json_resolver.clone(),
             NodeResolutionSys::new(sys.clone(), None),
             node_resolver::NodeResolverOptions::default(),
         ));
 
-        let js_runtime = JsRuntime::new(RuntimeOptions {
-            module_loader: Some(Rc::new(ts::TypescriptModuleLoader {
+        let fs: Arc<dyn FileSystem> = Arc::new(deno_runtime::deno_fs::RealFs);
+
+        let descriptor_parser = Arc::new(
+            deno_runtime::permissions::RuntimePermissionDescriptorParser::new(sys.clone()),
+        );
+
+        let main_module = deno_core::resolve_path(main_file.to_str().unwrap(), &cwd)?;
+
+        let services = WorkerServiceOptions {
+            blob_store: Arc::new(BlobStore::default()),
+            broadcast_channel: InMemoryBroadcastChannel::default(),
+            deno_rt_native_addon_loader: None,
+            feature_checker: Arc::new(deno_runtime::FeatureChecker::default()),
+            fs: fs.clone(),
+            module_loader: Rc::new(ts::TypescriptModuleLoader {
                 source_maps: ts::SourceMapStore::default(),
                 node_resolver: node_resolver.clone(),
-            })),
+            }),
+            node_services: Some(NodeExtInitServices {
+                node_require_loader: Rc::new(UzumakiRequireLoader),
+                node_resolver,
+                pkg_json_resolver,
+                sys: sys.clone(),
+            }),
+            npm_process_state_provider: None,
+            permissions: PermissionsContainer::allow_all(descriptor_parser),
+            root_cert_store_provider: None,
+            fetch_dns_resolver: Default::default(),
+            shared_array_buffer_store: None,
+            compiled_wasm_module_store: None,
+            v8_code_cache: None,
+            bundle_provider: None,
+        };
+
+        let options = WorkerOptions {
             extensions: vec![uzumaki::init()],
+            skip_op_registration: false,
+            bootstrap: BootstrapOptions {
+                args: vec![],
+                mode: deno_runtime::WorkerExecutionMode::Run,
+                ..Default::default()
+            },
             ..Default::default()
-        });
+        };
+
+        let worker = MainWorker::bootstrap_from_options(&main_module, services, options);
 
         let event_loop: winit::event_loop::EventLoop<UserEvent> =
             winit::event_loop::EventLoop::with_user_event().build()?;
 
         {
-            let state = js_runtime.op_state();
+            let state = worker.js_runtime.op_state();
             let mut borrow = state.borrow_mut();
             borrow.put(event_loop.create_proxy());
         }
 
         Ok(Self {
-            js_runtime,
+            worker,
             main_file,
             event_loop: Some(event_loop),
             windows: HashMap::new(),
@@ -190,7 +261,7 @@ impl Application {
         rt.block_on(async {
             tokio::select! {
                 biased;
-                result = self.js_runtime.run_event_loop(Default::default()) => {
+                result = self.worker.run_event_loop(false) => {
                     if let Err(e) = result {
                         eprintln!("JS error: {e}");
                     }
@@ -209,14 +280,8 @@ impl Application {
 
         let rt = self.tokio_runtime.as_ref().unwrap();
         rt.block_on(async {
-            let mod_id = self
-                .js_runtime
-                .load_main_es_module(&specifier)
-                .await
-                .unwrap();
-            let _receiver = self.js_runtime.mod_evaluate(mod_id);
+            self.worker.execute_main_module(&specifier).await.unwrap();
         });
-        // Single tick to execute top-level code
         self.tick_js();
     }
 }
@@ -236,7 +301,7 @@ impl ApplicationHandler<UserEvent> for Application {
     fn user_event(&mut self, event_loop: &winit::event_loop::ActiveEventLoop, event: UserEvent) {
         match event {
             UserEvent::CreateWindow {
-                js_id,
+                js_id: _,
                 options: opts,
             } => {
                 let attrs = winit::window::Window::default_attributes()
@@ -250,7 +315,6 @@ impl ApplicationHandler<UserEvent> for Application {
                 println!("window created: {}", opts.title);
             }
             UserEvent::Quit => event_loop.exit(),
-            _ => {}
         }
     }
 

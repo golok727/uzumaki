@@ -1,7 +1,4 @@
-import "ext:uzumaki/timers.js";
-
 const ops = Deno.core.ops;
-
 Object.defineProperty(globalThis, '__uzumaki_ops_dont_touch_this__', {
   value: Object.freeze({
     createWindow: ops.op_create_window,
@@ -10,3 +7,5 @@ Object.defineProperty(globalThis, '__uzumaki_ops_dont_touch_this__', {
   writable: false,
   configurable: false,
 });
+
+export function hello() {}
