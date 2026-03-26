@@ -1,0 +1,14 @@
+{
+  "name": "playground-exp",
+  "type": "module",
+  "private": true,
+  "dependencies": {
+    "uzumaki-ui-exp": "workspace:*"
+  },
+  "scripts": {
+    "start": "uzumaki index.ts"
+  },
+  "peerDependencies": {
+    "typescript": "^5"
+  }
+}

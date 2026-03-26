@@ -10,6 +10,8 @@
   "scripts": {
     "start": "pnpm build:core && pnpm --filter playground start",
     "build:core": "pnpm --filter uzumaki build",
+    "build:experimental": "cargo build -p uzumaki_core_exp && bun scripts/copy-binary.ts",
+    "start:experimental": "pnpm build:experimental && pnpm --filter playground-exp start",
     "format": "prettier --write ."
   },
   "devDependencies": {

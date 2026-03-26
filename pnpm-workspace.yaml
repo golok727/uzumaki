@@ -1,3 +1,4 @@
 packages:
   - 'crates/uzumaki_core'
+  - 'crates/uzumaki_core_exp'
   - 'packages/*'

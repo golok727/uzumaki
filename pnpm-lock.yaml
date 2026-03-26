@@ -38,6 +38,22 @@ importers:
         specifier: ^19.2.4
         version: 19.2.4
 
+  crates/uzumaki_core_exp:
+    dependencies:
+      react-reconciler:
+        specifier: ^0.33.0
+        version: 0.33.0(react@19.2.4)
+    devDependencies:
+      '@types/react':
+        specifier: ^19.2.14
+        version: 19.2.14
+      '@types/react-reconciler':
+        specifier: ^0.33.0
+        version: 0.33.0(@types/react@19.2.14)
+      react:
+        specifier: ^19.2.4
+        version: 19.2.4
+
   packages/playground:
     dependencies:
       react:
@@ -56,6 +72,15 @@ importers:
       '@types/react':
         specifier: ^19.2.14
         version: 19.2.14
+
+  packages/playground-exp:
+    dependencies:
+      typescript:
+        specifier: ^5
+        version: 5.9.3
+      uzumaki-ui-exp:
+        specifier: workspace:*
+        version: link:../../crates/uzumaki_core_exp
 
 packages:
 

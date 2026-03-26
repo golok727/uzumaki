@@ -13,7 +13,9 @@ pollster.workspace = true
 anyhow.workspace = true
 # Deno deps
 deno_core = "0.394.0"
+# deno_runtime = "0.249.0"
 deno_error = "=0.7.1"
+deno_ast = { version = "0.53.1", features = ["transpiling", "typescript", "react"] }
 # todo add later after porting everything
 # deno_web = "0.272.0"
 # deno_webidl = "0.241.0"

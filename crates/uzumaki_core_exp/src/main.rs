@@ -10,6 +10,8 @@ use winit::{
     window::WindowId,
 };
 
+mod ts;
+
 fn main() {
     let mut args = std::env::args();
     args.next();
@@ -59,11 +61,21 @@ fn op_create_window(
     Ok(js_id)
 }
 
+#[op2(fast)]
+fn op_request_quit(state: &mut OpState) -> Result<(), deno_error::JsErrorBox> {
+    let proxy = state.borrow::<EventLoopProxy<UserEvent>>();
+    proxy.send_event(UserEvent::Quit).map_err(|_| {
+        deno_error::JsErrorBox::new("UzumakiInternalError", "error quitting window")
+    })?;
+
+    Ok(())
+}
+
 extension!(
-  uzumaki_ext,
-  ops = [op_create_window],
-  esm_entry_point = "ext:uzumaki_ext/preload.js",
-  esm = [ dir "src", "preload.js" ],
+  uzumaki,
+  ops = [op_create_window, op_request_quit],
+  esm_entry_point = "ext:uzumaki/00_init.js",
+  esm = [ dir "core", "00_init.js" ],
 );
 
 struct Window {
@@ -87,7 +99,9 @@ struct Application {
 impl Application {
     pub fn new(main_file: impl Into<PathBuf>) -> Result<Self> {
         let js_runtime = JsRuntime::new(RuntimeOptions {
-            module_loader: Some(Rc::new(FsModuleLoader)),
+            module_loader: Some(Rc::new(ts::TypescriptModuleLoader {
+                source_maps: ts::SourceMapStore::default(),
+            })),
             extensions: vec![
                 // deno_node::deno_node::init(),
                 // deno_webidl::deno_webidl::init(),
@@ -96,7 +110,7 @@ impl Application {
                 //     None,
                 //     InMemoryBroadcastChannel::default(),
                 // ),
-                uzumaki_ext::init(),
+                uzumaki::init(),
             ],
             ..Default::default()
         });
