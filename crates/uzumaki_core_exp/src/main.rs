@@ -1,5 +1,6 @@
 use anyhow::Result;
 use deno_core::*;
+use deno_node::NodeExtInitServices;
 use futures::task::noop_waker;
 use std::task::{Context, Poll};
 use std::{collections::HashMap, path::PathBuf, rc::Rc, sync::Arc};
@@ -103,7 +104,9 @@ impl Application {
                 source_maps: ts::SourceMapStore::default(),
             })),
             extensions: vec![
-                // deno_node::deno_node::init(),
+                // deno_io::deno_io::lazy_init(),
+                // deno_fs::deno_fs::lazy_init(),
+                // deno_node::deno_node::lazy_init(),
                 // deno_webidl::deno_webidl::init(),
                 // deno_web::deno_web::init(
                 //     Arc::new(deno_web::BlobStore::default()),
