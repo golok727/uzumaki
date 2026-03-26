@@ -1,0 +1,27 @@
+[package]
+name = "uzumaki_core_exp"
+version = "0.1.0"
+edition.workspace = true
+
+[dependencies]
+# utils
+refineable.workspace = true
+serde.workspace = true
+serde_json.workspace = true
+unicode-segmentation = "1.11"
+pollster.workspace = true
+anyhow.workspace = true
+# Deno deps
+deno_core = "0.394.0"
+deno_error = "=0.7.1"
+# todo add later after porting everything
+# deno_web = "0.272.0"
+# deno_webidl = "0.241.0"
+# deno_node = "0.179.0"
+# Rendering
+cosmic-text = "0.18.2"
+slotmap = { version = "1.1.1", features = ["serde"] }
+taffy = "0.9.2"
+vello = "0.7.0"
+wgpu = "27.0.1"
+winit = "0.30.13"

@@ -1,6 +1,6 @@
 [workspace]
 resolver = "2"
-members = [ "crates/uzumaki_core", "crates/refineable" ]
+members = [ "crates/uzumaki_core", "crates/refineable" , "crates/uzumaki_core_exp"]
 
 [workspace.package]
 publish = false
