@@ -11,6 +11,7 @@ serde_json.workspace = true
 unicode-segmentation = "1.11"
 pollster.workspace = true
 anyhow.workspace = true
+tokio = { version = "1", features = ["rt", "time"] }
 # Deno deps
 deno_core = "0.394.0"
 # deno_runtime = "0.249.0"

@@ -7,4 +7,13 @@ const window = new Window('main', {
   title: 'Uzumaki',
 });
 
+let id = setInterval(() => {
+  console.log('hooo ');
+}, 1000);
+
+setTimeout(() => {
+  console.log('timeout');
+  clearTimeout(id);
+}, 10000);
+
 console.log(window.id);

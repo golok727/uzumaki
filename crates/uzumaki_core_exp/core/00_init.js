@@ -1,3 +1,5 @@
+import "ext:uzumaki/timers.js";
+
 const ops = Deno.core.ops;
 
 Object.defineProperty(globalThis, '__uzumaki_ops_dont_touch_this__', {

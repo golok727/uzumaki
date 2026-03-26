@@ -4,9 +4,8 @@ use deno_resolver::npm::{
     ByonmNpmResolverCreateOptions, CreateInNpmPkgCheckerOptions, DenoInNpmPackageChecker,
     NpmResolver, NpmResolverCreateOptions,
 };
-use futures::task::noop_waker;
 use node_resolver::cache::NodeResolutionSys;
-use std::task::{Context, Poll};
+use std::task::Poll;
 use std::{collections::HashMap, path::PathBuf, rc::Rc, sync::Arc};
 use winit::{
     application::ApplicationHandler,
@@ -26,12 +25,19 @@ type UzumakiNodeResolver = node_resolver::NodeResolver<
 >;
 
 fn main() {
+    let tokio_runtime = tokio::runtime::Builder::new_current_thread()
+        .enable_all()
+        .build()
+        .expect("failed to create tokio runtime");
+
     let mut args = std::env::args();
     args.next();
     let entry_point = args.next().expect("no entry point provided");
     let cwd = std::env::current_dir().expect("error getting current directory");
     let entry_path = cwd.join(entry_point);
-    let mut app = Application::new(entry_path).expect("error creating application");
+    let mut app = tokio_runtime
+        .block_on(async { Application::new(entry_path).expect("error creating application") });
+    app.tokio_runtime = Some(tokio_runtime);
     app.run().expect("error running application");
 }
 
@@ -89,7 +95,7 @@ extension!(
   uzumaki,
   ops = [op_create_window, op_request_quit],
   esm_entry_point = "ext:uzumaki/00_init.js",
-  esm = [ dir "core", "00_init.js" ],
+  esm = [ dir "core", "00_init.js", "timers.js" ],
 );
 
 struct Window {
@@ -108,6 +114,7 @@ struct Application {
     main_file: PathBuf,
     event_loop: Option<winit::event_loop::EventLoop<UserEvent>>,
     module_loaded: bool,
+    tokio_runtime: Option<tokio::runtime::Runtime>,
 }
 
 impl Application {
@@ -116,7 +123,7 @@ impl Application {
         let cwd = std::env::current_dir()?;
         let sys = sys_traits::impls::RealSys;
 
-        // --- Set up BYONM node resolution ---
+        // Set up BYONM node resolution
         let root_node_modules = cwd.join("node_modules");
         let pkg_json_resolver: node_resolver::PackageJsonResolverRc<Sys> =
             Rc::new(node_resolver::PackageJsonResolver::new(sys.clone(), None));
@@ -141,15 +148,12 @@ impl Application {
             node_resolver::NodeResolverOptions::default(),
         ));
 
-        // --- Create JS runtime ---
         let js_runtime = JsRuntime::new(RuntimeOptions {
             module_loader: Some(Rc::new(ts::TypescriptModuleLoader {
                 source_maps: ts::SourceMapStore::default(),
                 node_resolver: node_resolver.clone(),
             })),
-            extensions: vec![
-                uzumaki::init(),
-            ],
+            extensions: vec![uzumaki::init()],
             ..Default::default()
         });
 
@@ -168,6 +172,7 @@ impl Application {
             event_loop: Some(event_loop),
             windows: HashMap::new(),
             module_loaded: false,
+            tokio_runtime: None,
         })
     }
 
@@ -181,13 +186,18 @@ impl Application {
     }
 
     fn tick_js(&mut self) {
-        let waker = noop_waker();
-        let mut cx = Context::from_waker(&waker);
-        match self.js_runtime.poll_event_loop(&mut cx, Default::default()) {
-            Poll::Ready(Ok(_)) => {}
-            Poll::Ready(Err(e)) => eprintln!("JS error: {e}"),
-            Poll::Pending => {}
-        }
+        let rt = self.tokio_runtime.as_ref().unwrap();
+        rt.block_on(async {
+            tokio::select! {
+                biased;
+                result = self.js_runtime.run_event_loop(Default::default()) => {
+                    if let Err(e) = result {
+                        eprintln!("JS error: {e}");
+                    }
+                }
+                _ = tokio::task::yield_now() => {}
+            }
+        });
     }
 
     fn load_main_module(&mut self) {
@@ -197,19 +207,17 @@ impl Application {
         )
         .unwrap();
 
-        pollster::block_on(async {
+        let rt = self.tokio_runtime.as_ref().unwrap();
+        rt.block_on(async {
             let mod_id = self
                 .js_runtime
                 .load_main_es_module(&specifier)
                 .await
                 .unwrap();
-            let receiver = self.js_runtime.mod_evaluate(mod_id);
-            self.js_runtime
-                .run_event_loop(Default::default())
-                .await
-                .unwrap();
-            receiver.await.unwrap();
+            let _receiver = self.js_runtime.mod_evaluate(mod_id);
         });
+        // Single tick to execute top-level code
+        self.tick_js();
     }
 }
 
