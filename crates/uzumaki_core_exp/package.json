@@ -1,5 +1,6 @@
 {
   "name": "uzumaki-ui-exp",
+  "type": "module",
   "bin": {
     "uzumaki": "./bin/uzumaki_core_exp.exe"
   },

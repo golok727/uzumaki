@@ -17,20 +17,14 @@ use deno_core::ModuleSpecifier;
 use deno_core::ModuleType;
 use deno_core::ResolutionKind;
 use deno_core::error::ModuleLoaderError;
+use deno_core::futures::FutureExt;
 use deno_core::resolve_import;
 use deno_error::JsErrorBox;
-use deno_resolver::npm::{DenoInNpmPackageChecker, NpmResolver};
 use node_resolver::NodeResolution;
 use node_resolver::NodeResolutionKind;
 use node_resolver::ResolutionMode;
 
-type Sys = sys_traits::impls::RealSys;
-type UzumakiNodeResolver = node_resolver::NodeResolver<
-    DenoInNpmPackageChecker,
-    node_resolver::DenoIsBuiltInNodeModuleChecker,
-    NpmResolver<Sys>,
-    Sys,
->;
+use crate::resolver::{UzCjsTracker, UzNodeCodeTranslator, UzNodeResolver};
 
 /// Try appending TypeScript extensions to a file URL when the path doesn't exist.
 fn try_resolve_ts(url: &ModuleSpecifier) -> Option<ModuleSpecifier> {
@@ -62,7 +56,9 @@ pub type SourceMapStore = Rc<RefCell<HashMap<String, Vec<u8>>>>;
 
 pub struct TypescriptModuleLoader {
     pub source_maps: SourceMapStore,
-    pub node_resolver: Arc<UzumakiNodeResolver>,
+    pub node_resolver: Arc<UzNodeResolver>,
+    pub cjs_tracker: Arc<UzCjsTracker>,
+    pub node_code_translator: Arc<UzNodeCodeTranslator>,
 }
 
 impl ModuleLoader for TypescriptModuleLoader {
@@ -113,17 +109,54 @@ impl ModuleLoader for TypescriptModuleLoader {
         _maybe_referrer: Option<&ModuleLoadReferrer>,
         _options: ModuleLoadOptions,
     ) -> ModuleLoadResponse {
+        let path = match module_specifier.to_file_path() {
+            Ok(p) => p,
+            Err(_) => {
+                return ModuleLoadResponse::Sync(Err(
+                    JsErrorBox::generic("Only file:// URLs are supported.").into(),
+                ))
+            }
+        };
+
+        let media_type = MediaType::from_path(&path);
+
+        // Check if this is a CJS module that needs translation to ESM
+        let is_maybe_cjs = self
+            .cjs_tracker
+            .is_maybe_cjs(module_specifier, media_type)
+            .unwrap_or(false);
+
+        if is_maybe_cjs {
+            let translator = self.node_code_translator.clone();
+            let specifier = module_specifier.clone();
+            return ModuleLoadResponse::Async(
+                async move {
+                    let code =
+                        std::fs::read_to_string(&path).map_err(JsErrorBox::from_err)?;
+                    let translated = translator
+                        .translate_cjs_to_esm(&specifier, Some(Cow::Owned(code)))
+                        .await
+                        .map_err(JsErrorBox::from_err)?;
+                    Ok(ModuleSource::new(
+                        ModuleType::JavaScript,
+                        ModuleSourceCode::String(translated.into_owned().into()),
+                        &specifier,
+                        None,
+                    ))
+                }
+                .boxed_local(),
+            );
+        }
+
+        // ESM path — existing sync logic
         let source_maps = self.source_maps.clone();
-        fn load(
+        fn load_esm(
             source_maps: SourceMapStore,
             module_specifier: &ModuleSpecifier,
+            path: std::path::PathBuf,
+            media_type: MediaType,
         ) -> Result<ModuleSource, ModuleLoaderError> {
-            let path = module_specifier
-                .to_file_path()
-                .map_err(|_| JsErrorBox::generic("Only file:// URLs are supported."))?;
-
-            let media_type = MediaType::from_path(&path);
-            let (module_type, should_transpile) = match MediaType::from_path(&path) {
+            let (module_type, should_transpile) = match media_type {
                 MediaType::JavaScript | MediaType::Mjs | MediaType::Cjs => {
                     (ModuleType::JavaScript, false)
                 }
@@ -158,7 +191,8 @@ impl ModuleLoader for TypescriptModuleLoader {
                 let res = parsed
                     .transpile(
                         &deno_ast::TranspileOptions {
-                            imports_not_used_as_values: deno_ast::ImportsNotUsedAsValues::Remove,
+                            imports_not_used_as_values:
+                                deno_ast::ImportsNotUsedAsValues::Remove,
                             decorators: deno_ast::DecoratorsTranspileOption::Ecma,
                             ..Default::default()
                         },
@@ -187,7 +221,12 @@ impl ModuleLoader for TypescriptModuleLoader {
             ))
         }
 
-        ModuleLoadResponse::Sync(load(source_maps, module_specifier))
+        ModuleLoadResponse::Sync(load_esm(
+            source_maps,
+            module_specifier,
+            path,
+            media_type,
+        ))
     }
 
     fn get_source_map(&self, specifier: &str) -> Option<Cow<'_, [u8]>> {

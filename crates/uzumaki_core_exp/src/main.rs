@@ -1,3 +1,11 @@
+pub mod module_loader;
+pub mod resolver;
+pub mod sys;
+
+use module_loader::{UzCjsCodeAnalyzer, UzRequireLoader};
+
+use sys::UzSys;
+
 use anyhow::Result;
 use deno_core::*;
 use deno_resolver::npm::{
@@ -10,9 +18,8 @@ use deno_runtime::deno_node::NodeExtInitServices;
 use deno_runtime::deno_permissions::PermissionsContainer;
 use deno_runtime::deno_web::{BlobStore, InMemoryBroadcastChannel};
 use deno_runtime::worker::{MainWorker, WorkerOptions, WorkerServiceOptions};
+use node_resolver::analyze::{CjsModuleExportAnalyzer, NodeCodeTranslator, NodeCodeTranslatorMode};
 use node_resolver::cache::NodeResolutionSys;
-use std::borrow::Cow;
-use std::path::Path;
 use std::{collections::HashMap, path::PathBuf, rc::Rc, sync::Arc};
 use winit::{
     application::ApplicationHandler,
@@ -21,14 +28,14 @@ use winit::{
     window::WindowId,
 };
 
+use crate::resolver::UzCjsTracker;
+
 mod ts;
 
 pub static UZUMAKI_SNAPSHOT: Option<&[u8]> = Some(include_bytes!(concat!(
     env!("OUT_DIR"),
     "/UZUMAKI_SNAPSHOT.bin"
 )));
-
-type Sys = sys_traits::impls::RealSys;
 
 fn main() {
     let tokio_runtime = tokio::runtime::Builder::new_current_thread()
@@ -104,34 +111,6 @@ extension!(
   esm = [ dir "core", "00_init.js" ],
 );
 
-// Simple NodeRequireLoader — allow all reads, load from disk
-struct UzumakiRequireLoader;
-
-impl deno_runtime::deno_node::NodeRequireLoader for UzumakiRequireLoader {
-    fn ensure_read_permission<'a>(
-        &self,
-        _permissions: &mut PermissionsContainer,
-        path: Cow<'a, Path>,
-    ) -> Result<Cow<'a, Path>, deno_error::JsErrorBox> {
-        Ok(path)
-    }
-
-    fn load_text_file_lossy(
-        &self,
-        path: &Path,
-    ) -> Result<deno_core::FastString, deno_error::JsErrorBox> {
-        let text = std::fs::read_to_string(path).map_err(deno_error::JsErrorBox::from_err)?;
-        Ok(text.into())
-    }
-
-    fn is_maybe_cjs(
-        &self,
-        _specifier: &deno_core::url::Url,
-    ) -> Result<bool, node_resolver::errors::PackageJsonLoadError> {
-        Ok(false)
-    }
-}
-
 struct Window {
     pub(crate) winit_window: Arc<winit::window::Window>,
 }
@@ -159,18 +138,25 @@ impl Application {
 
         // --- BYONM node resolution ---
         let root_node_modules = cwd.join("node_modules");
-        let pkg_json_resolver: node_resolver::PackageJsonResolverRc<Sys> =
+        let pkg_json_resolver: node_resolver::PackageJsonResolverRc<UzSys> =
             Arc::new(node_resolver::PackageJsonResolver::new(sys.clone(), None));
 
         let in_npm_pkg_checker = DenoInNpmPackageChecker::new(CreateInNpmPkgCheckerOptions::Byonm);
 
-        let npm_resolver = NpmResolver::<Sys>::new(NpmResolverCreateOptions::Byonm(
+        let npm_resolver = NpmResolver::<UzSys>::new(NpmResolverCreateOptions::Byonm(
             ByonmNpmResolverCreateOptions {
                 root_node_modules_dir: Some(root_node_modules),
                 search_stop_dir: None,
                 sys: NodeResolutionSys::new(sys.clone(), None),
                 pkg_json_resolver: pkg_json_resolver.clone(),
             },
+        ));
+
+        let cjs_tracker = Arc::new(UzCjsTracker::new(
+            in_npm_pkg_checker.clone(),
+            pkg_json_resolver.clone(),
+            deno_resolver::cjs::IsCjsResolutionMode::ImplicitTypeCommonJs,
+            vec![],
         ));
 
         let node_resolver = Arc::new(node_resolver::NodeResolver::new(
@@ -180,6 +166,23 @@ impl Application {
             pkg_json_resolver.clone(),
             NodeResolutionSys::new(sys.clone(), None),
             node_resolver::NodeResolverOptions::default(),
+        ));
+
+        // CJS-to-ESM translation pipeline
+        let cjs_code_analyzer = UzCjsCodeAnalyzer {
+            cjs_tracker: cjs_tracker.clone(),
+        };
+        let cjs_module_export_analyzer = Arc::new(CjsModuleExportAnalyzer::new(
+            cjs_code_analyzer,
+            in_npm_pkg_checker.clone(),
+            node_resolver.clone(),
+            npm_resolver.clone(),
+            pkg_json_resolver.clone(),
+            sys.clone(),
+        ));
+        let node_code_translator = Arc::new(NodeCodeTranslator::new(
+            cjs_module_export_analyzer,
+            NodeCodeTranslatorMode::ModuleLoader,
         ));
 
         let fs: Arc<dyn FileSystem> = Arc::new(deno_runtime::deno_fs::RealFs);
@@ -199,9 +202,13 @@ impl Application {
             module_loader: Rc::new(ts::TypescriptModuleLoader {
                 source_maps: ts::SourceMapStore::default(),
                 node_resolver: node_resolver.clone(),
+                cjs_tracker: cjs_tracker.clone(),
+                node_code_translator,
             }),
             node_services: Some(NodeExtInitServices {
-                node_require_loader: Rc::new(UzumakiRequireLoader),
+                node_require_loader: Rc::new(UzRequireLoader {
+                    cjs_tracker: cjs_tracker.clone(),
+                }),
                 node_resolver,
                 pkg_json_resolver,
                 sys: sys.clone(),

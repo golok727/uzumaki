@@ -9151,6 +9151,7 @@ name = "uzumaki_core_exp"
 version = "0.1.0"
 dependencies = [
  "anyhow",
+ "async-trait",
  "cosmic-text",
  "deno_ast",
  "deno_core",

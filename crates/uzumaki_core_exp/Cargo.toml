@@ -23,7 +23,8 @@ deno_runtime = { workspace = true, features = ["include_js_files_for_snapshottin
 deno_core = { workspace = true, features = ["include_js_files_for_snapshotting"] }
 
 deno_error = "=0.7.1"
-deno_ast = { version = "0.53.1", features = ["transpiling", "typescript", "react"] }
+deno_ast = { version = "0.53.1", features = ["transpiling", "typescript", "react", "cjs"] }
+async-trait = "0.1"
 
 # https://github.com/denoland/deno/discussions/32444#discussioncomment-15993969
 winapi = { version = "=0.3.9", features = ["std"]}
