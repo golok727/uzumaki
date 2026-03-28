@@ -16,4 +16,7 @@ setTimeout(() => {
   clearTimeout(id);
 }, 10000);
 
+const a = <view>Hello</view>;
+console.log(a);
+
 // console.log(window.id);

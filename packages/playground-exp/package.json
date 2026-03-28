@@ -6,7 +6,7 @@
     "uzumaki-ui-exp": "workspace:*"
   },
   "scripts": {
-    "start": "uzumaki index.ts"
+    "start": "uzumaki index.tsx"
   },
   "peerDependencies": {
     "typescript": "^5"

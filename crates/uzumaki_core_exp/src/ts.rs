@@ -194,6 +194,16 @@ impl ModuleLoader for TypescriptModuleLoader {
                             imports_not_used_as_values:
                                 deno_ast::ImportsNotUsedAsValues::Remove,
                             decorators: deno_ast::DecoratorsTranspileOption::Ecma,
+                            jsx: Some(deno_ast::JsxRuntime::Automatic(
+                                deno_ast::JsxAutomaticOptions {
+                                    development: std::env::var("NODE_ENV")
+                                        .map(|v| v != "production")
+                                        .unwrap_or(true),
+                                    import_source: Some(
+                                        "uzumaki-ui-exp/react".to_string(),
+                                    ),
+                                },
+                            )),
                             ..Default::default()
                         },
                         &deno_ast::TranspileModuleOptions { module_kind: None },

@@ -6,14 +6,16 @@
   },
   "devDependencies": {
     "@types/react": "^19.2.14",
-    "@types/react-reconciler": "^0.33.0",
-    "react": "^19.2.4"
+    "@types/react-reconciler": "^0.33.0"
   },
   "peerDependencies": {
     "react": "^19.2.4"
   },
   "exports": {
-    ".": "./js/index.ts"
+    ".": "./js/index.ts",
+    "./react": "./js/react/index.ts",
+    "./react/jsx-runtime": "./js/react/jsx/runtime.ts",
+    "./react/jsx-dev-runtime": "./js/react/jsx/dev-runtime.ts"
   },
   "napi": {
     "binaryName": "uzumaki"

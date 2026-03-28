@@ -17,7 +17,7 @@
     ".": "./js/index.ts",
     "./react": "./js/react/index.ts",
     "./react/jsx-runtime": "./js/react/jsx/runtime.ts",
-    "./react/jsx-dev-runtime": "./js/react/jsx/runtime.ts"
+    "./react/jsx-dev-runtime": "./js/react/jsx/dev-runtime.ts"
   },
   "napi": {
     "binaryName": "uzumaki"
