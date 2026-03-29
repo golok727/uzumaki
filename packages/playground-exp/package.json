@@ -9,6 +9,9 @@
   "scripts": {
     "start": "uzumaki src/index.tsx"
   },
+  "devDependencies": {
+    "@types/react": "^19.2.14"
+  },
   "peerDependencies": {
     "typescript": "^5"
   }

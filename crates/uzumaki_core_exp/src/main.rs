@@ -871,9 +871,8 @@ extension!(
   esm = [ dir "core", "00_init.js" ],
 );
 
-// ── Application ─────────────────────────────────────────────────────
-
 struct Application {
+    // for now lets use this, we should write our own runtime in future :p
     worker: MainWorker,
     app_state: SharedAppState,
     main_file: PathBuf,

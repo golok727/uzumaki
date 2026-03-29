@@ -84,6 +84,10 @@ importers:
       uzumaki-ui-exp:
         specifier: workspace:*
         version: link:../../crates/uzumaki_core_exp
+    devDependencies:
+      '@types/react':
+        specifier: ^19.2.14
+        version: 19.2.14
 
 packages:
 
