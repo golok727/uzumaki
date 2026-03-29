@@ -1,37 +1,9 @@
 # Uzumaki
 
-A native desktop UI framework for JavaScript/TypeScript. Uses **Bun** as the JS runtime, **NAPI** for Rust↔JS bindings, **wgpu** for GPU rendering, and **Vello** for 2D vector graphics. The React reconciler lets you write native desktop apps with JSX.
+A native desktop UI framework for JavaScript/TypeScript. Uses a runtime built on **Deno**, **wgpu** for GPU rendering, and **Vello** for 2D vector graphics. The React reconciler lets you write native desktop apps with JSX.
 
-## Architecture
 
-```
-crates/uzumaki_core/     — Rust native core (NAPI addon)
-  src/lib.rs             — Application, window management, DOM, event loop (winit)
-  src/element.rs         — DOM tree, nodes, layout (taffy)
-  src/gpu.rs             — wgpu GPU context
-  src/window.rs          — Window surface + Vello rendering
-  src/style.rs           — Style types (Length, Color, Edges, Corners, etc.)
-  src/interactivity.rs   — Hit testing, hover/active states
-  src/text.rs            — Text shaping/layout
-  js/index.ts            — JS-side Window class + runApp() event loop
-  js/react/              — Custom React reconciler
-    reconciler.ts        — react-reconciler host config (UElement, mutations)
-    jsx/runtime.ts       — JSX intrinsic element types + prop mapping
-
-crates/refineable/       — Derive macro crate for style refinement
-
-packages/playground/     — Example app (counter, dashboard)
-```
-
-## How it works
-
-1. `runApp()` creates an `Application` (Rust), starts the winit event loop via `pump_app_events()`
-2. JS creates windows via `new Window(label, opts)` → native `createWindow()`
-3. React reconciler renders JSX → calls native DOM operations (`createElement`, `appendChild`, `setText`, `setProp`, etc.)
-4. Props are sent to Rust through typed setters: `setLengthProp`, `setColorProp`, `setF32Prop`, `setEnumProp`
-5. Rust runs taffy layout + Vello rendering each frame via wgpu
-
-## JSX Syntax
+## JSX
 
 Intrinsic elements: `<view>`, `<text>`, `<p>`, `<button>`
 
@@ -99,16 +71,7 @@ render(window, <App />);
 
 ```sh
 pnpm start              # Build core + run playground
+# or
 pnpm build:core         # Build the Rust NAPI addon
 pnpm --filter playground start  # Run playground only
 ```
-
-## Tech stack
-
-- **Runtime:** Bun
-- **Rust → JS:** napi-rs (N-API)
-- **Windowing:** winit (pump_events mode for cooperative JS event loop)
-- **Layout:** taffy (flexbox)
-- **Rendering:** Vello + wgpu
-- **React:** react-reconciler (mutation mode)
-- **Build:** Cargo (Rust workspace) + pnpm (JS workspace)
