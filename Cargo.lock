@@ -8860,7 +8860,7 @@ dependencies = [
 ]
 
 [[package]]
-name = "uzumaki_core"
+name = "uzumaki"
 version = "0.1.0"
 dependencies = [
  "anyhow",
