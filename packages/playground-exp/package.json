@@ -3,7 +3,7 @@
   "type": "module",
   "private": true,
   "dependencies": {
-    "uzumaki-ui-exp": "workspace:*",
+    "uzumaki-ui": "workspace:*",
     "react": "^19.2.4"
   },
   "scripts": {

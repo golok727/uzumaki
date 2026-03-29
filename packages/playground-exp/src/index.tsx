@@ -1,5 +1,5 @@
-import { Window } from 'uzumaki-ui-exp';
-import { render } from 'uzumaki-ui-exp/react';
+import { Window } from 'uzumaki-ui';
+import { render } from 'uzumaki-ui/react';
 import { App as DashboardApp } from './app';
 import { App as CounterApp } from './counter';
 import { useState } from 'react';

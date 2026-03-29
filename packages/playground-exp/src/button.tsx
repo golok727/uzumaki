@@ -1,4 +1,4 @@
-import type { UzumakiMouseEvent } from 'uzumaki-ui-exp';
+import type { UzumakiMouseEvent } from 'uzumaki-ui';
 import { ACTIVE_BG, HOVER_BG, NAV_ACTIVE, TEXT_COLOR } from './styles';
 
 export function Button({

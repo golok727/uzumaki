@@ -112,9 +112,10 @@ impl ModuleLoader for TypescriptModuleLoader {
         let path = match module_specifier.to_file_path() {
             Ok(p) => p,
             Err(_) => {
-                return ModuleLoadResponse::Sync(Err(
-                    JsErrorBox::generic("Only file:// URLs are supported.").into(),
-                ))
+                return ModuleLoadResponse::Sync(Err(JsErrorBox::generic(
+                    "Only file:// URLs are supported.",
+                )
+                .into()));
             }
         };
 
@@ -131,8 +132,7 @@ impl ModuleLoader for TypescriptModuleLoader {
             let specifier = module_specifier.clone();
             return ModuleLoadResponse::Async(
                 async move {
-                    let code =
-                        std::fs::read_to_string(&path).map_err(JsErrorBox::from_err)?;
+                    let code = std::fs::read_to_string(&path).map_err(JsErrorBox::from_err)?;
                     let translated = translator
                         .translate_cjs_to_esm(&specifier, Some(Cow::Owned(code)))
                         .await
@@ -191,17 +191,14 @@ impl ModuleLoader for TypescriptModuleLoader {
                 let res = parsed
                     .transpile(
                         &deno_ast::TranspileOptions {
-                            imports_not_used_as_values:
-                                deno_ast::ImportsNotUsedAsValues::Remove,
+                            imports_not_used_as_values: deno_ast::ImportsNotUsedAsValues::Remove,
                             decorators: deno_ast::DecoratorsTranspileOption::Ecma,
                             jsx: Some(deno_ast::JsxRuntime::Automatic(
                                 deno_ast::JsxAutomaticOptions {
                                     development: std::env::var("NODE_ENV")
                                         .map(|v| v != "production")
                                         .unwrap_or(true),
-                                    import_source: Some(
-                                        "uzumaki-ui-exp/react".to_string(),
-                                    ),
+                                    import_source: Some("uzumaki-ui/react".to_string()),
                                 },
                             )),
                             ..Default::default()
@@ -231,12 +228,7 @@ impl ModuleLoader for TypescriptModuleLoader {
             ))
         }
 
-        ModuleLoadResponse::Sync(load_esm(
-            source_maps,
-            module_specifier,
-            path,
-            media_type,
-        ))
+        ModuleLoadResponse::Sync(load_esm(source_maps, module_specifier, path, media_type))
     }
 
     fn get_source_map(&self, specifier: &str) -> Option<Cow<'_, [u8]>> {
