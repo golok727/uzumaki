@@ -1,11 +1,35 @@
 const ops = Deno.core.ops;
+
 Object.defineProperty(globalThis, '__uzumaki_ops_dont_touch_this__', {
   value: Object.freeze({
     createWindow: ops.op_create_window,
     requestClose: ops.op_request_quit,
+    requestRedraw: ops.op_request_redraw,
+    getRootNodeId: ops.op_get_root_node_id,
+    createElement: ops.op_create_element,
+    createTextNode: ops.op_create_text_node,
+    appendChild: ops.op_append_child,
+    insertBefore: ops.op_insert_before,
+    removeChild: ops.op_remove_child,
+    setText: ops.op_set_text,
+    resetDom: ops.op_reset_dom,
+    setLengthProp: ops.op_set_length_prop,
+    setColorProp: ops.op_set_color_prop,
+    setF32Prop: ops.op_set_f32_prop,
+    setEnumProp: ops.op_set_enum_prop,
+    setInputValue: ops.op_set_input_value,
+    getInputValue: ops.op_get_input_value,
+    setInputPlaceholder: ops.op_set_input_placeholder,
+    setInputDisabled: ops.op_set_input_disabled,
+    setInputMaxLength: ops.op_set_input_max_length,
+    setInputMultiline: ops.op_set_input_multiline,
+    setInputSecure: ops.op_set_input_secure,
+    focusInput: ops.op_focus_input,
+    setRemBase: ops.op_set_rem_base,
+    getWindowWidth: ops.op_get_window_width,
+    getWindowHeight: ops.op_get_window_height,
+    getWindowTitle: ops.op_get_window_title,
   }),
   writable: false,
   configurable: false,
 });
-
-export function hello() {}

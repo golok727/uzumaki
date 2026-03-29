@@ -3,10 +3,11 @@
   "type": "module",
   "private": true,
   "dependencies": {
-    "uzumaki-ui-exp": "workspace:*"
+    "uzumaki-ui-exp": "workspace:*",
+    "react": "^19.2.4"
   },
   "scripts": {
-    "start": "uzumaki index.tsx"
+    "start": "uzumaki src/index.tsx"
   },
   "peerDependencies": {
     "typescript": "^5"

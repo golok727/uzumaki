@@ -1,10 +1,21 @@
-pub mod module_loader;
-pub mod resolver;
-pub mod sys;
+pub mod runtime;
 
-use module_loader::{UzCjsCodeAnalyzer, UzRequireLoader};
+pub mod element;
+pub mod elements;
+pub mod event_dispatch;
+pub mod geometry;
+pub mod gpu;
+pub mod input;
+pub mod interactivity;
+pub mod style;
+pub mod text;
+pub mod text_buffer;
+pub mod text_model;
+pub mod window;
 
-use sys::UzSys;
+use runtime::module_loader::{UzCjsCodeAnalyzer, UzRequireLoader};
+use runtime::resolver::UzCjsTracker;
+use runtime::sys::UzSys;
 
 use anyhow::Result;
 use deno_core::*;
@@ -20,70 +31,146 @@ use deno_runtime::deno_web::{BlobStore, InMemoryBroadcastChannel};
 use deno_runtime::worker::{MainWorker, WorkerOptions, WorkerServiceOptions};
 use node_resolver::analyze::{CjsModuleExportAnalyzer, NodeCodeTranslator, NodeCodeTranslatorMode};
 use node_resolver::cache::NodeResolutionSys;
-use std::{collections::HashMap, path::PathBuf, rc::Rc, sync::Arc};
+use std::cell::RefCell;
+use std::collections::HashMap;
+use std::path::PathBuf;
+use std::rc::Rc;
+use std::sync::Arc;
+use winit::event_loop::EventLoopProxy;
 use winit::{
-    application::ApplicationHandler,
-    event::WindowEvent,
-    event_loop::{ControlFlow, EventLoopProxy},
-    window::WindowId,
+    application::ApplicationHandler, event::WindowEvent, event_loop::ControlFlow, window::WindowId,
 };
 
-use crate::resolver::UzCjsTracker;
-
-mod ts;
+use crate::element::{Dom, NodeId};
+use crate::gpu::GpuContext;
+use crate::style::*;
 
 pub static UZUMAKI_SNAPSHOT: Option<&[u8]> = Some(include_bytes!(concat!(
     env!("OUT_DIR"),
     "/UZUMAKI_SNAPSHOT.bin"
 )));
 
-fn main() {
-    let tokio_runtime = tokio::runtime::Builder::new_current_thread()
-        .enable_all()
-        .build()
-        .expect("failed to create tokio runtime");
-
-    let mut args = std::env::args();
-    args.next();
-    let entry_point = args.next().expect("no entry point provided");
-    let cwd = std::env::current_dir().expect("error getting current directory");
-    let entry_path = cwd.join(entry_point);
-    let mut app = tokio_runtime
-        .block_on(async { Application::new(entry_path).expect("error creating application") });
-    app.tokio_runtime = Some(tokio_runtime);
-    app.run().expect("error running application");
+pub struct WindowEntry {
+    pub dom: Dom,
+    pub handle: Option<window::Window>,
+    pub rem_base: f32,
 }
 
-// for easy access from js
-static WINDOW_ID_COUNTER: std::sync::atomic::AtomicU32 = std::sync::atomic::AtomicU32::new(0);
+type WindowEntryId = u32;
 
-#[derive(Clone, Debug, deno_core::serde::Serialize, deno_core::serde::Deserialize)]
-struct CreateWindowOptions {
-    width: u32,
-    height: u32,
-    title: String,
-    label: String, //  remove and alias this from js side  ?
+pub struct AppState {
+    pub gpu: GpuContext,
+    pub windows: HashMap<WindowEntryId, WindowEntry>,
+    pub winit_id_to_entry_id: HashMap<WindowId, WindowEntryId>,
+    pub mouse_buttons: u8,
+    pub modifiers: u32,
+}
+impl AppState {
+    pub fn winit_window_id_to_entry_id(&self, window_id: &WindowId) -> Option<WindowEntryId> {
+        self.winit_id_to_entry_id.get(window_id).cloned()
+    }
+
+    pub fn paint_window(&mut self, id: &WindowEntryId) {
+        if let Some(window) = self.windows.get_mut(id) {
+            if let Some(handle) = &mut window.handle {
+                handle.paint_and_present(&self.gpu.device, &self.gpu.queue, &mut window.dom);
+            }
+        }
+    }
+
+    pub fn on_redraw_requested(&mut self, wid: &WindowEntryId) {
+        if let Some(entry) = self.windows.get_mut(&wid) {
+            let WindowEntry { handle, dom, .. } = entry;
+            if let Some(handle) = handle {
+                event_dispatch::handle_redraw(dom, handle, &self.gpu.device, &self.gpu.queue);
+                handle.winit_window.request_redraw();
+            }
+        }
+    }
+    pub fn on_resize(&mut self, id: &WindowEntryId, width: u32, height: u32) -> bool {
+        if let Some(window) = self.windows.get_mut(id) {
+            if let Some(handle) = &mut window.handle {
+                if handle.on_resize(&self.gpu.device, width, height) {
+                    handle.winit_window.request_redraw();
+                    return true;
+                }
+            }
+        }
+        false
+    }
+}
+
+// Safety: We only access AppState from the main thread
+unsafe impl Send for AppState {}
+unsafe impl Sync for AppState {}
+
+type SharedAppState = Rc<RefCell<AppState>>;
+
+fn with_state<R>(state: &SharedAppState, f: impl FnOnce(&mut AppState) -> R) -> R {
+    f(&mut state.borrow_mut())
 }
 
 #[derive(Debug, Clone)]
 enum UserEvent {
     CreateWindow {
-        js_id: u32,
-        options: CreateWindowOptions,
+        id: u32,
+        width: u32,
+        height: u32,
+        title: String,
+    },
+    RequestRedraw {
+        id: u32,
     },
     Quit,
 }
 
+#[derive(Clone, Debug, serde::Serialize, serde::Deserialize)]
+struct CreateWindowOptions {
+    width: u32,
+    height: u32,
+    title: String,
+}
+
 #[op2]
+#[serde]
 pub fn op_create_window(
     state: &mut OpState,
     #[serde] options: CreateWindowOptions,
-) -> Result<u32, deno_error::JsErrorBox> {
-    let proxy = state.borrow::<EventLoopProxy<UserEvent>>();
-    let js_id = WINDOW_ID_COUNTER.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
+) -> Result<WindowEntryId, deno_error::JsErrorBox> {
+    static NEXT_WINDOW_ID: std::sync::atomic::AtomicU32 = std::sync::atomic::AtomicU32::new(1);
+    let id = NEXT_WINDOW_ID.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
 
+    let app_state = state.borrow::<SharedAppState>().clone();
+    with_state(&app_state, |s| {
+        let mut dom = Dom::new();
+        let root = dom.create_view(Style {
+            display: Display::Flex,
+            size: Size {
+                width: Length::Percent(1.0),
+                height: Length::Percent(1.0),
+            },
+            ..Default::default()
+        });
+        dom.set_root(root);
+
+        s.windows.insert(
+            id,
+            WindowEntry {
+                dom,
+                handle: None,
+                rem_base: 16.0,
+            },
+        );
+    });
+
+    let proxy = state.borrow::<EventLoopProxy<UserEvent>>();
     proxy
-        .send_event(UserEvent::CreateWindow { js_id, options })
+        .send_event(UserEvent::CreateWindow {
+            id,
+            width: options.width,
+            height: options.height,
+            title: options.title,
+        })
         .map_err(|_| {
             deno_error::JsErrorBox::new(
                 "UzumakiInternalError",
@@ -91,43 +178,709 @@ pub fn op_create_window(
             )
         })?;
 
-    Ok(js_id)
+    Ok(id)
 }
 
 #[op2(fast)]
 pub fn op_request_quit(state: &mut OpState) -> Result<(), deno_error::JsErrorBox> {
     let proxy = state.borrow::<EventLoopProxy<UserEvent>>();
-    proxy.send_event(UserEvent::Quit).map_err(|_| {
-        deno_error::JsErrorBox::new("UzumakiInternalError", "error quitting window")
-    })?;
-
+    proxy
+        .send_event(UserEvent::Quit)
+        .map_err(|_| deno_error::JsErrorBox::new("UzumakiInternalError", "error quitting"))?;
     Ok(())
+}
+
+#[op2(fast)]
+pub fn op_request_redraw(
+    state: &mut OpState,
+    #[smi] window_id: u32,
+) -> Result<(), deno_error::JsErrorBox> {
+    let proxy = state.borrow::<EventLoopProxy<UserEvent>>();
+    proxy
+        .send_event(UserEvent::RequestRedraw { id: window_id })
+        .map_err(|_| {
+            deno_error::JsErrorBox::new("UzumakiInternalError", "error requesting redraw")
+        })?;
+    Ok(())
+}
+
+#[op2]
+#[serde]
+pub fn op_get_root_node_id(state: &mut OpState, #[smi] window_id: u32) -> serde_json::Value {
+    let app_state = state.borrow::<SharedAppState>().clone();
+    with_state(&app_state, |s| {
+        let entry = s.windows.get(&window_id).expect("window not found");
+        serde_json::to_value(entry.dom.root.expect("no root node")).unwrap()
+    })
+}
+
+#[op2]
+#[serde]
+pub fn op_create_element(
+    state: &mut OpState,
+    #[smi] window_id: u32,
+    #[string] element_type: String,
+) -> serde_json::Value {
+    let app_state = state.borrow::<SharedAppState>().clone();
+    with_state(&app_state, |s| {
+        let entry = s.windows.get_mut(&window_id).expect("window not found");
+        if element_type == "input" {
+            serde_json::to_value(entry.dom.create_input(Style::default())).unwrap()
+        } else {
+            serde_json::to_value(entry.dom.create_view(Style::default())).unwrap()
+        }
+    })
+}
+
+#[op2]
+#[serde]
+pub fn op_create_text_node(
+    state: &mut OpState,
+    #[smi] window_id: u32,
+    #[string] text: String,
+) -> serde_json::Value {
+    let app_state = state.borrow::<SharedAppState>().clone();
+    with_state(&app_state, |s| {
+        let entry = s.windows.get_mut(&window_id).expect("window not found");
+        serde_json::to_value(entry.dom.create_text(text, Style::default())).unwrap()
+    })
+}
+
+#[op2]
+pub fn op_append_child(
+    state: &mut OpState,
+    #[smi] window_id: u32,
+    #[serde] parent_id: serde_json::Value,
+    #[serde] child_id: serde_json::Value,
+) {
+    let pid = serde_json::from_value::<NodeId>(parent_id).unwrap();
+    let cid = serde_json::from_value::<NodeId>(child_id).unwrap();
+    let app_state = state.borrow::<SharedAppState>().clone();
+    with_state(&app_state, |s| {
+        let entry = s.windows.get_mut(&window_id).expect("window not found");
+        entry.dom.append_child(pid, cid);
+    });
+}
+
+#[op2]
+pub fn op_insert_before(
+    state: &mut OpState,
+    #[smi] window_id: u32,
+    #[serde] parent_id: serde_json::Value,
+    #[serde] child_id: serde_json::Value,
+    #[serde] before_id: serde_json::Value,
+) {
+    let pid = serde_json::from_value::<NodeId>(parent_id).unwrap();
+    let cid = serde_json::from_value::<NodeId>(child_id).unwrap();
+    let bid = serde_json::from_value::<NodeId>(before_id).unwrap();
+    let app_state = state.borrow::<SharedAppState>().clone();
+    with_state(&app_state, |s| {
+        let entry = s.windows.get_mut(&window_id).expect("window not found");
+        entry.dom.insert_before(pid, cid, bid);
+    });
+}
+
+#[op2]
+pub fn op_remove_child(
+    state: &mut OpState,
+    #[smi] window_id: u32,
+    #[serde] parent_id: serde_json::Value,
+    #[serde] child_id: serde_json::Value,
+) {
+    let pid = serde_json::from_value::<NodeId>(parent_id).unwrap();
+    let cid = serde_json::from_value::<NodeId>(child_id).unwrap();
+    let app_state = state.borrow::<SharedAppState>().clone();
+    with_state(&app_state, |s| {
+        let entry = s.windows.get_mut(&window_id).expect("window not found");
+        entry.dom.remove_child(pid, cid);
+    });
+}
+
+#[op2]
+pub fn op_set_text(
+    state: &mut OpState,
+    #[smi] window_id: u32,
+    #[serde] node_id: serde_json::Value,
+    #[string] text: String,
+) {
+    let nid = serde_json::from_value::<NodeId>(node_id).unwrap();
+    let app_state = state.borrow::<SharedAppState>().clone();
+    with_state(&app_state, |s| {
+        let entry = s.windows.get_mut(&window_id).expect("window not found");
+        entry.dom.set_text_content(nid, text);
+    });
+}
+
+#[op2(fast)]
+pub fn op_reset_dom(state: &mut OpState, #[smi] window_id: u32) {
+    let app_state = state.borrow::<SharedAppState>().clone();
+    with_state(&app_state, |s| {
+        if let Some(entry) = s.windows.get_mut(&window_id) {
+            let root = entry.dom.root.expect("no root node");
+            entry.dom.clear_children(root);
+        }
+    });
+}
+
+#[op2]
+pub fn op_set_length_prop(
+    state: &mut OpState,
+    #[smi] window_id: u32,
+    #[serde] node_id: serde_json::Value,
+    #[smi] prop: u32,
+    value: f64,
+    #[smi] unit: u32,
+) {
+    let nid = serde_json::from_value::<NodeId>(node_id).unwrap();
+    let app_state = state.borrow::<SharedAppState>().clone();
+    with_state(&app_state, |s| {
+        let entry = s.windows.get_mut(&window_id).expect("window not found");
+        let length = match unit {
+            0 => Length::Px(value as f32),
+            1 => Length::Percent(value as f32),
+            2 => Length::Px(value as f32 * entry.rem_base),
+            _ => Length::Auto,
+        };
+        {
+            let style = &mut entry.dom.nodes[nid].style;
+            match prop {
+                0 => style.size.width = length,       // W
+                1 => style.size.height = length,      // H
+                52 => style.min_size.width = length,  // MinW
+                53 => style.min_size.height = length, // MinH
+                _ => return,
+            }
+        }
+        sync_taffy(&mut entry.dom, nid);
+    });
+}
+
+#[op2]
+pub fn op_set_color_prop(
+    state: &mut OpState,
+    #[smi] window_id: u32,
+    #[serde] node_id: serde_json::Value,
+    #[smi] prop: u32,
+    #[smi] r: u32,
+    #[smi] g: u32,
+    #[smi] b: u32,
+    #[smi] a: u32,
+) {
+    let nid = serde_json::from_value::<NodeId>(node_id).unwrap();
+    let color = Color::rgba(r as u8, g as u8, b as u8, a as u8);
+    let app_state = state.borrow::<SharedAppState>().clone();
+    with_state(&app_state, |s| {
+        let entry = s.windows.get_mut(&window_id).expect("window not found");
+
+        match prop {
+            43 | 44 | 46 => {
+                // HoverBg, HoverColor, HoverBorderColor
+                let r = entry.dom.nodes[nid]
+                    .interactivity
+                    .hover_style
+                    .get_or_insert_with(|| Box::new(StyleRefinement::default()));
+                match prop {
+                    43 => r.background = Some(color),
+                    44 => r.text.color = Some(color),
+                    46 => r.border_color = Some(color),
+                    _ => unreachable!(),
+                }
+                return;
+            }
+            47 | 48 | 50 => {
+                // ActiveBg, ActiveColor, ActiveBorderColor
+                let r = entry.dom.nodes[nid]
+                    .interactivity
+                    .active_style
+                    .get_or_insert_with(|| Box::new(StyleRefinement::default()));
+                match prop {
+                    47 => r.background = Some(color),
+                    48 => r.text.color = Some(color),
+                    50 => r.border_color = Some(color),
+                    _ => unreachable!(),
+                }
+                return;
+            }
+            _ => {}
+        }
+
+        {
+            let style = &mut entry.dom.nodes[nid].style;
+            match prop {
+                23 => style.background = Some(color),   // Bg
+                24 => style.text.color = color,         // Color
+                37 => style.border_color = Some(color), // BorderColor
+                _ => return,
+            }
+        }
+        sync_taffy(&mut entry.dom, nid);
+    });
+}
+
+#[op2]
+pub fn op_set_f32_prop(
+    state: &mut OpState,
+    #[smi] window_id: u32,
+    #[serde] node_id: serde_json::Value,
+    #[smi] prop: u32,
+    value: f64,
+) {
+    let nid = serde_json::from_value::<NodeId>(node_id).unwrap();
+    let v = value as f32;
+    let app_state = state.borrow::<SharedAppState>().clone();
+    with_state(&app_state, |s| {
+        let entry = s.windows.get_mut(&window_id).expect("window not found");
+
+        // Props that don't need sync_taffy
+        match prop {
+            45 => {
+                // HoverOpacity
+                let r = entry.dom.nodes[nid]
+                    .interactivity
+                    .hover_style
+                    .get_or_insert_with(|| Box::new(StyleRefinement::default()));
+                r.opacity = Some(v);
+                return;
+            }
+            49 => {
+                // ActiveOpacity
+                let r = entry.dom.nodes[nid]
+                    .interactivity
+                    .active_style
+                    .get_or_insert_with(|| Box::new(StyleRefinement::default()));
+                r.opacity = Some(v);
+                return;
+            }
+            41 => {
+                // Interactive
+                entry.dom.nodes[nid].interactivity.js_interactive = v > 0.5;
+                return;
+            }
+            51 => {
+                // Scrollable
+                let node = &mut entry.dom.nodes[nid];
+                if v > 0.5 {
+                    node.style.overflow_y = Overflow::Scroll;
+                    if node.scroll_state.is_none() {
+                        node.scroll_state = Some(element::ScrollState::new());
+                    }
+                } else {
+                    node.style.overflow_y = Overflow::Visible;
+                    node.scroll_state = None;
+                }
+                sync_taffy(&mut entry.dom, nid);
+                return;
+            }
+            _ => {}
+        }
+
+        {
+            let style = &mut entry.dom.nodes[nid].style;
+            match prop {
+                2 => style.padding = Edges::all(v), // P
+                3 => {
+                    style.padding.left = v;
+                    style.padding.right = v;
+                } // Px
+                4 => {
+                    style.padding.top = v;
+                    style.padding.bottom = v;
+                } // Py
+                5 => style.padding.top = v,         // Pt
+                6 => style.padding.bottom = v,      // Pb
+                7 => style.padding.left = v,        // Pl
+                8 => style.padding.right = v,       // Pr
+                9 => style.margin = Edges::all(v),  // M
+                10 => {
+                    style.margin.left = v;
+                    style.margin.right = v;
+                } // Mx
+                11 => {
+                    style.margin.top = v;
+                    style.margin.bottom = v;
+                } // My
+                12 => style.margin.top = v,         // Mt
+                13 => style.margin.bottom = v,      // Mb
+                14 => style.margin.left = v,        // Ml
+                15 => style.margin.right = v,       // Mr
+                16 => {
+                    style.display = Display::Flex;
+                    style.flex_grow = v;
+                } // Flex
+                18 => style.flex_grow = v,          // FlexGrow
+                19 => style.flex_shrink = v,        // FlexShrink
+                22 => {
+                    style.gap = GapSize {
+                        width: DefiniteLength::Px(v),
+                        height: DefiniteLength::Px(v),
+                    };
+                } // Gap
+                25 => style.text.font_size = v,     // FontSize
+                26 => {}                            // FontWeight (noop)
+                27 => style.corner_radii = Corners::uniform(v), // Rounded
+                28 => style.corner_radii.top_left = v, // RoundedTL
+                29 => style.corner_radii.top_right = v, // RoundedTR
+                30 => style.corner_radii.bottom_right = v, // RoundedBR
+                31 => style.corner_radii.bottom_left = v, // RoundedBL
+                32 => style.border_widths = Edges::all(v), // Border
+                33 => style.border_widths.top = v,  // BorderTop
+                34 => style.border_widths.right = v, // BorderRight
+                35 => style.border_widths.bottom = v, // BorderBottom
+                36 => style.border_widths.left = v, // BorderLeft
+                38 => style.opacity = v,            // Opacity
+                42 => {
+                    style.visibility = if v > 0.5 {
+                        Visibility::Visible
+                    } else {
+                        Visibility::Hidden
+                    };
+                } // Visible
+                40 => {}                            // Cursor (noop)
+                _ => return,
+            }
+        }
+        sync_taffy(&mut entry.dom, nid);
+    });
+}
+
+#[op2]
+pub fn op_set_enum_prop(
+    state: &mut OpState,
+    #[smi] window_id: u32,
+    #[serde] node_id: serde_json::Value,
+    #[smi] prop: u32,
+    #[smi] value: i32,
+) {
+    let nid = serde_json::from_value::<NodeId>(node_id).unwrap();
+    let app_state = state.borrow::<SharedAppState>().clone();
+    with_state(&app_state, |s| {
+        let entry = s.windows.get_mut(&window_id).expect("window not found");
+        {
+            let style = &mut entry.dom.nodes[nid].style;
+            match prop {
+                17 => {
+                    // FlexDir
+                    style.flex_direction = match value {
+                        0 => FlexDirection::Row,
+                        1 => FlexDirection::Column,
+                        2 => FlexDirection::RowReverse,
+                        3 => FlexDirection::ColumnReverse,
+                        _ => FlexDirection::Row,
+                    };
+                }
+                20 => {
+                    // Items
+                    style.align_items = Some(match value {
+                        0 => AlignItems::FlexStart,
+                        1 => AlignItems::FlexEnd,
+                        2 => AlignItems::Center,
+                        3 => AlignItems::Stretch,
+                        4 => AlignItems::Baseline,
+                        _ => AlignItems::Stretch,
+                    });
+                }
+                21 => {
+                    // Justify
+                    style.justify_content = Some(match value {
+                        0 => JustifyContent::FlexStart,
+                        1 => JustifyContent::FlexEnd,
+                        2 => JustifyContent::Center,
+                        3 => JustifyContent::SpaceBetween,
+                        4 => JustifyContent::SpaceAround,
+                        5 => JustifyContent::SpaceEvenly,
+                        _ => JustifyContent::FlexStart,
+                    });
+                }
+                39 => {
+                    // Display
+                    style.display = match value {
+                        0 => Display::None,
+                        1 => Display::Flex,
+                        2 => Display::Block,
+                        _ => Display::Flex,
+                    };
+                }
+                _ => return,
+            }
+        }
+        sync_taffy(&mut entry.dom, nid);
+    });
+}
+
+// ── Input attribute ops ─────────────────────────────────────────────
+
+#[op2]
+pub fn op_set_input_value(
+    state: &mut OpState,
+    #[smi] window_id: u32,
+    #[serde] node_id: serde_json::Value,
+    #[string] value: String,
+) {
+    let nid = serde_json::from_value::<NodeId>(node_id).unwrap();
+    let app_state = state.borrow::<SharedAppState>().clone();
+    with_state(&app_state, |s| {
+        let entry = s.windows.get_mut(&window_id).expect("window not found");
+        if let Some(node) = entry.dom.nodes.get_mut(nid) {
+            if let Some(is) = node.behavior.as_input_mut() {
+                is.set_value(value);
+            }
+        }
+    });
+}
+
+#[op2]
+#[string]
+pub fn op_get_input_value(
+    state: &mut OpState,
+    #[smi] window_id: u32,
+    #[serde] node_id: serde_json::Value,
+) -> String {
+    let nid = serde_json::from_value::<NodeId>(node_id).unwrap();
+    let app_state = state.borrow::<SharedAppState>().clone();
+    with_state(&app_state, |s| {
+        let entry = s.windows.get(&window_id).expect("window not found");
+        entry
+            .dom
+            .nodes
+            .get(nid)
+            .and_then(|node| node.behavior.as_input())
+            .map(|is| is.model.text())
+            .unwrap_or_default()
+    })
+}
+
+#[op2]
+pub fn op_set_input_placeholder(
+    state: &mut OpState,
+    #[smi] window_id: u32,
+    #[serde] node_id: serde_json::Value,
+    #[string] placeholder: String,
+) {
+    let nid = serde_json::from_value::<NodeId>(node_id).unwrap();
+    let app_state = state.borrow::<SharedAppState>().clone();
+    with_state(&app_state, |s| {
+        let entry = s.windows.get_mut(&window_id).expect("window not found");
+        if let Some(node) = entry.dom.nodes.get_mut(nid) {
+            if let Some(is) = node.behavior.as_input_mut() {
+                is.placeholder = placeholder;
+            }
+        }
+    });
+}
+
+#[op2]
+pub fn op_set_input_disabled(
+    state: &mut OpState,
+    #[smi] window_id: u32,
+    #[serde] node_id: serde_json::Value,
+    disabled: bool,
+) {
+    let nid = serde_json::from_value::<NodeId>(node_id).unwrap();
+    let app_state = state.borrow::<SharedAppState>().clone();
+    with_state(&app_state, |s| {
+        let entry = s.windows.get_mut(&window_id).expect("window not found");
+        if let Some(node) = entry.dom.nodes.get_mut(nid) {
+            if let Some(is) = node.behavior.as_input_mut() {
+                is.disabled = disabled;
+            }
+        }
+    });
+}
+
+#[op2]
+pub fn op_set_input_max_length(
+    state: &mut OpState,
+    #[smi] window_id: u32,
+    #[serde] node_id: serde_json::Value,
+    #[smi] max_length: i32,
+) {
+    let nid = serde_json::from_value::<NodeId>(node_id).unwrap();
+    let app_state = state.borrow::<SharedAppState>().clone();
+    with_state(&app_state, |s| {
+        let entry = s.windows.get_mut(&window_id).expect("window not found");
+        if let Some(node) = entry.dom.nodes.get_mut(nid) {
+            if let Some(is) = node.behavior.as_input_mut() {
+                is.model.max_length = if max_length > 0 {
+                    Some(max_length as usize)
+                } else {
+                    None
+                };
+            }
+        }
+    });
+}
+
+#[op2]
+pub fn op_set_input_multiline(
+    state: &mut OpState,
+    #[smi] window_id: u32,
+    #[serde] node_id: serde_json::Value,
+    multiline: bool,
+) {
+    let nid = serde_json::from_value::<NodeId>(node_id).unwrap();
+    let app_state = state.borrow::<SharedAppState>().clone();
+    with_state(&app_state, |s| {
+        let entry = s.windows.get_mut(&window_id).expect("window not found");
+        if let Some(node) = entry.dom.nodes.get_mut(nid) {
+            if let Some(is) = node.behavior.as_input_mut() {
+                is.multiline = multiline;
+            }
+        }
+    });
+}
+
+#[op2]
+pub fn op_set_input_secure(
+    state: &mut OpState,
+    #[smi] window_id: u32,
+    #[serde] node_id: serde_json::Value,
+    secure: bool,
+) {
+    let nid = serde_json::from_value::<NodeId>(node_id).unwrap();
+    let app_state = state.borrow::<SharedAppState>().clone();
+    with_state(&app_state, |s| {
+        let entry = s.windows.get_mut(&window_id).expect("window not found");
+        if let Some(node) = entry.dom.nodes.get_mut(nid) {
+            if let Some(is) = node.behavior.as_input_mut() {
+                is.secure = secure;
+            }
+        }
+    });
+}
+
+#[op2]
+pub fn op_focus_input(
+    state: &mut OpState,
+    #[smi] window_id: u32,
+    #[serde] node_id: serde_json::Value,
+) {
+    let nid = serde_json::from_value::<NodeId>(node_id).unwrap();
+    let app_state = state.borrow::<SharedAppState>().clone();
+    with_state(&app_state, |s| {
+        let entry = s.windows.get_mut(&window_id).expect("window not found");
+        if let Some(old_id) = entry.dom.focused_node {
+            if old_id != nid {
+                if let Some(old_node) = entry.dom.nodes.get_mut(old_id) {
+                    if let Some(is) = old_node.behavior.as_input_mut() {
+                        is.focused = false;
+                    }
+                }
+            }
+        }
+        if let Some(node) = entry.dom.nodes.get_mut(nid) {
+            if let Some(is) = node.behavior.as_input_mut() {
+                is.focused = true;
+                is.reset_blink();
+            }
+        }
+        entry.dom.focused_node = Some(nid);
+    });
+}
+
+#[op2(fast)]
+pub fn op_set_rem_base(state: &mut OpState, #[smi] window_id: u32, value: f64) {
+    let app_state = state.borrow::<SharedAppState>().clone();
+    with_state(&app_state, |s| {
+        if let Some(entry) = s.windows.get_mut(&window_id) {
+            entry.rem_base = value as f32;
+        }
+    });
+}
+
+#[op2]
+pub fn op_get_window_width(state: &mut OpState, #[smi] window_id: u32) -> Option<u32> {
+    let app_state = state.borrow::<SharedAppState>().clone();
+    with_state(&app_state, |s| {
+        s.windows.get(&window_id).and_then(|entry| {
+            entry.handle.as_ref().map(|h| {
+                let size = h.winit_window.inner_size();
+                size.width
+            })
+        })
+    })
+}
+
+#[op2]
+pub fn op_get_window_height(state: &mut OpState, #[smi] window_id: u32) -> Option<u32> {
+    let app_state = state.borrow::<SharedAppState>().clone();
+    with_state(&app_state, |s| {
+        s.windows.get(&window_id).and_then(|entry| {
+            entry.handle.as_ref().map(|h| {
+                let size = h.winit_window.inner_size();
+                size.height
+            })
+        })
+    })
+}
+
+#[op2]
+#[string]
+pub fn op_get_window_title(state: &mut OpState, #[smi] window_id: u32) -> Option<String> {
+    let app_state = state.borrow::<SharedAppState>().clone();
+    with_state(&app_state, |s| {
+        s.windows
+            .get(&window_id)
+            .and_then(|entry| entry.handle.as_ref().map(|h| h.winit_window.title()))
+    })
+}
+
+fn sync_taffy(dom: &mut Dom, node_id: NodeId) {
+    let node = &dom.nodes[node_id];
+    let taffy_style = node.style.to_taffy();
+    let tn = node.taffy_node;
+    dom.taffy.set_style(tn, taffy_style).unwrap();
+
+    let font_size = node.style.text.font_size;
+    if let Some(ctx) = dom.taffy.get_node_context_mut(tn) {
+        ctx.font_size = font_size;
+    }
 }
 
 extension!(
   uzumaki,
-  ops = [op_create_window, op_request_quit],
+  ops = [
+    op_create_window,
+    op_request_quit,
+    op_request_redraw,
+    op_get_root_node_id,
+    op_create_element,
+    op_create_text_node,
+    op_append_child,
+    op_insert_before,
+    op_remove_child,
+    op_set_text,
+    op_reset_dom,
+    op_set_length_prop,
+    op_set_color_prop,
+    op_set_f32_prop,
+    op_set_enum_prop,
+    op_set_input_value,
+    op_get_input_value,
+    op_set_input_placeholder,
+    op_set_input_disabled,
+    op_set_input_max_length,
+    op_set_input_multiline,
+    op_set_input_secure,
+    op_focus_input,
+    op_set_rem_base,
+    op_get_window_width,
+    op_get_window_height,
+    op_get_window_title,
+  ],
   esm_entry_point = "ext:uzumaki/00_init.js",
   esm = [ dir "core", "00_init.js" ],
 );
 
-struct Window {
-    pub(crate) winit_window: Arc<winit::window::Window>,
-}
-
-impl Window {
-    pub fn new(winit_window: Arc<winit::window::Window>) -> Result<Self> {
-        Ok(Self { winit_window })
-    }
-}
+// ── Application ─────────────────────────────────────────────────────
 
 struct Application {
     worker: MainWorker,
-    windows: HashMap<WindowId, Arc<Window>>,
+    app_state: SharedAppState,
     main_file: PathBuf,
     event_loop: Option<winit::event_loop::EventLoop<UserEvent>>,
     module_loaded: bool,
     tokio_runtime: Option<tokio::runtime::Runtime>,
+    global_app_event_dispatch_fn: Option<v8::Global<v8::Function>>,
 }
 
 impl Application {
@@ -168,7 +921,6 @@ impl Application {
             node_resolver::NodeResolverOptions::default(),
         ));
 
-        // CJS-to-ESM translation pipeline
         let cjs_code_analyzer = UzCjsCodeAnalyzer {
             cjs_tracker: cjs_tracker.clone(),
         };
@@ -199,8 +951,8 @@ impl Application {
             deno_rt_native_addon_loader: None,
             feature_checker: Arc::new(deno_runtime::FeatureChecker::default()),
             fs: fs.clone(),
-            module_loader: Rc::new(ts::TypescriptModuleLoader {
-                source_maps: ts::SourceMapStore::default(),
+            module_loader: Rc::new(runtime::ts::TypescriptModuleLoader {
+                source_maps: runtime::ts::SourceMapStore::default(),
                 node_resolver: node_resolver.clone(),
                 cjs_tracker: cjs_tracker.clone(),
                 node_code_translator,
@@ -240,19 +992,33 @@ impl Application {
         let event_loop: winit::event_loop::EventLoop<UserEvent> =
             winit::event_loop::EventLoop::with_user_event().build()?;
 
+        // Create GPU context
+        let gpu = pollster::block_on(GpuContext::new()).expect("Failed to create GPU context");
+
+        let app_state = Rc::new(RefCell::new(AppState {
+            gpu,
+            windows: HashMap::new(),
+            winit_id_to_entry_id: HashMap::new(),
+            mouse_buttons: 0,
+            modifiers: 0,
+        }));
+
+        // Put shared state and event loop proxy into OpState
         {
-            let state = worker.js_runtime.op_state();
-            let mut borrow = state.borrow_mut();
+            let op_state = worker.js_runtime.op_state();
+            let mut borrow = op_state.borrow_mut();
+            borrow.put(app_state.clone());
             borrow.put(event_loop.create_proxy());
         }
 
         Ok(Self {
             worker,
+            app_state,
             main_file,
             event_loop: Some(event_loop),
-            windows: HashMap::new(),
             module_loaded: false,
             tokio_runtime: None,
+            global_app_event_dispatch_fn: None,
         })
     }
 
@@ -293,6 +1059,70 @@ impl Application {
         });
         self.tick_js();
     }
+
+    fn ensure_dispatch_fn(&mut self) -> Result<()> {
+        if self.global_app_event_dispatch_fn.is_some() {
+            return Ok(());
+        }
+
+        let resolved = {
+            let context = self.worker.js_runtime.main_context();
+            deno_core::scope!(scope, &mut self.worker.js_runtime);
+            let context_local = v8::Local::new(scope, context);
+            let global_obj = context_local.global(scope);
+
+            let key = v8::String::new_external_onebyte_static(scope, b"__uzumaki_on_app_event__")
+                .ok_or_else(|| anyhow::anyhow!("failed to create v8 string"))?;
+
+            let val = global_obj
+                .get(scope, key.into())
+                .ok_or_else(|| anyhow::anyhow!("__uzumaki_dispatch__ not found on globalThis"))?;
+
+            let func = v8::Local::<v8::Function>::try_from(val)
+                .map_err(|_| anyhow::anyhow!("__uzumaki_dispatch__ is not a function"))?;
+
+            v8::Global::new(scope, func)
+        };
+        // scope dropped, safe to write to self
+        self.global_app_event_dispatch_fn = Some(resolved);
+        Ok(())
+    }
+
+    fn dispatch_event_to_js(&mut self, event: &event_dispatch::AppEvent) {
+        if let Err(e) = self.ensure_dispatch_fn() {
+            eprintln!("[uzumaki] dispatch fn not available: {e}");
+            return;
+        }
+
+        // Clone the Global handle so we don't hold a borrow on self
+        // while the scope borrows self.worker.js_runtime
+        let dispatch_fn = self.global_app_event_dispatch_fn.clone().unwrap();
+
+        let context = self.worker.js_runtime.main_context();
+        deno_core::scope!(scope, &mut self.worker.js_runtime);
+        v8::tc_scope!(scope, scope);
+
+        let context_local = v8::Local::new(scope, context);
+        let _global_obj = context_local.global(scope);
+
+        let func = v8::Local::new(scope, &dispatch_fn);
+        let undefined = v8::undefined(scope);
+
+        let event_val = match deno_core::serde_v8::to_v8(scope, event) {
+            Ok(val) => val,
+            Err(e) => {
+                eprintln!("[uzumaki] failed to serialize event: {e}");
+                return;
+            }
+        };
+
+        func.call(scope, undefined.into(), &[event_val]);
+
+        if let Some(exception) = scope.exception() {
+            let error = deno_core::error::JsError::from_v8_exception(scope, exception);
+            eprintln!("[uzumaki] event handler error: {error}");
+        }
+    }
 }
 
 impl ApplicationHandler<UserEvent> for Application {
@@ -310,32 +1140,301 @@ impl ApplicationHandler<UserEvent> for Application {
     fn user_event(&mut self, event_loop: &winit::event_loop::ActiveEventLoop, event: UserEvent) {
         match event {
             UserEvent::CreateWindow {
-                js_id: _,
-                options: opts,
+                id,
+                width,
+                height,
+                title,
             } => {
-                let attrs = winit::window::Window::default_attributes()
-                    .with_title(&opts.title)
-                    .with_inner_size(winit::dpi::LogicalSize::new(opts.width, opts.height));
+                let attributes = winit::window::WindowAttributes::default()
+                    .with_title(title)
+                    .with_inner_size(winit::dpi::Size::new(winit::dpi::LogicalSize::new(
+                        width, height,
+                    )))
+                    .with_min_inner_size(winit::dpi::Size::new(winit::dpi::LogicalSize::new(
+                        400, 300,
+                    )));
 
-                let winit_window = event_loop.create_window(attrs).unwrap();
-                let id = winit_window.id();
-                let window = Window::new(Arc::new(winit_window)).unwrap();
-                self.windows.insert(id, Arc::new(window));
-                println!("window created: {}", opts.title);
+                let is_visible = attributes.visible;
+
+                let Ok(winit_window) = event_loop.create_window(attributes.with_visible(false))
+                else {
+                    eprintln!("Failed to create window");
+                    return;
+                };
+
+                let winit_window = Arc::new(winit_window);
+                let winit_id = winit_window.id();
+
+                let mut state = self.app_state.borrow_mut();
+                assert!(
+                    state.windows.contains_key(&id),
+                    "Window entry '{}' must exist before creating handle",
+                    id
+                );
+                match window::Window::new(&state.gpu, winit_window) {
+                    Ok(handle) => {
+                        state.winit_id_to_entry_id.insert(winit_id, id);
+
+                        let window = state.windows.get_mut(&id).unwrap();
+                        handle.winit_window.set_visible(is_visible);
+                        window.handle = Some(handle);
+                        // handle.paint_and_present(
+                        //     &state.gpu.device,
+                        //     &state.gpu.queue,
+                        //     &mut window.dom,
+                        // );
+                    }
+                    Err(e) => eprintln!("Error creating window: {:#?}", e),
+                }
+                state.paint_window(&id);
             }
-            UserEvent::Quit => event_loop.exit(),
+            UserEvent::RequestRedraw { id } => {
+                let state = self.app_state.borrow();
+                if let Some(entry) = state.windows.get(&id) {
+                    if let Some(ref handle) = entry.handle {
+                        handle.winit_window.request_redraw();
+                    }
+                }
+            }
+            UserEvent::Quit => {
+                let mut state = self.app_state.borrow_mut();
+                state.windows.clear();
+                state.winit_id_to_entry_id.clear();
+                drop(state);
+                event_loop.exit();
+            }
         }
     }
 
     fn window_event(
         &mut self,
         event_loop: &winit::event_loop::ActiveEventLoop,
-        _window_id: WindowId,
+        window_id: winit::window::WindowId,
         event: WindowEvent,
     ) {
+        let Some(wid) = self
+            .app_state
+            .borrow()
+            .winit_window_id_to_entry_id(&window_id)
+        else {
+            return;
+        };
+
+        let mut needs_redraw = false;
+
         match event {
-            WindowEvent::CloseRequested => event_loop.exit(),
+            WindowEvent::Resized(size) => {
+                let needs_resize = {
+                    let mut state = self.app_state.borrow_mut();
+                    state.on_resize(&wid, size.width, size.height)
+                };
+                needs_resize.then(|| {
+                    self.dispatch_event_to_js(&event_dispatch::AppEvent::Resize(
+                        event_dispatch::ResizeEventData {
+                            window_id: wid,
+                            width: size.width,
+                            height: size.height,
+                        },
+                    ));
+                });
+            }
+            WindowEvent::RedrawRequested => {
+                let mut state = self.app_state.borrow_mut();
+                state.on_redraw_requested(&wid);
+            }
+            WindowEvent::CursorMoved { position, .. } => {
+                let mut state = self.app_state.borrow_mut();
+                let mouse_buttons = state.mouse_buttons;
+                if let Some(entry) = state.windows.get_mut(&wid) {
+                    let WindowEntry { handle, dom, .. } = entry;
+                    if let Some(handle) = handle {
+                        if event_dispatch::handle_cursor_moved(dom, handle, position, mouse_buttons)
+                        {
+                            needs_redraw = true;
+                        }
+                    }
+                }
+            }
+            WindowEvent::MouseInput {
+                state: btn_state,
+                button,
+                ..
+            } => {
+                let events = {
+                    let mut state = self.app_state.borrow_mut();
+                    use winit::event::{ElementState, MouseButton};
+
+                    // 1. Determine which bit to toggle
+                    let button_bit: u8 = match button {
+                        MouseButton::Left => 1,
+                        MouseButton::Right => 2,
+                        MouseButton::Middle => 4,
+                        _ => 0,
+                    };
+
+                    // 2. Update bitmask state
+                    match btn_state {
+                        ElementState::Pressed => state.mouse_buttons |= button_bit,
+                        ElementState::Released => state.mouse_buttons &= !button_bit,
+                    }
+
+                    let mouse_buttons = state.mouse_buttons;
+
+                    // 3. Flattened dispatch logic using 'and_then' or guard patterns
+                    state.windows.get_mut(&wid).and_then(|entry| {
+                        let WindowEntry { handle, dom, .. } = entry;
+                        let handle = handle.as_mut()?; // Returns None early if handle is None
+
+                        let (redraw, mouse_events) = event_dispatch::handle_mouse_input(
+                            dom,
+                            handle,
+                            wid,
+                            btn_state,
+                            button,
+                            mouse_buttons,
+                        );
+
+                        if redraw {
+                            needs_redraw = true;
+                        }
+
+                        Some(mouse_events)
+                    })
+                };
+
+                if let Some(events) = events {
+                    for event in events {
+                        self.dispatch_event_to_js(&event);
+                    }
+                }
+            }
+            WindowEvent::KeyboardInput {
+                event: key_event, ..
+            } => {
+                let events = {
+                    let mut state = self.app_state.borrow_mut();
+                    let modifiers = state.modifiers;
+
+                    // Use and_then to flatten the WindowEntry and Handle checks
+                    state.windows.get_mut(&wid).and_then(|entry| {
+                        let WindowEntry { handle, dom, .. } = entry;
+                        let handle = handle.as_mut()?; // Early return None if handle is None
+
+                        let (redraw, key_events) = event_dispatch::handle_keyboard_input(
+                            dom, handle, wid, &key_event, modifiers,
+                        );
+
+                        if redraw {
+                            needs_redraw = true;
+                        }
+
+                        Some(key_events)
+                    })
+                };
+
+                // If we got events back, extend the pending queue
+                if let Some(key_events) = events {
+                    for event in key_events {
+                        self.dispatch_event_to_js(&event);
+                    }
+                }
+            }
+            WindowEvent::ModifiersChanged(mods) => {
+                let mut state = self.app_state.borrow_mut();
+
+                let m = mods.state();
+                let mut bits: u32 = 0;
+                if m.control_key() {
+                    bits |= 1;
+                }
+                if m.alt_key() {
+                    bits |= 2;
+                }
+                if m.shift_key() {
+                    bits |= 4;
+                }
+                if m.super_key() {
+                    bits |= 8;
+                }
+                state.modifiers = bits;
+            }
+            WindowEvent::Focused(focused) => {
+                let mut state = self.app_state.borrow_mut();
+                if let Some(entry) = state.windows.get_mut(&wid) {
+                    entry.dom.window_focused = focused;
+                    if focused {
+                        if let Some(nid) = entry.dom.focused_node {
+                            if let Some(node) = entry.dom.nodes.get_mut(nid) {
+                                if let Some(is) = node.behavior.as_input_mut() {
+                                    is.reset_blink();
+                                }
+                            }
+                        }
+                    }
+                    needs_redraw = true;
+                }
+            }
+            WindowEvent::CursorLeft { .. } => {
+                let mut state = self.app_state.borrow_mut();
+                if let Some(entry) = state.windows.get_mut(&wid) {
+                    entry.dom.hit_state = Default::default();
+                    needs_redraw = true;
+                }
+            }
+            WindowEvent::MouseWheel { delta, .. } => {
+                let mut state = self.app_state.borrow_mut();
+                let scroll_delta_y = match delta {
+                    winit::event::MouseScrollDelta::LineDelta(_, y) => y as f64 * 40.0,
+                    winit::event::MouseScrollDelta::PixelDelta(pos) => pos.y,
+                };
+                if let Some(entry) = state.windows.get_mut(&wid) {
+                    if event_dispatch::handle_mouse_wheel(&mut entry.dom, scroll_delta_y) {
+                        needs_redraw = true;
+                    }
+                }
+            }
+            WindowEvent::CloseRequested => {
+                let mut state = self.app_state.borrow_mut();
+                state.winit_id_to_entry_id.remove(&window_id);
+                state.windows.remove(&wid);
+                if state.windows.is_empty() {
+                    drop(state);
+                    event_loop.exit();
+                    return;
+                }
+            }
             _ => {}
         }
+
+        if needs_redraw {
+            let state = self.app_state.borrow();
+            if let Some(entry) = state.windows.get(&wid) {
+                if let Some(ref handle) = entry.handle {
+                    handle.winit_window.request_redraw();
+                }
+            }
+        }
     }
+}
+
+// Entry point
+fn main() {
+    unsafe {
+        std::env::set_var("WGPU_POWER_PREF", "high");
+    }
+
+    let tokio_runtime = tokio::runtime::Builder::new_current_thread()
+        .enable_all()
+        .build()
+        .expect("failed to create tokio runtime");
+
+    let mut args = std::env::args();
+    args.next();
+    let entry_point = args.next().expect("no entry point provided");
+    let cwd = std::env::current_dir().expect("error getting current directory");
+    let entry_path = cwd.join(entry_point);
+    let mut app = tokio_runtime
+        .block_on(async { Application::new(entry_path).expect("error creating application") });
+    app.tokio_runtime = Some(tokio_runtime);
+    app.run().expect("error running application");
 }

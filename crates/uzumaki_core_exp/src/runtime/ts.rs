@@ -24,7 +24,7 @@ use node_resolver::NodeResolution;
 use node_resolver::NodeResolutionKind;
 use node_resolver::ResolutionMode;
 
-use crate::resolver::{UzCjsTracker, UzNodeCodeTranslator, UzNodeResolver};
+use super::resolver::{UzCjsTracker, UzNodeCodeTranslator, UzNodeResolver};
 
 /// Try appending TypeScript extensions to a file URL when the path doesn't exist.
 fn try_resolve_ts(url: &ModuleSpecifier) -> Option<ModuleSpecifier> {

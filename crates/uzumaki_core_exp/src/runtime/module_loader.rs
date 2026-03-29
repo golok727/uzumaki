@@ -1,4 +1,4 @@
-use crate::resolver::UzCjsTracker;
+use super::resolver::UzCjsTracker;
 use std::borrow::Cow;
 use std::path::Path;
 use std::sync::Arc;

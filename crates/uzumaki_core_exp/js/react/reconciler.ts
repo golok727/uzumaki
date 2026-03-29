@@ -1,0 +1,848 @@
+import ReactReconciler, { type EventPriority } from 'react-reconciler';
+import { DefaultEventPriority } from 'react-reconciler/constants';
+import type { JSX } from './jsx/runtime';
+import core, { PropKey } from '../core';
+import { eventManager } from '../events';
+import { Window } from '../window';
+
+const PROP_NAME_TO_KEY: Record<string, number> = {
+  w: PropKey.W,
+  h: PropKey.H,
+  minW: PropKey.MinW,
+  minH: PropKey.MinH,
+  p: PropKey.P,
+  px: PropKey.Px,
+  py: PropKey.Py,
+  pt: PropKey.Pt,
+  pb: PropKey.Pb,
+  pl: PropKey.Pl,
+  pr: PropKey.Pr,
+  m: PropKey.M,
+  mx: PropKey.Mx,
+  my: PropKey.My,
+  mt: PropKey.Mt,
+  mb: PropKey.Mb,
+  ml: PropKey.Ml,
+  mr: PropKey.Mr,
+  flex: PropKey.Flex,
+  flexDir: PropKey.FlexDir,
+  flexGrow: PropKey.FlexGrow,
+  flexShrink: PropKey.FlexShrink,
+  items: PropKey.Items,
+  justify: PropKey.Justify,
+  gap: PropKey.Gap,
+  bg: PropKey.Bg,
+  color: PropKey.Color,
+  fontSize: PropKey.FontSize,
+  fontWeight: PropKey.FontWeight,
+  rounded: PropKey.Rounded,
+  roundedTL: PropKey.RoundedTL,
+  roundedTR: PropKey.RoundedTR,
+  roundedBR: PropKey.RoundedBR,
+  roundedBL: PropKey.RoundedBL,
+  border: PropKey.Border,
+  borderTop: PropKey.BorderTop,
+  borderRight: PropKey.BorderRight,
+  borderBottom: PropKey.BorderBottom,
+  borderLeft: PropKey.BorderLeft,
+  borderColor: PropKey.BorderColor,
+  opacity: PropKey.Opacity,
+  display: PropKey.Display,
+  cursor: PropKey.Cursor,
+  'hover:bg': PropKey.HoverBg,
+  'hover:color': PropKey.HoverColor,
+  'hover:opacity': PropKey.HoverOpacity,
+  'hover:borderColor': PropKey.HoverBorderColor,
+  'active:bg': PropKey.ActiveBg,
+  'active:color': PropKey.ActiveColor,
+  'active:opacity': PropKey.ActiveOpacity,
+  'active:borderColor': PropKey.ActiveBorderColor,
+  scrollable: PropKey.Scrollable,
+};
+
+// ── Prop type categorization ─────────────────────────────────────────
+
+const LENGTH_KEYS = new Set([PropKey.W, PropKey.H, PropKey.MinW, PropKey.MinH]);
+const COLOR_KEYS = new Set([
+  PropKey.Bg,
+  PropKey.Color,
+  PropKey.BorderColor,
+  PropKey.HoverBg,
+  PropKey.HoverColor,
+  PropKey.HoverBorderColor,
+  PropKey.ActiveBg,
+  PropKey.ActiveColor,
+  PropKey.ActiveBorderColor,
+]);
+const ENUM_KEYS = new Set([
+  PropKey.FlexDir,
+  PropKey.Items,
+  PropKey.Justify,
+  PropKey.Display,
+]);
+
+// ── Value conversion helpers ─────────────────────────────────────────
+
+function toLength(value: any): { value: number; unit: number } {
+  if (typeof value === 'number') return { value, unit: 0 };
+  const s = String(value);
+  if (s === 'auto') return { value: 0, unit: 3 };
+  if (s === 'full') return { value: 1.0, unit: 1 };
+  if (s.endsWith('rem')) return { value: parseFloat(s), unit: 2 };
+  if (s.endsWith('%')) return { value: parseFloat(s) / 100, unit: 1 };
+  return { value: parseFloat(s) || 0, unit: 0 };
+}
+
+function toColor(value: any): { r: number; g: number; b: number; a: number } {
+  if (typeof value === 'string') {
+    if (value.startsWith('#')) {
+      const hex = value.slice(1);
+      if (hex.length === 6) {
+        return {
+          r: parseInt(hex.slice(0, 2), 16),
+          g: parseInt(hex.slice(2, 4), 16),
+          b: parseInt(hex.slice(4, 6), 16),
+          a: 255,
+        };
+      }
+      if (hex.length === 8) {
+        return {
+          r: parseInt(hex.slice(0, 2), 16),
+          g: parseInt(hex.slice(2, 4), 16),
+          b: parseInt(hex.slice(4, 6), 16),
+          a: parseInt(hex.slice(6, 8), 16),
+        };
+      }
+    }
+    if (value === 'transparent') return { r: 0, g: 0, b: 0, a: 0 };
+  }
+  return { r: 255, g: 255, b: 255, a: 255 };
+}
+
+const FLEX_DIR_MAP: Record<string, number> = {
+  row: 0,
+  col: 1,
+  column: 1,
+  'row-reverse': 2,
+  'col-reverse': 3,
+  'column-reverse': 3,
+};
+
+function toEnumValue(key: number, value: any): number {
+  if (typeof value === 'number') return value;
+  const s = String(value);
+  switch (key) {
+    case PropKey.FlexDir:
+      return FLEX_DIR_MAP[s] ?? 0;
+    case PropKey.Items:
+      return (
+        ({
+          'flex-start': 0, start: 0,
+          'flex-end': 1, end: 1,
+          center: 2, stretch: 3, baseline: 4,
+        } as any)[s] ?? 3
+      );
+    case PropKey.Justify:
+      return (
+        ({
+          'flex-start': 0, start: 0,
+          'flex-end': 1, end: 1,
+          center: 2,
+          'space-between': 3, between: 3,
+          'space-around': 4, around: 4,
+          'space-evenly': 5, evenly: 5,
+        } as any)[s] ?? 0
+      );
+    case PropKey.Display:
+      return ({ none: 0, flex: 1, block: 2 } as any)[s] ?? 1;
+    default:
+      return 0;
+  }
+}
+
+function setNativeProp(
+  windowId: number,
+  nodeId: any,
+  propName: string,
+  value: any,
+): void {
+  if (propName === 'flex' && typeof value === 'string') {
+    const dir = FLEX_DIR_MAP[value];
+    if (dir !== undefined) {
+      core.setEnumProp(windowId, nodeId, PropKey.Display, 1);
+      core.setEnumProp(windowId, nodeId, PropKey.FlexDir, dir);
+      return;
+    }
+  }
+
+  const key = PROP_NAME_TO_KEY[propName];
+  if (key === undefined) return;
+
+  if (LENGTH_KEYS.has(key)) {
+    const l = toLength(value);
+    core.setLengthProp(windowId, nodeId, key, l.value, l.unit);
+  } else if (COLOR_KEYS.has(key)) {
+    const c = toColor(value);
+    core.setColorProp(windowId, nodeId, key, c.r, c.g, c.b, c.a);
+  } else if (ENUM_KEYS.has(key)) {
+    core.setEnumProp(windowId, nodeId, key, toEnumValue(key, value));
+  } else {
+    let numValue: number;
+    if (typeof value === 'boolean') {
+      numValue = value ? 1 : 0;
+    } else if (typeof value === 'number') {
+      numValue = value;
+    } else {
+      numValue = parseFloat(String(value)) || 0;
+    }
+    core.setF32Prop(windowId, nodeId, key, numValue);
+  }
+}
+
+function clearNativeProp(
+  windowId: number,
+  nodeId: any,
+  propName: string,
+): void {
+  const key = PROP_NAME_TO_KEY[propName];
+  if (key === undefined) return;
+
+  if (LENGTH_KEYS.has(key)) {
+    core.setLengthProp(windowId, nodeId, key, 0, 3);
+  } else if (COLOR_KEYS.has(key)) {
+    core.setColorProp(windowId, nodeId, key, 255, 255, 255, 255);
+  } else if (ENUM_KEYS.has(key)) {
+    core.setEnumProp(windowId, nodeId, key, 0);
+  } else {
+    core.setF32Prop(windowId, nodeId, key, 0);
+  }
+}
+
+function isEventProp(key: string): boolean {
+  return (
+    key.length >= 3 &&
+    key[0] === 'o' &&
+    key[1] === 'n' &&
+    key.charCodeAt(2) >= 65 &&
+    key.charCodeAt(2) <= 90
+  );
+}
+
+function eventPropToName(key: string): string {
+  return key.slice(2).toLowerCase();
+}
+
+// ── Element classes ──────────────────────────────────────────────────
+
+abstract class BaseElement {
+  readonly id: any;
+  readonly type: string;
+  readonly windowId: number;
+  styles: Record<string, any> = {};
+  eventListeners: Map<string, Function> = new Map();
+  children: BaseElement[] = [];
+  parent: BaseElement | null = null;
+
+  constructor(id: any, type: string, windowId: number) {
+    this.id = id;
+    this.type = type;
+    this.windowId = windowId;
+  }
+
+  applyStyles(): void {
+    for (const [key, val] of Object.entries(this.styles)) {
+      setNativeProp(this.windowId, this.id, key, val);
+    }
+  }
+
+  applyEvents(): void {
+    if (this.eventListeners.size > 0) {
+      core.setF32Prop(this.windowId, this.id, PropKey.Interactive, 1);
+      for (const [event, cb] of this.eventListeners) {
+        eventManager.addHandlerByName(this.id, event, cb);
+      }
+    }
+  }
+
+  updateStyles(newStyles: Record<string, any>): void {
+    for (const [key, val] of Object.entries(newStyles)) {
+      if (this.styles[key] !== val) {
+        setNativeProp(this.windowId, this.id, key, val);
+      }
+    }
+    for (const key of Object.keys(this.styles)) {
+      if (!(key in newStyles)) {
+        clearNativeProp(this.windowId, this.id, key);
+      }
+    }
+    this.styles = newStyles;
+  }
+
+  updateEvents(newListeners: Map<string, Function>): void {
+    for (const [event, newCb] of newListeners) {
+      const oldCb = this.eventListeners.get(event);
+      if (oldCb !== newCb) {
+        if (oldCb) eventManager.removeHandlerByName(this.id, event, oldCb);
+        eventManager.addHandlerByName(this.id, event, newCb);
+      }
+    }
+    for (const [event, cb] of this.eventListeners) {
+      if (!newListeners.has(event)) {
+        eventManager.removeHandlerByName(this.id, event, cb);
+      }
+    }
+    if (newListeners.size > 0 && this.eventListeners.size === 0) {
+      core.setF32Prop(this.windowId, this.id, PropKey.Interactive, 1);
+    } else if (newListeners.size === 0 && this.eventListeners.size > 0) {
+      core.setF32Prop(this.windowId, this.id, PropKey.Interactive, 0);
+    }
+    this.eventListeners = newListeners;
+  }
+
+  destroy(): void {
+    eventManager.clearNode(this.id);
+    this.eventListeners.clear();
+  }
+}
+
+class ViewElement extends BaseElement {
+  constructor(windowId: number, type: string, props: Record<string, any>) {
+    const id = core.createElement(windowId, type);
+    super(id, type, windowId);
+    this.parseProps(props);
+    this.applyStyles();
+    this.applyEvents();
+  }
+
+  private parseProps(props: Record<string, any>): void {
+    for (const key in props) {
+      if (key === 'children' || key === 'key' || key === 'ref') continue;
+      const value = props[key];
+      if (value == null) continue;
+      if (isEventProp(key)) {
+        this.eventListeners.set(eventPropToName(key), value);
+      } else if (PROP_NAME_TO_KEY[key] !== undefined) {
+        this.styles[key] = value;
+      }
+    }
+  }
+
+  commitUpdate(newProps: Record<string, any>): void {
+    const newStyles: Record<string, any> = {};
+    const newEvents: Map<string, Function> = new Map();
+
+    for (const key in newProps) {
+      if (key === 'children' || key === 'key' || key === 'ref') continue;
+      const value = newProps[key];
+      if (value == null) continue;
+      if (isEventProp(key)) {
+        newEvents.set(eventPropToName(key), value);
+      } else if (PROP_NAME_TO_KEY[key] !== undefined) {
+        newStyles[key] = value;
+      }
+    }
+
+    this.updateStyles(newStyles);
+    this.updateEvents(newEvents);
+  }
+}
+
+import type { InputHandle } from './useInput';
+
+const INPUT_ATTR_NAMES = new Set([
+  'value',
+  'placeholder',
+  'disabled',
+  'maxLength',
+  'multiline',
+  'secure',
+]);
+
+class InputElement extends BaseElement {
+  inputAttrs: Record<string, any> = {};
+  handle: InputHandle | null = null;
+
+  constructor(windowId: number, props: Record<string, any>) {
+    const id = core.createElement(windowId, 'input');
+    super(id, 'input', windowId);
+    this.parseProps(props);
+    this.applyStyles();
+    this.applyInputAttrs();
+    this.applyEvents();
+    this.bindHandle(props.handle);
+  }
+
+  private parseProps(props: Record<string, any>): void {
+    for (const key in props) {
+      if (key === 'children' || key === 'key' || key === 'ref' || key === 'handle')
+        continue;
+      const value = props[key];
+      if (value == null) continue;
+      if (isEventProp(key)) {
+        this.eventListeners.set(eventPropToName(key), value);
+      } else if (INPUT_ATTR_NAMES.has(key)) {
+        this.inputAttrs[key] = value;
+      } else if (PROP_NAME_TO_KEY[key] !== undefined) {
+        this.styles[key] = value;
+      }
+    }
+  }
+
+  private applyInputAttrs(): void {
+    for (const [key, val] of Object.entries(this.inputAttrs)) {
+      InputElement.setInputAttr(this.windowId, this.id, key, val);
+    }
+  }
+
+  private bindHandle(handle: InputHandle | undefined): void {
+    if (!handle || !handle.__handle) return;
+    this.handle = handle;
+    handle.__nodeId = this.id;
+    handle.__windowId = this.windowId;
+
+    const initial = (handle as any).__initialValue;
+    if (initial) {
+      core.setInputValue(this.windowId, this.id, initial);
+    }
+
+    eventManager.addHandlerByName(this.id, 'input', (ev: any) => {
+      if (this.handle?.__onChange) {
+        this.handle.__onChange(ev.value);
+      }
+    });
+    core.setF32Prop(this.windowId, this.id, PropKey.Interactive, 1);
+  }
+
+  private unbindHandle(): void {
+    if (this.handle) {
+      this.handle.__nodeId = null;
+      this.handle.__windowId = null;
+      this.handle = null;
+    }
+  }
+
+  commitUpdate(newProps: Record<string, any>): void {
+    const newStyles: Record<string, any> = {};
+    const newInputAttrs: Record<string, any> = {};
+    const newEvents: Map<string, Function> = new Map();
+
+    for (const key in newProps) {
+      if (key === 'children' || key === 'key' || key === 'ref' || key === 'handle')
+        continue;
+      const value = newProps[key];
+      if (value == null) continue;
+      if (isEventProp(key)) {
+        newEvents.set(eventPropToName(key), value);
+      } else if (INPUT_ATTR_NAMES.has(key)) {
+        newInputAttrs[key] = value;
+      } else if (PROP_NAME_TO_KEY[key] !== undefined) {
+        newStyles[key] = value;
+      }
+    }
+
+    this.updateStyles(newStyles);
+    this.updateEvents(newEvents);
+
+    const newHandle = newProps.handle;
+    if (newHandle !== this.handle) {
+      this.unbindHandle();
+      this.bindHandle(newHandle);
+    }
+
+    if (this.handle) {
+      delete newInputAttrs.value;
+    }
+
+    for (const [key, val] of Object.entries(newInputAttrs)) {
+      if (this.inputAttrs[key] !== val) {
+        InputElement.setInputAttr(this.windowId, this.id, key, val);
+      }
+    }
+    this.inputAttrs = newInputAttrs;
+  }
+
+  override destroy(): void {
+    this.unbindHandle();
+    super.destroy();
+  }
+
+  static setInputAttr(
+    windowId: number,
+    nodeId: any,
+    key: string,
+    value: any,
+  ): void {
+    switch (key) {
+      case 'value':
+        core.setInputValue(windowId, nodeId, String(value ?? ''));
+        break;
+      case 'placeholder':
+        core.setInputPlaceholder(windowId, nodeId, String(value ?? ''));
+        break;
+      case 'disabled':
+        core.setInputDisabled(windowId, nodeId, !!value);
+        break;
+      case 'maxLength':
+        core.setInputMaxLength(
+          windowId,
+          nodeId,
+          typeof value === 'number' ? value : -1,
+        );
+        break;
+      case 'multiline':
+        core.setInputMultiline(windowId, nodeId, !!value);
+        break;
+      case 'secure':
+        core.setInputSecure(windowId, nodeId, !!value);
+        break;
+    }
+  }
+}
+
+class TextElement extends BaseElement {
+  textContent: string;
+
+  constructor(
+    windowId: number,
+    type: string,
+    text: string,
+    props: Record<string, any>,
+  ) {
+    const id = core.createTextNode(windowId, text);
+    super(id, type, windowId);
+    this.textContent = text;
+    this.parseProps(props);
+    this.applyStyles();
+    this.applyEvents();
+  }
+
+  private parseProps(props: Record<string, any>): void {
+    for (const key in props) {
+      if (key === 'children' || key === 'key' || key === 'ref') continue;
+      const value = props[key];
+      if (value == null) continue;
+      if (isEventProp(key)) {
+        this.eventListeners.set(eventPropToName(key), value);
+      } else if (PROP_NAME_TO_KEY[key] !== undefined) {
+        this.styles[key] = value;
+      }
+    }
+  }
+
+  setText(text: string): void {
+    if (this.textContent !== text) {
+      this.textContent = text;
+      core.setText(this.windowId, this.id, text);
+    }
+  }
+
+  commitUpdate(
+    newProps: Record<string, any>,
+    oldChildren: any,
+    newChildren: any,
+  ): void {
+    const newStyles: Record<string, any> = {};
+    const newEvents: Map<string, Function> = new Map();
+
+    for (const key in newProps) {
+      if (key === 'children' || key === 'key' || key === 'ref') continue;
+      const value = newProps[key];
+      if (value == null) continue;
+      if (isEventProp(key)) {
+        newEvents.set(eventPropToName(key), value);
+      } else if (PROP_NAME_TO_KEY[key] !== undefined) {
+        newStyles[key] = value;
+      }
+    }
+
+    this.updateStyles(newStyles);
+    this.updateEvents(newEvents);
+
+    const newText = getTextContent(newChildren);
+    this.setText(newText);
+  }
+}
+
+// ── Helpers ──────────────────────────────────────────────────────────
+
+type Container = {
+  window: Window;
+  rootNodeId: any;
+};
+
+function getWindowId(container: Container): number {
+  return container.window.id;
+}
+
+function getTextContent(children: any): string {
+  if (children == null) return '';
+  if (Array.isArray(children)) return children.join('');
+  return String(children);
+}
+
+function isTextType(type: string): boolean {
+  return type === 'text' || type === 'p';
+}
+
+function createElementInstance(
+  type: string,
+  props: Record<string, any>,
+  windowId: number,
+): BaseElement {
+  if (type === 'input') {
+    return new InputElement(windowId, props);
+  }
+  if (isTextType(type)) {
+    return new TextElement(
+      windowId,
+      type,
+      getTextContent(props.children),
+      props,
+    );
+  }
+  return new ViewElement(windowId, type, props);
+}
+
+// ── Reconciler ───────────────────────────────────────────────────────
+
+type Type = string;
+type Props = Record<string, any>;
+type Instance = BaseElement;
+type TextInstance = TextElement;
+type SuspenseInstance = any;
+type HydratableInstance = any;
+type FormInstance = any;
+type PublicInstance = BaseElement;
+type HostContext = {};
+type ChildSet = any;
+type TimeoutHandle = ReturnType<typeof setTimeout>;
+type NoTimeout = undefined;
+type TransitionStatus = any;
+
+let currentPriority: EventPriority = DefaultEventPriority;
+let currentContainer: Container | null = null;
+
+const reconciler = ReactReconciler<
+  Type,
+  Props,
+  Container,
+  Instance,
+  TextInstance,
+  SuspenseInstance,
+  HydratableInstance,
+  FormInstance,
+  PublicInstance,
+  HostContext,
+  ChildSet,
+  TimeoutHandle,
+  NoTimeout,
+  TransitionStatus
+>({
+  supportsMutation: true,
+  supportsPersistence: false,
+
+  createInstance(type, props, rootContainer) {
+    return createElementInstance(type, props, getWindowId(rootContainer));
+  },
+
+  createTextInstance(text, rootContainer) {
+    const windowId = getWindowId(rootContainer);
+    return new TextElement(windowId, '#text', text, {});
+  },
+
+  shouldSetTextContent(type) {
+    return isTextType(type);
+  },
+
+  appendInitialChild(parent, child) {
+    parent.children.push(child);
+    child.parent = parent;
+    eventManager.setParent(child.id, parent.id);
+    core.appendChild(parent.windowId, parent.id, child.id);
+  },
+
+  finalizeInitialChildren() {
+    return false;
+  },
+
+  appendChildToContainer(container, child) {
+    const windowId = getWindowId(container);
+    child.parent = null;
+    eventManager.setParent(child.id, container.rootNodeId);
+    core.appendChild(windowId, container.rootNodeId, child.id);
+  },
+
+  appendChild(parent, child) {
+    parent.children.push(child);
+    child.parent = parent;
+    eventManager.setParent(child.id, parent.id);
+    core.appendChild(parent.windowId, parent.id, child.id);
+  },
+
+  insertBefore(parent, child, before) {
+    const idx = parent.children.indexOf(before);
+    if (idx >= 0) {
+      parent.children.splice(idx, 0, child);
+    } else {
+      parent.children.push(child);
+    }
+    child.parent = parent;
+    eventManager.setParent(child.id, parent.id);
+    core.insertBefore(parent.windowId, parent.id, child.id, before.id);
+  },
+
+  insertInContainerBefore(container, child, before) {
+    const windowId = getWindowId(container);
+    child.parent = null;
+    eventManager.setParent(child.id, container.rootNodeId);
+    core.insertBefore(windowId, container.rootNodeId, child.id, before.id);
+  },
+
+  removeChild(parent, child) {
+    const idx = parent.children.indexOf(child);
+    if (idx >= 0) parent.children.splice(idx, 1);
+    child.parent = null;
+    core.removeChild(parent.windowId, parent.id, child.id);
+    child.destroy();
+  },
+
+  removeChildFromContainer(container, child) {
+    const windowId = getWindowId(container);
+    child.parent = null;
+    core.removeChild(windowId, container.rootNodeId, child.id);
+    child.destroy();
+  },
+
+  commitUpdate(instance, type, oldProps, newProps, _internalHandle) {
+    if (instance instanceof InputElement) {
+      instance.commitUpdate(newProps);
+    } else if (instance instanceof TextElement) {
+      instance.commitUpdate(newProps, oldProps.children, newProps.children);
+    } else if (instance instanceof ViewElement) {
+      instance.commitUpdate(newProps);
+    }
+  },
+
+  commitTextUpdate(instance, oldText, newText) {
+    instance.setText(newText);
+  },
+
+  detachDeletedInstance(instance) {
+    instance.destroy();
+  },
+
+  hideInstance(instance) {
+    core.setF32Prop(instance.windowId, instance.id, PropKey.Visible, 0);
+  },
+
+  unhideInstance(instance) {
+    core.setF32Prop(instance.windowId, instance.id, PropKey.Visible, 1);
+  },
+
+  hideTextInstance(instance) {
+    core.setF32Prop(instance.windowId, instance.id, PropKey.Visible, 0);
+  },
+
+  unhideTextInstance(instance) {
+    core.setF32Prop(instance.windowId, instance.id, PropKey.Visible, 1);
+  },
+
+  resetTextContent(instance) {
+    core.setText(instance.windowId, instance.id, '');
+  },
+
+  clearContainer(container) {
+    console.log('[reconciler]: clear container');
+  },
+
+  getRootHostContext: () => ({}),
+  getChildHostContext: (parentHostContext) => parentHostContext,
+  getPublicInstance: (instance) => instance,
+
+  prepareForCommit(container) {
+    currentContainer = container;
+    return null;
+  },
+
+  resetAfterCommit(container) {
+    core.requestRedraw(container.window.id);
+    currentContainer = null;
+  },
+
+  preparePortalMount: () => {},
+  scheduleTimeout: (fn, delay) => setTimeout(fn, delay),
+  cancelTimeout: (id) => clearTimeout(id),
+  noTimeout: undefined,
+  isPrimaryRenderer: true,
+  getInstanceFromNode: () => null,
+  beforeActiveInstanceBlur: () => {},
+  afterActiveInstanceBlur: () => {},
+  prepareScopeUpdate: () => {},
+  getInstanceFromScope: () => null,
+  supportsHydration: false,
+  NotPendingTransition: undefined,
+  HostTransitionContext: {
+    $$typeof: Symbol.for('react.context'),
+    _currentValue: null,
+    _currentValue2: null,
+  } as any,
+  setCurrentUpdatePriority: (newPriority) => {
+    currentPriority = newPriority;
+  },
+  getCurrentUpdatePriority: () => currentPriority,
+  resolveUpdatePriority: () => DefaultEventPriority,
+  resetFormInstance: () => {},
+  requestPostPaintCallback: () => {},
+  shouldAttemptEagerTransition: () => false,
+  trackSchedulerEvent: () => {},
+  resolveEventType: () => null,
+  resolveEventTimeStamp: () => Date.now(),
+  maySuspendCommit: () => false,
+  preloadInstance: () => false,
+  startSuspendingCommit: () => false,
+  suspendInstance: () => {},
+  waitForCommitToBeReady: () => null,
+});
+
+// ── Public API ───────────────────────────────────────────────────────
+
+const roots = new Map<string, { root: any; container: Container }>();
+
+export function render(window: Window, element: JSX.Element) {
+  const rootNodeId = core.getRootNodeId(window.id);
+  const container: Container = { window, rootNodeId };
+
+  eventManager.setParent(rootNodeId, window.eventId);
+
+  const root = reconciler.createContainer(
+    container,
+    1,
+    null,
+    false,
+    null,
+    '',
+    console.error,
+    console.error,
+    console.error,
+    () => {},
+  );
+
+  roots.set(window.label, { root, container });
+  reconciler.updateContainer(element, root, null, null);
+
+  return {
+    dispose: () => {
+      reconciler.updateContainer(null, root, null, null);
+      eventManager.removeParent(rootNodeId);
+      roots.delete(window.label);
+    },
+  };
+}
+
+export function disposeAllRoots() {
+  roots.clear();
+}
+
+export function clearEventRegistry() {
+  eventManager.clear();
+}

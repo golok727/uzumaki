@@ -1,8 +1,8 @@
 use deno_resolver::npm::{DenoInNpmPackageChecker, NpmResolver};
 use node_resolver::DenoIsBuiltInNodeModuleChecker;
 
-use crate::module_loader::UzCjsCodeAnalyzer;
-use crate::sys::UzSys;
+use super::module_loader::UzCjsCodeAnalyzer;
+use super::sys::UzSys;
 
 pub type UzCjsTracker = deno_resolver::cjs::CjsTracker<DenoInNpmPackageChecker, UzSys>;
 
