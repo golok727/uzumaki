@@ -1,5 +1,5 @@
 import ReactReconciler, { type EventPriority } from 'react-reconciler';
-import { DefaultEventPriority } from 'react-reconciler/constants';
+import { DefaultEventPriority } from 'react-reconciler/constants.js'; // fixme our runtime doesnt do probing for imports
 import type { JSX } from './jsx/runtime';
 import core, { PropKey } from '../core';
 import { eventManager } from '../events';
@@ -769,15 +769,15 @@ const reconciler = ReactReconciler<
     currentContainer = null;
   },
 
-  preparePortalMount: () => {},
+  preparePortalMount: () => { },
   scheduleTimeout: (fn, delay) => setTimeout(fn, delay),
   cancelTimeout: (id) => clearTimeout(id),
   noTimeout: undefined,
   isPrimaryRenderer: true,
   getInstanceFromNode: () => null,
-  beforeActiveInstanceBlur: () => {},
-  afterActiveInstanceBlur: () => {},
-  prepareScopeUpdate: () => {},
+  beforeActiveInstanceBlur: () => { },
+  afterActiveInstanceBlur: () => { },
+  prepareScopeUpdate: () => { },
   getInstanceFromScope: () => null,
   supportsHydration: false,
   NotPendingTransition: undefined,
@@ -791,16 +791,16 @@ const reconciler = ReactReconciler<
   },
   getCurrentUpdatePriority: () => currentPriority,
   resolveUpdatePriority: () => DefaultEventPriority,
-  resetFormInstance: () => {},
-  requestPostPaintCallback: () => {},
+  resetFormInstance: () => { },
+  requestPostPaintCallback: () => { },
   shouldAttemptEagerTransition: () => false,
-  trackSchedulerEvent: () => {},
+  trackSchedulerEvent: () => { },
   resolveEventType: () => null,
   resolveEventTimeStamp: () => Date.now(),
   maySuspendCommit: () => false,
   preloadInstance: () => false,
   startSuspendingCommit: () => false,
-  suspendInstance: () => {},
+  suspendInstance: () => { },
   waitForCommitToBeReady: () => null,
 });
 
@@ -824,7 +824,7 @@ export function render(window: Window, element: JSX.Element) {
     console.error,
     console.error,
     console.error,
-    () => {},
+    () => { },
   );
 
   roots.set(window.label, { root, container });

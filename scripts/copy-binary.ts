@@ -7,7 +7,7 @@ import { $ } from 'bun';
 const is_release = process.argv.includes('--release');
 
 const binary_name = 'uzumaki';
-const core_folder_name = 'uzumaki_core_exp';
+const core_folder_name = 'uzumaki';
 
 const workspace_root = path.resolve(
   path.basename(fileURLToPath(import.meta.url)),

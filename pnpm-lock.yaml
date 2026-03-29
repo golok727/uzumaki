@@ -19,7 +19,7 @@ importers:
         specifier: ^3.8.1
         version: 3.8.1
 
-  crates/uzumaki_core_exp:
+  crates/uzumaki:
     dependencies:
       react:
         specifier: ^19.2.4
@@ -35,7 +35,7 @@ importers:
         specifier: ^0.33.0
         version: 0.33.0(@types/react@19.2.14)
 
-  packages/playground-exp:
+  packages/playground:
     dependencies:
       react:
         specifier: ^19.2.4
@@ -45,7 +45,7 @@ importers:
         version: 5.9.3
       uzumaki-ui:
         specifier: workspace:*
-        version: link:../../crates/uzumaki_core_exp
+        version: link:../../crates/uzumaki
     devDependencies:
       '@types/react':
         specifier: ^19.2.14
