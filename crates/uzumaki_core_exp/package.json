@@ -2,7 +2,7 @@
   "name": "uzumaki-ui-exp",
   "type": "module",
   "bin": {
-    "uzumaki": "./bin/uzumaki_core_exp.exe"
+    "uzumaki": "./bin/uzumaki_core.exe"
   },
   "devDependencies": {
     "@types/react": "^19.2.14",
