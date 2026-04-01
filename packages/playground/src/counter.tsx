@@ -20,7 +20,7 @@ export function App() {
 
       <Button
         onClick={(ev) => {
-          console.log('counter click');
+          // console.log('counter click');
           setCount((c) => c + 1);
         }}
       >

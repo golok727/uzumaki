@@ -324,7 +324,7 @@ function TextSelectDemo() {
     >
       <text fontSize={25}>Selectable text</text>
       <p>
-        Unlike a ghost or a slasher, the spiral is an inevitable mathematical
+        Unlike a ghost or a slasher, the spiral 🌀 is an inevitable mathematical
         force.
       </p>
       <p>

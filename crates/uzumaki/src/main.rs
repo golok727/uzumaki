@@ -854,10 +854,7 @@ pub fn op_get_ancestor_path(
 
 #[op2]
 #[serde]
-pub fn op_get_selection(
-    state: &mut OpState,
-    #[smi] window_id: u32,
-) -> serde_json::Value {
+pub fn op_get_selection(state: &mut OpState, #[smi] window_id: u32) -> serde_json::Value {
     let app_state = state.borrow::<SharedAppState>().clone();
     with_state(&app_state, |s| {
         let entry = s.windows.get(&window_id).expect("window not found");
@@ -1240,6 +1237,7 @@ impl ApplicationHandler<UserEvent> for Application {
                     eprintln!("Failed to create window");
                     return;
                 };
+                winit_window.set_ime_allowed(true);
 
                 let winit_window = Arc::new(winit_window);
                 let winit_id = winit_window.id();
@@ -1477,6 +1475,10 @@ impl ApplicationHandler<UserEvent> for Application {
                     }
                     needs_redraw = true;
                 }
+            }
+            WindowEvent::Ime(_ime) => {
+                // todo (aadi): do this next
+                // println!("IME EVENT: {:#?}", ime);
             }
             WindowEvent::CursorLeft { .. } => {
                 let mut state = self.app_state.borrow_mut();
