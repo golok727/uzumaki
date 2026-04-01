@@ -1,10 +1,13 @@
+use std::collections::HashMap;
+
 use cosmic_text::Attrs;
 use slotmap::{SlotMap, new_key_type};
+use unicode_segmentation::UnicodeSegmentation;
 use vello::Scene;
 use vello::kurbo::{Affine, Rect, RoundedRect, RoundedRectRadii};
 use vello::peniko::{Color as VelloColor, Fill};
 
-use crate::elements::input::InputRenderInfo;
+use crate::elements::input::{InputRenderInfo, compute_selection_rects};
 use crate::input::InputState;
 use crate::interactivity::{HitTestState, HitboxStore, Interactivity};
 use crate::style::{Bounds, Color, Style};
@@ -49,6 +52,65 @@ pub struct ScrollThumbRect {
 #[derive(Clone, Debug)]
 pub struct TextContent {
     pub content: String,
+}
+
+// ── Inherited properties ─────────────────────────────────────────────
+// General-purpose mechanism for properties that propagate from parent to child
+// unless explicitly overridden. Designed for extension — future inheritable
+// properties (font color, font size, line height, etc.) go here.
+
+#[derive(Clone, Debug)]
+pub struct InheritedProperties {
+    pub text_select: bool,
+}
+
+impl Default for InheritedProperties {
+    fn default() -> Self {
+        Self {
+            text_select: false,
+        }
+    }
+}
+
+// ── View text selection ──────────────────────────────────────────────
+
+/// One text node's contribution to a textSelect run.
+pub struct TextRunEntry {
+    pub node_id: NodeId,
+    /// Start grapheme index of this node in the flat run.
+    pub flat_start: usize,
+    pub grapheme_count: usize,
+}
+
+/// The complete text run for a textSelect subtree.
+/// Built each frame; maps between flat grapheme offsets and per-node positions.
+pub struct TextSelectRun {
+    pub root_id: NodeId,
+    pub entries: Vec<TextRunEntry>,
+    pub flat_text: String,
+    pub total_graphemes: usize,
+}
+
+/// Selection state for text within a textSelect view.
+pub struct ViewSelection {
+    /// The textSelect root that owns this selection.
+    pub root: NodeId,
+    /// Flat grapheme offset where selection started.
+    pub anchor: usize,
+    /// Flat grapheme offset where selection currently ends.
+    pub active: usize,
+}
+
+impl ViewSelection {
+    pub fn start(&self) -> usize {
+        self.anchor.min(self.active)
+    }
+    pub fn end(&self) -> usize {
+        self.anchor.max(self.active)
+    }
+    pub fn is_collapsed(&self) -> bool {
+        self.anchor == self.active
+    }
 }
 
 // ── Element trait ──────────────────────────────────────────────────────
@@ -142,6 +204,9 @@ pub struct Node {
     pub interactivity: Interactivity,
     /// Scroll state, present only when overflow_y == Scroll.
     pub scroll_state: Option<ScrollState>,
+    /// Whether text within this element is selectable.
+    /// None = inherit from parent (default). Some(true) = selectable, Some(false) = not.
+    pub text_select: Option<bool>,
 }
 
 pub struct Dom {
@@ -172,6 +237,12 @@ pub struct Dom {
     /// Scroll lock: when scrolling starts, lock to that node for a short duration
     /// to prevent inner scrollable views from stealing wheel events mid-scroll.
     pub scroll_lock: Option<(NodeId, std::time::Instant)>,
+    /// Current text selection within a textSelect view.
+    pub view_selection: Option<ViewSelection>,
+    /// textSelect root being dragged for selection.
+    pub dragging_view_selection: Option<NodeId>,
+    /// Text runs for textSelect subtrees, rebuilt each frame.
+    pub text_select_runs: Vec<TextSelectRun>,
 }
 
 // Safety:  We only access it from main thread
@@ -195,6 +266,9 @@ impl Dom {
             scroll_thumbs: Vec::new(),
             scroll_drag: None,
             scroll_lock: None,
+            view_selection: None,
+            dragging_view_selection: None,
+            text_select_runs: Vec::new(),
         }
     }
 
@@ -235,6 +309,7 @@ impl Dom {
             style,
             interactivity: Interactivity::new(),
             scroll_state: None,
+            text_select: None,
         });
         self.taffy
             .set_node_context(
@@ -271,6 +346,7 @@ impl Dom {
             style,
             interactivity: Interactivity::new(),
             scroll_state: None,
+            text_select: None,
         });
         self.taffy
             .set_node_context(
@@ -302,6 +378,7 @@ impl Dom {
             style,
             interactivity: Interactivity::new(),
             scroll_state: None,
+            text_select: None,
         });
         self.taffy
             .set_node_context(
@@ -525,6 +602,7 @@ impl Dom {
     pub fn render(&mut self, scene: &mut Scene, text_renderer: &mut TextRenderer, scale: f64) {
         self.hitbox_store.clear();
         self.scroll_thumbs.clear();
+        self.build_text_select_runs();
 
         if let Some(root) = self.root {
             self.render_tree(scene, text_renderer, root, scale);
@@ -573,14 +651,22 @@ impl Dom {
         }
 
         enum StackItem {
-            Visit(NodeId, f64, f64),
+            Visit(NodeId, f64, f64, InheritedProperties),
             PushClip(Rect, f64),
             PopClip,
             PaintThumb(ThumbInfo),
         }
 
+        // Pre-compute per-node selection ranges for text selection painting
+        let text_sel_map = self.compute_text_selections_map();
+
         let mut render_list: Vec<RenderCommand> = Vec::new();
-        let mut stack: Vec<StackItem> = vec![StackItem::Visit(root_id, 0.0, 0.0)];
+        let mut stack: Vec<StackItem> = vec![StackItem::Visit(
+            root_id,
+            0.0,
+            0.0,
+            InheritedProperties::default(),
+        )];
 
         while let Some(item) = stack.pop() {
             match item {
@@ -596,7 +682,7 @@ impl Dom {
                     render_list.push(RenderCommand::PaintThumb(info));
                     continue;
                 }
-                StackItem::Visit(node_id, parent_x, parent_y) => {
+                StackItem::Visit(node_id, parent_x, parent_y, parent_inherited) => {
                     // Extract all needed data from the node (immutable borrow scope)
                     let (
                         taffy_node,
@@ -606,8 +692,16 @@ impl Dom {
                         needs_hitbox,
                         is_scrollable,
                         first_child,
+                        inherited,
                     ) = {
                         let node = &self.nodes[node_id];
+
+                        // Resolve inherited properties
+                        let mut inherited = parent_inherited.clone();
+                        if let Some(ts) = node.text_select {
+                            inherited.text_select = ts;
+                        }
+
                         let taffy_node = node.taffy_node;
                         let computed_style = node
                             .interactivity
@@ -636,7 +730,9 @@ impl Dom {
                             multiline: is.multiline,
                         });
 
-                        let needs_hitbox = node.interactivity.needs_hitbox();
+                        // Text nodes inside textSelect views need hitboxes for click-to-select
+                        let text_selectable = inherited.text_select && node.behavior.is_text();
+                        let needs_hitbox = node.interactivity.needs_hitbox() || text_selectable;
                         let is_scrollable = node.scroll_state.is_some();
                         let first_child = node.first_child;
 
@@ -648,6 +744,7 @@ impl Dom {
                             needs_hitbox,
                             is_scrollable,
                             first_child,
+                            inherited,
                         )
                     };
                     // immutable borrow of self.nodes is now dropped
@@ -735,7 +832,12 @@ impl Dom {
                         stack.push(StackItem::PopClip);
                         // 4-3. Children (reversed for correct order)
                         for &child_id in children.iter().rev() {
-                            stack.push(StackItem::Visit(child_id, x, y - clamped_offset as f64));
+                            stack.push(StackItem::Visit(
+                                child_id,
+                                x,
+                                y - clamped_offset as f64,
+                                inherited.clone(),
+                            ));
                         }
                         // 2. PushClip
                         let clip_rect = Rect::new(x, y, x + w, y + h);
@@ -743,7 +845,7 @@ impl Dom {
                     } else {
                         // Normal (non-scrollable) node: push children
                         for &child_id in children.iter().rev() {
-                            stack.push(StackItem::Visit(child_id, x, y));
+                            stack.push(StackItem::Visit(child_id, x, y, inherited.clone()));
                         }
                     }
 
@@ -868,16 +970,65 @@ impl Dom {
                             }
                         }
                     } else if let Some((content, font_size, color)) = &info.text {
-                        crate::elements::text::paint_text(
-                            scene,
-                            text_renderer,
-                            bounds,
-                            &info.style,
-                            content,
-                            *font_size,
-                            *color,
-                            scale,
-                        );
+                        let sel_range = text_sel_map.get(&info.node_id).copied();
+                        if sel_range.is_some() {
+                            // Text node with active selection: paint selection
+                            // highlight between background and text glyphs.
+                            info.style.paint(bounds, scene, scale, |scene| {
+                                if let Some((sel_start, sel_end)) = sel_range {
+                                    let positions = text_renderer.grapheme_positions_2d(
+                                        content,
+                                        *font_size,
+                                        Some(bounds.width as f32),
+                                    );
+                                    let line_height = (*font_size * 1.2).round();
+                                    let rects = compute_selection_rects(
+                                        &positions,
+                                        sel_start,
+                                        sel_end,
+                                        bounds.width,
+                                        line_height as f64,
+                                    );
+                                    let sel_color = VelloColor::from_rgba8(56, 121, 185, 128);
+                                    for [x1, y1, x2, y2] in rects {
+                                        scene.fill(
+                                            Fill::NonZero,
+                                            Affine::scale(scale),
+                                            sel_color,
+                                            None,
+                                            &Rect::new(
+                                                bounds.x + x1,
+                                                bounds.y + y1,
+                                                bounds.x + x2,
+                                                bounds.y + y2,
+                                            ),
+                                        );
+                                    }
+                                }
+                                text_renderer.draw_text(
+                                    scene,
+                                    content,
+                                    Attrs::new(),
+                                    *font_size,
+                                    bounds.width as f32,
+                                    bounds.height as f32,
+                                    (bounds.x as f32, bounds.y as f32),
+                                    color.to_vello(),
+                                    scale,
+                                );
+                            });
+                        } else {
+                            crate::elements::text::paint_text(
+                                scene,
+                                text_renderer,
+                                bounds,
+                                &info.style,
+                                content,
+                                *font_size,
+                                *color,
+                                scale,
+                            );
+                        }
                     } else {
                         crate::elements::view::paint_view(
                             scene,
@@ -1054,6 +1205,181 @@ impl Dom {
                 }
             }
         }
+    }
+
+    // ── Text selection ──────────────────────────────────────────────
+
+    /// Build text runs for all textSelect subtrees. Called each frame before render.
+    pub fn build_text_select_runs(&mut self) {
+        self.text_select_runs.clear();
+        let Some(root) = self.root else { return };
+
+        // DFS: (node_id, parent_resolved_text_select, current_run_index_or_none)
+        let mut stack: Vec<(NodeId, bool, Option<usize>)> = vec![(root, false, None)];
+
+        while let Some((node_id, parent_ts, run_idx)) = stack.pop() {
+            let node = &self.nodes[node_id];
+            let resolved_ts = node.text_select.unwrap_or(parent_ts);
+
+            // A node that explicitly enables textSelect when the parent scope
+            // doesn't have it starts a new selection scope.
+            let current_run = if resolved_ts && run_idx.is_none() {
+                let idx = self.text_select_runs.len();
+                self.text_select_runs.push(TextSelectRun {
+                    root_id: node_id,
+                    entries: Vec::new(),
+                    flat_text: String::new(),
+                    total_graphemes: 0,
+                });
+                Some(idx)
+            } else if resolved_ts {
+                run_idx
+            } else {
+                None
+            };
+
+            // Add text nodes to the current run
+            if let Some(tc) = node.behavior.as_text() {
+                if let Some(idx) = current_run {
+                    let gc = tc.content.graphemes(true).count();
+                    let run = &mut self.text_select_runs[idx];
+                    run.entries.push(TextRunEntry {
+                        node_id,
+                        flat_start: run.total_graphemes,
+                        grapheme_count: gc,
+                    });
+                    run.flat_text.push_str(&tc.content);
+                    run.total_graphemes += gc;
+                }
+            }
+
+            // Push children in reverse order for correct DFS traversal
+            let mut children = Vec::new();
+            let mut child = node.first_child;
+            while let Some(cid) = child {
+                children.push(cid);
+                child = self.nodes[cid].next_sibling;
+            }
+            for &cid in children.iter().rev() {
+                stack.push((cid, resolved_ts, current_run));
+            }
+        }
+    }
+
+    /// Pre-compute per-text-node selection ranges for the current frame.
+    /// Returns a map from NodeId → (local_sel_start, local_sel_end) in grapheme units.
+    fn compute_text_selections_map(&self) -> HashMap<NodeId, (usize, usize)> {
+        let mut map = HashMap::new();
+        let Some(sel) = &self.view_selection else {
+            return map;
+        };
+        if sel.is_collapsed() {
+            return map;
+        }
+        let Some(run) = self.text_select_runs.iter().find(|r| r.root_id == sel.root) else {
+            return map;
+        };
+        let sel_start = sel.start();
+        let sel_end = sel.end();
+        for entry in &run.entries {
+            let entry_end = entry.flat_start + entry.grapheme_count;
+            let local_start = sel_start.max(entry.flat_start);
+            let local_end = sel_end.min(entry_end);
+            if local_start < local_end {
+                map.insert(
+                    entry.node_id,
+                    (local_start - entry.flat_start, local_end - entry.flat_start),
+                );
+            }
+        }
+        map
+    }
+
+    /// Find the text run that contains a given text node.
+    pub fn find_run_for_node(&self, node_id: NodeId) -> Option<&TextSelectRun> {
+        self.text_select_runs
+            .iter()
+            .find(|run| run.entries.iter().any(|e| e.node_id == node_id))
+    }
+
+    /// Find the text run entry for a given text node.
+    pub fn find_run_entry_for_node(&self, node_id: NodeId) -> Option<(&TextSelectRun, &TextRunEntry)> {
+        for run in &self.text_select_runs {
+            for entry in &run.entries {
+                if entry.node_id == node_id {
+                    return Some((run, entry));
+                }
+            }
+        }
+        None
+    }
+
+    /// Check whether a node is a text node inside an active textSelect scope.
+    pub fn is_text_selectable(&self, node_id: NodeId) -> bool {
+        self.text_select_runs
+            .iter()
+            .any(|run| run.entries.iter().any(|e| e.node_id == node_id))
+    }
+
+    // ── Selection query API ─────────────────────────────────────────
+    // Designed for clipboard and text editor consumers.
+
+    /// Get the currently selected text content within a textSelect view.
+    pub fn view_selected_text(&self) -> String {
+        let Some(sel) = &self.view_selection else {
+            return String::new();
+        };
+        if sel.is_collapsed() {
+            return String::new();
+        }
+        let Some(run) = self.text_select_runs.iter().find(|r| r.root_id == sel.root) else {
+            return String::new();
+        };
+        let start = sel.start();
+        let end = sel.end();
+        run.flat_text
+            .graphemes(true)
+            .skip(start)
+            .take(end - start)
+            .collect::<String>()
+    }
+
+    /// Get the current view selection range as flat grapheme offsets.
+    /// Returns (start, end) where start <= end.
+    pub fn view_selection_range(&self) -> Option<(usize, usize)> {
+        let sel = self.view_selection.as_ref()?;
+        if sel.is_collapsed() {
+            return None;
+        }
+        Some((sel.start(), sel.end()))
+    }
+
+    /// Get the full selection state: root node, anchor, and active offsets.
+    /// Useful for text editors that need to know the direction of selection.
+    pub fn view_selection_state(&self) -> Option<(NodeId, usize, usize)> {
+        let sel = self.view_selection.as_ref()?;
+        Some((sel.root, sel.anchor, sel.active))
+    }
+
+    /// Get the total grapheme count in the text run containing the current selection.
+    pub fn view_selection_run_length(&self) -> Option<usize> {
+        let sel = self.view_selection.as_ref()?;
+        let run = self.text_select_runs.iter().find(|r| r.root_id == sel.root)?;
+        Some(run.total_graphemes)
+    }
+
+    /// Set the view selection programmatically.
+    pub fn set_view_selection(&mut self, root: NodeId, anchor: usize, active: usize) {
+        self.view_selection = Some(ViewSelection {
+            root,
+            anchor,
+            active,
+        });
+    }
+
+    /// Clear the view selection.
+    pub fn clear_view_selection(&mut self) {
+        self.view_selection = None;
     }
 }
 

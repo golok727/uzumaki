@@ -53,6 +53,7 @@ interface ElementStyles {
   cursor?: string;
   display?: 'flex' | 'none' | 'block';
   scrollable?: boolean;
+  textSelect?: boolean;
 }
 
 type PrefixedStyles<Prefix extends string> = {

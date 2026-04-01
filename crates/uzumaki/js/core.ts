@@ -55,6 +55,7 @@ export const enum PropKey {
   Scrollable = 51,
   MinW = 52,
   MinH = 53,
+  TextSelect = 54,
 }
 
 interface Core {
@@ -123,6 +124,27 @@ interface Core {
   getWindowHeight(windowId: number): number | null;
   getWindowTitle(windowId: number): string | null;
   getAncestorPath(windowId: number, nodeId: NodeId): any[]; // returns NodeId[]
+  getSelection(windowId: number): SelectionState | null;
+  getSelectedText(windowId: number): string;
+}
+
+export interface SelectionState {
+  /** The textSelect root node that owns this selection. */
+  rootNodeId: NodeId;
+  /** Flat grapheme offset where selection started (drag origin). */
+  anchorOffset: number;
+  /** Flat grapheme offset where selection currently ends (cursor). */
+  activeOffset: number;
+  /** Start offset (min of anchor and active). */
+  start: number;
+  /** End offset (max of anchor and active). */
+  end: number;
+  /** Total grapheme count in the selectable run. */
+  runLength: number;
+  /** Whether the selection is collapsed (anchor == active). */
+  isCollapsed: boolean;
+  /** The selected text content. */
+  text: string;
 }
 
 const core: Core = (globalThis as unknown as any)

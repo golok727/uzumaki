@@ -303,6 +303,34 @@ function Dashboard() {
 
       {/* Input demo */}
       <InputDemo />
+
+      <TextSelectDemo />
+    </view>
+  );
+}
+
+function TextSelectDemo() {
+  return (
+    <view
+      textSelect
+      display="flex"
+      flexDir="col"
+      p="16"
+      gap="12"
+      bg={PANEL}
+      rounded="8"
+      borderColor={BORDER}
+      border="1"
+    >
+      <text fontSize={25}>Selectable text</text>
+      <p>
+        Unlike a ghost or a slasher, the spiral is an inevitable mathematical
+        force.
+      </p>
+      <p>
+        Ito takes the Fibonacci sequence—usually a symbol of natural beauty—and
+        turns it into a curse of obsession.
+      </p>
     </view>
   );
 }
