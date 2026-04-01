@@ -541,6 +541,9 @@ pub fn handle_mouse_input(
                 if clicked_is_input {
                     let nid = js_target.unwrap();
 
+                    // Clicking an input clears any active view text selection
+                    dom.view_selection = None;
+
                     // Multi-click detection (double=word, triple=line, quad=select all)
                     let now = std::time::Instant::now();
                     let is_consecutive = dom.last_click_node == Some(nid)
@@ -706,6 +709,19 @@ pub fn handle_mouse_input(
 
                     if clicked_text_selectable {
                         let nid = js_target.unwrap();
+
+                        // Starting a view selection blurs any focused input
+                        if let Some(old_id) = dom.focused_node.take() {
+                            if let Some(old_node) = dom.nodes.get_mut(old_id) {
+                                if let Some(is) = old_node.behavior.as_input_mut() {
+                                    is.focused = false;
+                                }
+                            }
+                            events.push(AppEvent::Blur(FocusEventData {
+                                window_id: wid,
+                                node_id: old_id,
+                            }));
+                        }
 
                         // Find the run this text node belongs to
                         if let Some((run_root, flat_idx)) = {

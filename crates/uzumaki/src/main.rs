@@ -1438,6 +1438,22 @@ impl ApplicationHandler<UserEvent> for Application {
                                 self.dispatch_event_to_js(&event);
                             }
                         }
+
+                        // Handle view text selection shortcuts (only when no input is focused)
+                        {
+                            let mut state = self.app_state.borrow_mut();
+                            if let Some(entry) = state.windows.get_mut(&wid) {
+                                if entry.dom.focused_node.is_none() {
+                                    if event_dispatch::handle_key_for_view_selection(
+                                        &mut entry.dom,
+                                        &key_event,
+                                        modifiers,
+                                    ) {
+                                        needs_redraw = true;
+                                    }
+                                }
+                            }
+                        }
                     }
                 }
             }
