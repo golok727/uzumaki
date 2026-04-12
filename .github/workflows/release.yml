@@ -26,11 +26,11 @@ jobs:
             binary: uzumaki.exe
             platform-id: win32-x64
           - name: macos-x64
-            runner: macos-13
+            runner: macos-15-intel
             binary: uzumaki
             platform-id: darwin-x64
           - name: macos-arm64
-            runner: macos-latest
+            runner: macos-14
             binary: uzumaki
             platform-id: darwin-arm64
 

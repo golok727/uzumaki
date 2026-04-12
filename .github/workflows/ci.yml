@@ -50,9 +50,9 @@ jobs:
           - name: windows-x64
             runner: windows-latest
           - name: macos-x64
-            runner: macos-13
+            runner: macos-15-intel
           - name: macos-arm64
-            runner: macos-latest
+            runner: macos-14
 
     steps:
       - uses: actions/checkout@v4
