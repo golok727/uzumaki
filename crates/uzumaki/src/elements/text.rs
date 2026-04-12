@@ -5,6 +5,7 @@ use crate::style::{Bounds, Color, Style};
 use crate::text::TextRenderer;
 
 /// Paint a text element: background/borders from style, then text content.
+#[allow(clippy::too_many_arguments)]
 pub fn paint_text(
     scene: &mut Scene,
     text_renderer: &mut TextRenderer,

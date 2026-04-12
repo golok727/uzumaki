@@ -149,8 +149,8 @@ pub(crate) fn compute_selection_rects(
 
     // Collect unique visual line y-values within the selection range
     let mut line_ys: Vec<f32> = Vec::new();
-    for i in sel_start..=sel_end_idx {
-        let y = positions[i].y;
+    for pos in &positions[sel_start..=sel_end_idx] {
+        let y = pos.y;
         if line_ys.last().is_none_or(|&ly| (y - ly).abs() > 1.0) {
             line_ys.push(y);
         }
@@ -200,6 +200,7 @@ pub(crate) fn compute_selection_rects(
 
 // ── Multiline input rendering ────────────────────────────────────────
 
+#[allow(clippy::too_many_arguments)]
 fn paint_multiline(
     scene: &mut Scene,
     text_renderer: &mut TextRenderer,
@@ -296,6 +297,7 @@ fn paint_multiline(
     }
 }
 
+#[allow(clippy::too_many_arguments)]
 fn paint_multiline_selection(
     scene: &mut Scene,
     positions: &[GlyphPos2D],
@@ -335,6 +337,7 @@ fn paint_multiline_selection(
 
 // ── Single-line input rendering ──────────────────────────────────────
 
+#[allow(clippy::too_many_arguments)]
 fn paint_singleline(
     scene: &mut Scene,
     text_renderer: &mut TextRenderer,

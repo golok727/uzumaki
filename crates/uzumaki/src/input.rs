@@ -1310,8 +1310,10 @@ mod tests {
 
     #[test]
     fn integration_multiline_editing() {
-        let mut is = InputState::default();
-        is.multiline = true;
+        let mut is = InputState {
+            multiline: true,
+            ..Default::default()
+        };
         is.insert_text("line1\nline2\nline3");
         assert_eq!(is.model.text(), "line1\nline2\nline3");
         assert_eq!(is.model.line_count(), 3);
@@ -1354,8 +1356,10 @@ mod tests {
     /// Type "hello world", press Enter to split into two lines, verify content.
     #[test]
     fn should_split_line_on_enter() {
-        let mut is = InputState::default();
-        is.multiline = true;
+        let mut is = InputState {
+            multiline: true,
+            ..Default::default()
+        };
 
         // Type "hello world"
         is.insert_text("hello world");
@@ -1376,8 +1380,10 @@ mod tests {
     /// Type on line 1, Enter, type on line 2, move up, insert text on line 1.
     #[test]
     fn should_type_enter_move_up_and_insert() {
-        let mut is = InputState::default();
-        is.multiline = true;
+        let mut is = InputState {
+            multiline: true,
+            ..Default::default()
+        };
 
         is.insert_text("aaa");
         is.insert_text("\n");
@@ -1399,8 +1405,10 @@ mod tests {
     /// Type two lines, move up, move left twice, insert a character mid-line.
     #[test]
     fn should_move_up_left_and_insert_mid_line() {
-        let mut is = InputState::default();
-        is.multiline = true;
+        let mut is = InputState {
+            multiline: true,
+            ..Default::default()
+        };
 
         is.insert_text("abcd\nefgh");
         assert_eq!(is.cursor_rowcol(), (1, 4));
@@ -1424,8 +1432,10 @@ mod tests {
     /// Split a line in the middle: "helloworld" → Enter at pos 5 → "hello\nworld".
     #[test]
     fn should_split_line_in_middle_and_continue_typing() {
-        let mut is = InputState::default();
-        is.multiline = true;
+        let mut is = InputState {
+            multiline: true,
+            ..Default::default()
+        };
 
         is.insert_text("helloworld");
         is.move_to(5, false);
@@ -1444,8 +1454,10 @@ mod tests {
     /// Join two lines by pressing Backspace at the start of line 2.
     #[test]
     fn should_join_lines_with_backspace() {
-        let mut is = InputState::default();
-        is.multiline = true;
+        let mut is = InputState {
+            multiline: true,
+            ..Default::default()
+        };
 
         is.insert_text("hello\nworld");
         assert_eq!(is.model.line_count(), 2);
@@ -1464,8 +1476,10 @@ mod tests {
     /// Type three lines, navigate up/down, delete and re-type.
     #[test]
     fn should_navigate_up_delete_and_retype_line() {
-        let mut is = InputState::default();
-        is.multiline = true;
+        let mut is = InputState {
+            multiline: true,
+            ..Default::default()
+        };
 
         is.insert_text("first");
         is.insert_text("\n");
@@ -1505,8 +1519,10 @@ mod tests {
     /// Type text, use Home/End to navigate, then edit.
     #[test]
     fn should_use_home_end_to_navigate_and_edit() {
-        let mut is = InputState::default();
-        is.multiline = true;
+        let mut is = InputState {
+            multiline: true,
+            ..Default::default()
+        };
 
         is.insert_text("hello world\ngoodbye");
         assert_eq!(is.cursor_rowcol(), (1, 7));
@@ -1533,8 +1549,10 @@ mod tests {
     /// Select text across lines and replace it.
     #[test]
     fn should_select_across_lines_and_replace() {
-        let mut is = InputState::default();
-        is.multiline = true;
+        let mut is = InputState {
+            multiline: true,
+            ..Default::default()
+        };
 
         is.insert_text("aaa\nbbb\nccc");
         assert_eq!(is.model.line_count(), 3);
