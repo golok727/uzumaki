@@ -13,6 +13,12 @@ pub struct TextModel {
     pub max_length: Option<usize>,
 }
 
+impl Default for TextModel {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 impl TextModel {
     pub fn new() -> Self {
         Self {

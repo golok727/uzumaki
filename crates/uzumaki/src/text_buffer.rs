@@ -9,6 +9,12 @@ pub struct TextBuffer {
     lines: Vec<String>,
 }
 
+impl Default for TextBuffer {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 impl TextBuffer {
     pub fn new() -> Self {
         Self {

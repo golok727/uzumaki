@@ -124,6 +124,7 @@ pub type MouseEventListener = Box<dyn Fn(&MouseEvent, &Bounds) + Send + Sync>;
 
 /// Holds the style states and event listeners for an interactive element.
 /// Elements embed this struct and delegate styling through it.
+#[derive(Default)]
 pub struct Interactivity {
     /// Base style refinement (always applied).
     pub base_style: StyleRefinement,
@@ -143,21 +144,6 @@ pub struct Interactivity {
     // todo remove
     /// Set from JS side when a node has JS event listeners.
     pub js_interactive: bool,
-}
-
-impl Default for Interactivity {
-    fn default() -> Self {
-        Self {
-            base_style: StyleRefinement::default(),
-            hover_style: None,
-            active_style: None,
-            hitbox_id: None,
-            mouse_down_listeners: Vec::new(),
-            mouse_up_listeners: Vec::new(),
-            click_listeners: Vec::new(),
-            js_interactive: false,
-        }
-    }
 }
 
 impl Interactivity {
@@ -185,16 +171,16 @@ impl Interactivity {
 
         // Hover/active state must be keyed by the stable DOM node identity, not the
         // paint-frame hitbox ID, otherwise a redraw between mouse down/up breaks clicks.
-        if hit_state.is_hovered(node_id) {
-            if let Some(hover) = &self.hover_style {
-                style.refine(hover);
-            }
+        if hit_state.is_hovered(node_id)
+            && let Some(hover) = &self.hover_style
+        {
+            style.refine(hover);
         }
 
-        if hit_state.is_active(node_id) {
-            if let Some(active) = &self.active_style {
-                style.refine(active);
-            }
+        if hit_state.is_active(node_id)
+            && let Some(active) = &self.active_style
+        {
+            style.refine(active);
         }
 
         style

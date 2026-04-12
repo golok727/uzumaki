@@ -24,6 +24,12 @@ pub struct TextRenderer {
     font_cache: HashMap<FontId, FontData>,
 }
 
+impl Default for TextRenderer {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 impl TextRenderer {
     pub fn new() -> Self {
         let mut font_system = FontSystem::new();
@@ -115,11 +121,11 @@ impl TextRenderer {
                     y: py + run.line_y,
                 };
 
-                if let Some(last) = by_font.last_mut() {
-                    if last.0 == glyph.font_id {
-                        last.1.push(vello_glyph);
-                        continue;
-                    }
+                if let Some(last) = by_font.last_mut()
+                    && last.0 == glyph.font_id
+                {
+                    last.1.push(vello_glyph);
+                    continue;
                 }
                 by_font.push((glyph.font_id, vec![vello_glyph]));
             }
@@ -304,7 +310,7 @@ impl TextRenderer {
         for pos in &positions {
             if line_ys
                 .last()
-                .map_or(true, |&last| (pos.y - last).abs() > 1.0)
+                .is_none_or(|&last| (pos.y - last).abs() > 1.0)
             {
                 line_ys.push(pos.y);
             }
@@ -622,7 +628,7 @@ mod tests {
         // Collect unique y values
         let mut ys: Vec<f32> = vec![pos[0].y];
         for p in &pos[1..] {
-            if ys.last().map_or(true, |&ly| (p.y - ly).abs() > 1.0) {
+            if ys.last().is_none_or(|&ly| (p.y - ly).abs() > 1.0) {
                 ys.push(p.y);
             }
         }

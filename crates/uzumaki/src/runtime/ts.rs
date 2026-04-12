@@ -94,10 +94,10 @@ impl ModuleLoader for TypescriptModuleLoader {
         };
 
         // Node resolver doesn't know about .ts/.tsx — try TS extensions
-        if resolved.scheme() == "file" {
-            if let Some(ts_resolved) = try_resolve_ts(&resolved) {
-                return Ok(ts_resolved);
-            }
+        if resolved.scheme() == "file"
+            && let Some(ts_resolved) = try_resolve_ts(&resolved)
+        {
+            return Ok(ts_resolved);
         }
 
         Ok(resolved)
@@ -114,8 +114,7 @@ impl ModuleLoader for TypescriptModuleLoader {
             Err(_) => {
                 return ModuleLoadResponse::Sync(Err(JsErrorBox::generic(
                     "Only file:// URLs are supported.",
-                )
-                .into()));
+                )));
             }
         };
 

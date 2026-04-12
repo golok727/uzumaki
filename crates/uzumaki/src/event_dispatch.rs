@@ -138,12 +138,7 @@ pub fn scroll_input_to_cursor(dom: &mut Dom, handle: &mut Window) {
     let (input_width, input_height) = dom
         .taffy
         .layout(taffy_node)
-        .map(|l| {
-            (
-                l.size.width as f32 - input_padding * 2.0,
-                l.size.height as f32,
-            )
-        })
+        .map(|l| (l.size.width - input_padding * 2.0, l.size.height))
         .unwrap_or((200.0, 100.0));
 
     if multiline {
@@ -157,10 +152,10 @@ pub fn scroll_input_to_cursor(dom: &mut Dom, handle: &mut Window) {
             positions.last().map(|p| p.y).unwrap_or(0.0)
         };
         let line_height = (font_size * 1.2).round();
-        if let Some(node) = dom.nodes.get_mut(focused_id) {
-            if let Some(is) = node.behavior.as_input_mut() {
-                is.update_scroll_y(cursor_y, line_height, input_height - top_pad * 2.0);
-            }
+        if let Some(node) = dom.nodes.get_mut(focused_id)
+            && let Some(is) = node.behavior.as_input_mut()
+        {
+            is.update_scroll_y(cursor_y, line_height, input_height - top_pad * 2.0);
         }
     } else {
         let positions = handle
@@ -171,10 +166,10 @@ pub fn scroll_input_to_cursor(dom: &mut Dom, handle: &mut Window) {
         } else {
             positions.last().copied().unwrap_or(0.0)
         };
-        if let Some(node) = dom.nodes.get_mut(focused_id) {
-            if let Some(is) = node.behavior.as_input_mut() {
-                is.update_scroll(cursor_x, input_width);
-            }
+        if let Some(node) = dom.nodes.get_mut(focused_id)
+            && let Some(is) = node.behavior.as_input_mut()
+        {
+            is.update_scroll(cursor_x, input_width);
         }
     }
 }
@@ -269,7 +264,7 @@ pub fn handle_cursor_moved(
                         let wrap_width = dom
                             .taffy
                             .layout(taffy_node)
-                            .map(|l| l.size.width as f32 - input_padding as f32 * 2.0)
+                            .map(|l| l.size.width - input_padding as f32 * 2.0)
                             .unwrap_or(200.0);
                         let relative_x = (logical_x - hb.x - input_padding) as f32;
                         let relative_y = (logical_y - hb.y) as f32 + scroll_offset_y - top_pad;
@@ -290,13 +285,13 @@ pub fn handle_cursor_moved(
                     0
                 };
 
-                if let Some(node) = dom.nodes.get_mut(drag_nid) {
-                    if let Some(is) = node.behavior.as_input_mut() {
-                        is.update_range(|range| {
-                            range.active = grapheme_idx;
-                        });
-                        is.reset_blink();
-                    }
+                if let Some(node) = dom.nodes.get_mut(drag_nid)
+                    && let Some(is) = node.behavior.as_input_mut()
+                {
+                    is.update_range(|range| {
+                        range.active = grapheme_idx;
+                    });
+                    is.reset_blink();
                 }
                 scroll_input_to_cursor(dom, handle);
                 needs_redraw = true;
@@ -304,20 +299,20 @@ pub fn handle_cursor_moved(
         }
 
         // View text selection drag
-        if let Some(root_id) = dom.dragging_view_selection {
-            if let Some(flat_idx) = hit_text_in_run(
+        if let Some(root_id) = dom.dragging_view_selection
+            && let Some(flat_idx) = hit_text_in_run(
                 dom,
                 &mut handle.text_renderer,
                 root_id,
                 logical_x,
                 logical_y,
-            ) {
-                if let Some(mut sel) = dom.selection() {
-                    sel.range.active = flat_idx;
-                    dom.set_selection(sel);
-                }
-                needs_redraw = true;
+            )
+        {
+            if let Some(mut sel) = dom.selection() {
+                sel.range.active = flat_idx;
+                dom.set_selection(sel);
             }
+            needs_redraw = true;
         }
     }
 
@@ -566,7 +561,7 @@ pub fn handle_mouse_input(
                     let is_consecutive = dom.last_click_node == Some(nid)
                         && dom
                             .last_click_time
-                            .map_or(false, |t| now.duration_since(t).as_millis() < 400);
+                            .is_some_and(|t| now.duration_since(t).as_millis() < 400);
                     dom.last_click_time = Some(now);
                     dom.last_click_node = Some(nid);
                     if is_consecutive {
@@ -638,7 +633,7 @@ pub fn handle_mouse_input(
                                 let wrap_width = dom
                                     .taffy
                                     .layout(taffy_node)
-                                    .map(|l| l.size.width as f32 - input_padding as f32 * 2.0)
+                                    .map(|l| l.size.width - input_padding as f32 * 2.0)
                                     .unwrap_or(200.0);
                                 let relative_x = (mx - hb.x - input_padding) as f32;
                                 let relative_y = (my - hb.y) as f32 + scroll_offset_y - top_pad;
@@ -668,30 +663,30 @@ pub fn handle_mouse_input(
                             range: SelectionRange::default(),
                         });
 
-                        if let Some(node) = dom.nodes.get_mut(nid) {
-                            if let Some(is) = node.behavior.as_input_mut() {
-                                match dom.click_count {
-                                    2 => {
-                                        // Double-click: select word
-                                        let (ws, we) = is.word_at(grapheme_idx);
-                                        is.set_selection(ws, we);
-                                    }
-                                    3 => {
-                                        // Triple-click: select line/paragraph
-                                        let (ls, le) = is.line_at(grapheme_idx);
-                                        is.set_selection(ls, le);
-                                    }
-                                    4 => {
-                                        // Quad-click: select all
-                                        is.select_all();
-                                    }
-                                    _ => {
-                                        // Single click: place cursor
-                                        is.set_cursor(grapheme_idx);
-                                    }
+                        if let Some(node) = dom.nodes.get_mut(nid)
+                            && let Some(is) = node.behavior.as_input_mut()
+                        {
+                            match dom.click_count {
+                                2 => {
+                                    // Double-click: select word
+                                    let (ws, we) = is.word_at(grapheme_idx);
+                                    is.set_selection(ws, we);
                                 }
-                                is.reset_blink();
+                                3 => {
+                                    // Triple-click: select line/paragraph
+                                    let (ls, le) = is.line_at(grapheme_idx);
+                                    is.set_selection(ls, le);
+                                }
+                                4 => {
+                                    // Quad-click: select all
+                                    is.select_all();
+                                }
+                                _ => {
+                                    // Single click: place cursor
+                                    is.set_cursor(grapheme_idx);
+                                }
                             }
+                            is.reset_blink();
                         }
                     }
 
@@ -700,10 +695,10 @@ pub fn handle_mouse_input(
                 } else {
                     // Clicked non-input: blur focused input
                     if let Some(old_id) = old_focus {
-                        if let Some(old_node) = dom.nodes.get_mut(old_id) {
-                            if let Some(is) = old_node.behavior.as_input_mut() {
-                                is.focused = false;
-                            }
+                        if let Some(old_node) = dom.nodes.get_mut(old_id)
+                            && let Some(is) = old_node.behavior.as_input_mut()
+                        {
+                            is.focused = false;
                         }
                         dom.focused_node = None;
                         events.push(AppEvent::Blur(FocusEventData {
@@ -722,10 +717,10 @@ pub fn handle_mouse_input(
 
                         // Starting a view selection blurs any focused input
                         if let Some(old_id) = dom.focused_node.take() {
-                            if let Some(old_node) = dom.nodes.get_mut(old_id) {
-                                if let Some(is) = old_node.behavior.as_input_mut() {
-                                    is.focused = false;
-                                }
+                            if let Some(old_node) = dom.nodes.get_mut(old_id)
+                                && let Some(is) = old_node.behavior.as_input_mut()
+                            {
+                                is.focused = false;
                             }
                             events.push(AppEvent::Blur(FocusEventData {
                                 window_id: wid,
@@ -766,7 +761,7 @@ pub fn handle_mouse_input(
                             let is_consecutive = dom.last_click_node == Some(nid)
                                 && dom
                                     .last_click_time
-                                    .map_or(false, |t| now.duration_since(t).as_millis() < 400);
+                                    .is_some_and(|t| now.duration_since(t).as_millis() < 400);
                             dom.last_click_time = Some(now);
                             dom.last_click_node = Some(nid);
                             if is_consecutive {
@@ -837,21 +832,21 @@ pub fn handle_mouse_input(
                 }));
             }
             // Click fires if released on the same element that was pressed
-            if let Some(active) = dom.hit_state.active_node {
-                if dom.hit_state.is_hovered(active) {
-                    dom.dispatch_click(mx, my, mouse_button);
-                    if let Some(target) = js_target {
-                        events.push(AppEvent::Click(MouseEventData {
-                            window_id: wid,
-                            node_id: target,
-                            x,
-                            y,
-                            screen_x: x,
-                            screen_y: y,
-                            button: button_num,
-                            buttons: mouse_buttons,
-                        }));
-                    }
+            if let Some(active) = dom.hit_state.active_node
+                && dom.hit_state.is_hovered(active)
+            {
+                dom.dispatch_click(mx, my, mouse_button);
+                if let Some(target) = js_target {
+                    events.push(AppEvent::Click(MouseEventData {
+                        window_id: wid,
+                        node_id: target,
+                        x,
+                        y,
+                        screen_x: x,
+                        screen_y: y,
+                        button: button_num,
+                        buttons: mouse_buttons,
+                    }));
                 }
             }
             dom.set_active(None);
@@ -1113,17 +1108,16 @@ pub enum ClipboardCommand {
 
 /// Resolve the current clipboard target from DOM state.
 fn resolve_clipboard_target(dom: &Dom) -> Option<ClipboardTarget> {
-    if let Some(focused_id) = dom.focused_node {
-        if let Some(node) = dom.nodes.get(focused_id) {
-            if node.behavior.as_input().is_some() {
-                return Some(ClipboardTarget::Input(focused_id));
-            }
-        }
+    if let Some(focused_id) = dom.focused_node
+        && let Some(node) = dom.nodes.get(focused_id)
+        && node.behavior.as_input().is_some()
+    {
+        return Some(ClipboardTarget::Input(focused_id));
     }
-    if let Some(sel) = dom.selection() {
-        if !sel.is_collapsed() {
-            return Some(ClipboardTarget::ViewSelection(sel.root));
-        }
+    if let Some(sel) = dom.selection()
+        && !sel.is_collapsed()
+    {
+        return Some(ClipboardTarget::ViewSelection(sel.root));
     }
     None
 }
@@ -1303,24 +1297,21 @@ pub fn apply_clipboard_command(
             if let Err(e) = clipboard.write_text(&selection_text) {
                 eprintln!("[uzumaki] clipboard write error: {e}");
             }
-            if is_input {
-                if let Some(target_id) = target {
-                    if let Some(node) = dom.nodes.get_mut(target_id) {
-                        if let Some(is) = node.behavior.as_input_mut() {
-                            if let Some((_cut_text, _edit)) = is.cut_selected_text() {
-                                let value = is.model.text();
-                                events.push(AppEvent::Input(InputEventData {
-                                    window_id: wid,
-                                    node_id: target_id,
-                                    value,
-                                    input_type: "deleteByCut".to_string(),
-                                    data: None,
-                                }));
-                                needs_redraw = true;
-                            }
-                        }
-                    }
-                }
+            if is_input
+                && let Some(target_id) = target
+                && let Some(node) = dom.nodes.get_mut(target_id)
+                && let Some(is) = node.behavior.as_input_mut()
+                && let Some((_cut_text, _edit)) = is.cut_selected_text()
+            {
+                let value = is.model.text();
+                events.push(AppEvent::Input(InputEventData {
+                    window_id: wid,
+                    node_id: target_id,
+                    value,
+                    input_type: "deleteByCut".to_string(),
+                    data: None,
+                }));
+                needs_redraw = true;
             }
             // For view selections, cut is a no-op on the content
         }
@@ -1329,24 +1320,21 @@ pub fn apply_clipboard_command(
             clipboard_text,
             is_input,
         } => {
-            if is_input {
-                if let (Some(target_id), Some(text)) = (target, clipboard_text) {
-                    if let Some(node) = dom.nodes.get_mut(target_id) {
-                        if let Some(is) = node.behavior.as_input_mut() {
-                            if let Some(_edit) = is.paste_text(&text) {
-                                let value = is.model.text();
-                                events.push(AppEvent::Input(InputEventData {
-                                    window_id: wid,
-                                    node_id: target_id,
-                                    value,
-                                    input_type: "insertFromPaste".to_string(),
-                                    data: Some(text),
-                                }));
-                                needs_redraw = true;
-                            }
-                        }
-                    }
-                }
+            if is_input
+                && let (Some(target_id), Some(text)) = (target, clipboard_text)
+                && let Some(node) = dom.nodes.get_mut(target_id)
+                && let Some(is) = node.behavior.as_input_mut()
+                && let Some(_edit) = is.paste_text(&text)
+            {
+                let value = is.model.text();
+                events.push(AppEvent::Input(InputEventData {
+                    window_id: wid,
+                    node_id: target_id,
+                    value,
+                    input_type: "insertFromPaste".to_string(),
+                    data: Some(text),
+                }));
+                needs_redraw = true;
             }
             // For view selections, paste is a no-op
         }
@@ -1373,7 +1361,7 @@ fn prev_word_boundary_in_run(dom: &Dom, root_id: crate::element::NodeId, flat_id
     let is_word = |g: &str| {
         g.chars()
             .next()
-            .map_or(false, |c| c.is_alphanumeric() || c == '_')
+            .is_some_and(|c| c.is_alphanumeric() || c == '_')
     };
     let mut i = flat_idx;
     // Skip whitespace/non-word backwards
@@ -1406,7 +1394,7 @@ fn next_word_boundary_in_run(dom: &Dom, root_id: crate::element::NodeId, flat_id
     let is_word = |g: &str| {
         g.chars()
             .next()
-            .map_or(false, |c| c.is_alphanumeric() || c == '_')
+            .is_some_and(|c| c.is_alphanumeric() || c == '_')
     };
     let mut i = flat_idx;
     // Skip word chars forward

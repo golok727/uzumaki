@@ -645,10 +645,8 @@ impl<TRangeProvider: RangeProvider> BaseInputState<TRangeProvider> {
             return KeyResult::Ignored;
         }
         // Single-line: reject Enter
-        if !self.multiline {
-            if matches!(key, Key::Named(NamedKey::Enter)) {
-                return KeyResult::Ignored;
-            }
+        if !self.multiline && matches!(key, Key::Named(NamedKey::Enter)) {
+            return KeyResult::Ignored;
         }
         self.sticky_x = None;
         self.sticky_col = None;

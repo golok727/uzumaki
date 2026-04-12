@@ -154,17 +154,12 @@ pub struct BoxShadow {
 
 // ── Length types ─────────────────────────────────────────────────────
 
-#[derive(Clone, Copy, Debug, PartialEq)]
+#[derive(Clone, Copy, Debug, PartialEq, Default)]
 pub enum Length {
+    #[default]
     Auto,
     Px(f32),
     Percent(f32),
-}
-
-impl Default for Length {
-    fn default() -> Self {
-        Length::Auto
-    }
 }
 
 impl Length {
@@ -475,27 +470,27 @@ impl Style {
         }
 
         // 2. Background
-        if let Some(bg) = self.background {
-            if !bg.is_transparent() {
-                let vbg = bg.with_opacity(opacity).to_vello();
-                if self.corner_radii.any_nonzero() {
-                    let shape = rounded_rect(bounds, &self.corner_radii);
-                    scene.fill(
-                        vello::peniko::Fill::NonZero,
-                        Affine::scale(scale),
-                        vbg,
-                        None,
-                        &shape,
-                    );
-                } else {
-                    scene.fill(
-                        vello::peniko::Fill::NonZero,
-                        Affine::scale(scale),
-                        vbg,
-                        None,
-                        &bounds.to_rect(),
-                    );
-                }
+        if let Some(bg) = self.background
+            && !bg.is_transparent()
+        {
+            let vbg = bg.with_opacity(opacity).to_vello();
+            if self.corner_radii.any_nonzero() {
+                let shape = rounded_rect(bounds, &self.corner_radii);
+                scene.fill(
+                    vello::peniko::Fill::NonZero,
+                    Affine::scale(scale),
+                    vbg,
+                    None,
+                    &shape,
+                );
+            } else {
+                scene.fill(
+                    vello::peniko::Fill::NonZero,
+                    Affine::scale(scale),
+                    vbg,
+                    None,
+                    &bounds.to_rect(),
+                );
             }
         }
 
@@ -503,16 +498,15 @@ impl Style {
         continuation(scene);
 
         // 4. Borders
-        if self.border_widths.any_nonzero() {
-            if let Some(bc) = self.border_color {
-                if !bc.is_transparent() {
-                    let vbc = bc.with_opacity(opacity).to_vello();
-                    if self.corner_radii.any_nonzero() {
-                        self.paint_rounded_borders(bounds, scene, vbc, scale);
-                    } else {
-                        self.paint_rect_borders(bounds, scene, vbc, scale);
-                    }
-                }
+        if self.border_widths.any_nonzero()
+            && let Some(bc) = self.border_color
+            && !bc.is_transparent()
+        {
+            let vbc = bc.with_opacity(opacity).to_vello();
+            if self.corner_radii.any_nonzero() {
+                self.paint_rounded_borders(bounds, scene, vbc, scale);
+            } else {
+                self.paint_rect_borders(bounds, scene, vbc, scale);
             }
         }
     }

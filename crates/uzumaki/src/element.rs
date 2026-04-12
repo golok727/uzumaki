@@ -21,6 +21,12 @@ pub struct SharedSelectionState {
     selection: Rc<Cell<Option<DomSelection>>>,
 }
 
+impl Default for SharedSelectionState {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 impl SharedSelectionState {
     pub fn new() -> Self {
         Self {
@@ -77,6 +83,12 @@ pub struct ScrollState {
     pub scroll_offset_y: f32,
 }
 
+impl Default for ScrollState {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 impl ScrollState {
     pub fn new() -> Self {
         Self {
@@ -115,15 +127,9 @@ pub struct TextContent {
 // unless explicitly overridden. Designed for extension — future inheritable
 // properties (font color, font size, line height, etc.) go here.
 
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, Default)]
 pub struct InheritedProperties {
     pub selectable: bool,
-}
-
-impl Default for InheritedProperties {
-    fn default() -> Self {
-        Self { selectable: false }
-    }
 }
 
 // ── View text selection ──────────────────────────────────────────────
@@ -281,6 +287,12 @@ pub struct Dom {
 unsafe impl Send for Dom {}
 unsafe impl Sync for Dom {}
 
+impl Default for Dom {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 impl Dom {
     pub fn new() -> Self {
         Self {
@@ -313,9 +325,7 @@ impl Dom {
         update: impl FnOnce(&mut Node, NodeId) -> R,
     ) -> Option<R> {
         let focus = self.focused_node;
-        focus
-            .map(|id| self.nodes.get_mut(id).map(|node| update(node, id)))
-            .flatten()
+        focus.and_then(|id| self.nodes.get_mut(id).map(|node| update(node, id)))
     }
 
     pub fn get_node(&self, node_id: NodeId) -> Option<&Node> {
@@ -816,10 +826,10 @@ impl Dom {
                         let content_height = layout.content_size.height;
                         let visible_height = layout.size.height;
                         let max_scroll = (content_height - visible_height).max(0.0);
-                        if let Some(ss) = self.nodes[node_id].scroll_state.as_mut() {
-                            if ss.scroll_offset_y > max_scroll {
-                                ss.scroll_offset_y = max_scroll;
-                            }
+                        if let Some(ss) = self.nodes[node_id].scroll_state.as_mut()
+                            && ss.scroll_offset_y > max_scroll
+                        {
+                            ss.scroll_offset_y = max_scroll;
                         }
                         let clamped_offset = self.nodes[node_id]
                             .scroll_state
@@ -844,20 +854,20 @@ impl Dom {
                         let thumb_hovered = self
                             .scroll_drag
                             .as_ref()
-                            .map_or(false, |d| d.node_id == node_id)
+                            .is_some_and(|d| d.node_id == node_id)
                             || self.scroll_thumbs.iter().any(|t| {
                                 t.node_id == node_id
                                     && self
                                         .hit_state
                                         .mouse_position
-                                        .map_or(false, |(mx, my)| t.thumb_bounds.contains(mx, my))
+                                        .is_some_and(|(mx, my)| t.thumb_bounds.contains(mx, my))
                             });
 
                         let mouse_in_view = self
                             .scroll_drag
                             .as_ref()
-                            .map_or(false, |d| d.node_id == node_id)
-                            || self.hit_state.mouse_position.map_or(false, |(mx, my)| {
+                            .is_some_and(|d| d.node_id == node_id)
+                            || self.hit_state.mouse_position.is_some_and(|(mx, my)| {
                                 mx >= x && mx <= x + w && my >= y && my <= y + h
                             });
 
@@ -938,88 +948,81 @@ impl Dom {
                         );
 
                         // Paint scrollbar for multiline inputs with overflow
-                        if let Some(ci) = content_info {
-                            if ci.content_height > ci.visible_height {
-                                let mouse_in = self
+                        if let Some(ci) = content_info
+                            && ci.content_height > ci.visible_height
+                        {
+                            let mouse_in = self
+                                .scroll_drag
+                                .as_ref()
+                                .is_some_and(|d| d.node_id == info.node_id)
+                                || self
+                                    .hit_state
+                                    .mouse_position
+                                    .is_some_and(|(mx, my)| bounds.contains(mx, my));
+
+                            let thumb_width = 4.0;
+                            let thumb_margin = 4.0;
+                            let ratio = ci.visible_height / ci.content_height;
+                            let thumb_height = (bounds.height * ratio).max(24.0);
+                            let max_scroll = (ci.content_height - ci.visible_height).max(0.0);
+                            let scroll_ratio = if max_scroll > 0.0 {
+                                ci.scroll_offset_y / max_scroll
+                            } else {
+                                0.0
+                            };
+                            let thumb_y = bounds.y + scroll_ratio * (bounds.height - thumb_height);
+                            let thumb_x = bounds.x + bounds.width - thumb_width - thumb_margin;
+
+                            let thumb_bounds =
+                                Bounds::new(thumb_x, thumb_y, thumb_width, thumb_height);
+
+                            // Register for hit testing (drag + wheel)
+                            self.scroll_thumbs.push(ScrollThumbRect {
+                                node_id: info.node_id,
+                                thumb_bounds,
+                                view_bounds: bounds,
+                                content_height: ci.content_height as f32,
+                                visible_height: ci.visible_height as f32,
+                            });
+
+                            if mouse_in {
+                                let thumb_hovered = self
                                     .scroll_drag
                                     .as_ref()
-                                    .map_or(false, |d| d.node_id == info.node_id)
+                                    .is_some_and(|d| d.node_id == info.node_id)
                                     || self
                                         .hit_state
                                         .mouse_position
-                                        .map_or(false, |(mx, my)| bounds.contains(mx, my));
-
-                                let thumb_width = 4.0;
-                                let thumb_margin = 4.0;
-                                let ratio = ci.visible_height / ci.content_height;
-                                let thumb_height = (bounds.height * ratio).max(24.0);
-                                let max_scroll = (ci.content_height - ci.visible_height).max(0.0);
-                                let scroll_ratio = if max_scroll > 0.0 {
-                                    ci.scroll_offset_y / max_scroll
-                                } else {
-                                    0.0
-                                };
-                                let thumb_y =
-                                    bounds.y + scroll_ratio * (bounds.height - thumb_height);
-                                let thumb_x = bounds.x + bounds.width - thumb_width - thumb_margin;
-
-                                let thumb_bounds =
-                                    Bounds::new(thumb_x, thumb_y, thumb_width, thumb_height);
-
-                                // Register for hit testing (drag + wheel)
-                                self.scroll_thumbs.push(ScrollThumbRect {
-                                    node_id: info.node_id,
-                                    thumb_bounds,
-                                    view_bounds: bounds,
-                                    content_height: ci.content_height as f32,
-                                    visible_height: ci.visible_height as f32,
-                                });
-
-                                if mouse_in {
-                                    let thumb_hovered = self
-                                        .scroll_drag
-                                        .as_ref()
-                                        .map_or(false, |d| d.node_id == info.node_id)
-                                        || self
-                                            .hit_state
-                                            .mouse_position
-                                            .map_or(false, |(mx, my)| {
-                                                thumb_bounds.contains(mx, my)
-                                            });
-                                    let alpha = if thumb_hovered { 140u8 } else { 90u8 };
-                                    let color = VelloColor::from_rgba8(255, 255, 255, alpha);
-                                    let radius = thumb_width / 2.0;
-                                    let rect = Rect::new(
-                                        thumb_x,
-                                        thumb_y,
-                                        thumb_x + thumb_width,
-                                        thumb_y + thumb_height,
-                                    );
-                                    let rounded = RoundedRect::from_rect(
-                                        rect,
-                                        RoundedRectRadii::from_single_radius(radius),
-                                    );
-                                    // Clip to input bounds
-                                    let clip = Rect::new(
-                                        bounds.x,
-                                        bounds.y,
-                                        bounds.x + bounds.width,
-                                        bounds.y + bounds.height,
-                                    );
-                                    scene.push_clip_layer(
-                                        Fill::NonZero,
-                                        Affine::scale(scale),
-                                        &clip,
-                                    );
-                                    scene.fill(
-                                        Fill::NonZero,
-                                        Affine::scale(scale),
-                                        color,
-                                        None,
-                                        &rounded,
-                                    );
-                                    scene.pop_layer();
-                                }
+                                        .is_some_and(|(mx, my)| thumb_bounds.contains(mx, my));
+                                let alpha = if thumb_hovered { 140u8 } else { 90u8 };
+                                let color = VelloColor::from_rgba8(255, 255, 255, alpha);
+                                let radius = thumb_width / 2.0;
+                                let rect = Rect::new(
+                                    thumb_x,
+                                    thumb_y,
+                                    thumb_x + thumb_width,
+                                    thumb_y + thumb_height,
+                                );
+                                let rounded = RoundedRect::from_rect(
+                                    rect,
+                                    RoundedRectRadii::from_single_radius(radius),
+                                );
+                                // Clip to input bounds
+                                let clip = Rect::new(
+                                    bounds.x,
+                                    bounds.y,
+                                    bounds.x + bounds.width,
+                                    bounds.y + bounds.height,
+                                );
+                                scene.push_clip_layer(Fill::NonZero, Affine::scale(scale), &clip);
+                                scene.fill(
+                                    Fill::NonZero,
+                                    Affine::scale(scale),
+                                    color,
+                                    None,
+                                    &rounded,
+                                );
+                                scene.pop_layer();
                             }
                         }
                     } else if let Some((content, font_size, color)) = &info.text {
@@ -1292,18 +1295,18 @@ impl Dom {
             };
 
             // Add text nodes to the current run
-            if let Some(tc) = node.behavior.as_text() {
-                if let Some(idx) = current_run {
-                    let gc = tc.content.graphemes(true).count();
-                    let run = &mut self.selectable_text_runs[idx];
-                    run.entries.push(TextRunEntry {
-                        node_id,
-                        flat_start: run.total_graphemes,
-                        grapheme_count: gc,
-                    });
-                    run.flat_text.push_str(&tc.content);
-                    run.total_graphemes += gc;
-                }
+            if let Some(tc) = node.behavior.as_text()
+                && let Some(idx) = current_run
+            {
+                let gc = tc.content.graphemes(true).count();
+                let run = &mut self.selectable_text_runs[idx];
+                run.entries.push(TextRunEntry {
+                    node_id,
+                    flat_start: run.total_graphemes,
+                    grapheme_count: gc,
+                });
+                run.flat_text.push_str(&tc.content);
+                run.total_graphemes += gc;
             }
 
             // Push children in reverse order for correct DFS traversal
@@ -1394,10 +1397,10 @@ impl Dom {
             return String::new();
         }
         // Input selection: delegate to InputState
-        if let Some(node) = self.nodes.get(sel.root) {
-            if let Some(is) = node.behavior.as_input() {
-                return is.selected_text();
-            }
+        if let Some(node) = self.nodes.get(sel.root)
+            && let Some(is) = node.behavior.as_input()
+        {
+            return is.selected_text();
         }
         // View text selection: look up in text_select_runs
         let Some(run) = self
@@ -1438,10 +1441,10 @@ impl Dom {
     pub fn selection_run_length(&self) -> Option<usize> {
         let sel = self.selection.get()?;
         // Input selection
-        if let Some(node) = self.nodes.get(sel.root) {
-            if let Some(is) = node.behavior.as_input() {
-                return Some(is.grapheme_count());
-            }
+        if let Some(node) = self.nodes.get(sel.root)
+            && let Some(is) = node.behavior.as_input()
+        {
+            return Some(is.grapheme_count());
         }
         // View text selection
         let run = self
@@ -1467,21 +1470,19 @@ impl Dom {
             .unwrap_or(false);
 
         if is_focusable {
-            if let Some(old_id) = self.focused_node {
-                if old_id != root {
-                    if let Some(old_node) = self.nodes.get_mut(old_id) {
-                        if let Some(is) = old_node.behavior.as_input_mut() {
-                            is.focused = false;
-                        }
-                    }
-                }
+            if let Some(old_id) = self.focused_node
+                && old_id != root
+                && let Some(old_node) = self.nodes.get_mut(old_id)
+                && let Some(is) = old_node.behavior.as_input_mut()
+            {
+                is.focused = false;
             }
             self.focused_node = Some(root);
-            if let Some(node) = self.nodes.get_mut(root) {
-                if let Some(is) = node.behavior.as_input_mut() {
-                    is.focused = true;
-                    is.reset_blink();
-                }
+            if let Some(node) = self.nodes.get_mut(root)
+                && let Some(is) = node.behavior.as_input_mut()
+            {
+                is.focused = true;
+                is.reset_blink();
             }
         }
 

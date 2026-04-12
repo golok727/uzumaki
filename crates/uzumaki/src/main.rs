@@ -79,15 +79,15 @@ impl AppState {
     }
 
     pub fn paint_window(&mut self, id: &WindowEntryId) {
-        if let Some(window) = self.windows.get_mut(id) {
-            if let Some(handle) = &mut window.handle {
-                handle.paint_and_present(&self.gpu.device, &self.gpu.queue, &mut window.dom);
-            }
+        if let Some(window) = self.windows.get_mut(id)
+            && let Some(handle) = &mut window.handle
+        {
+            handle.paint_and_present(&self.gpu.device, &self.gpu.queue, &mut window.dom);
         }
     }
 
     pub fn on_redraw_requested(&mut self, wid: &WindowEntryId) {
-        if let Some(entry) = self.windows.get_mut(&wid) {
+        if let Some(entry) = self.windows.get_mut(wid) {
             let WindowEntry { handle, dom, .. } = entry;
             if let Some(handle) = handle {
                 event_dispatch::handle_redraw(dom, handle, &self.gpu.device, &self.gpu.queue);
@@ -96,13 +96,12 @@ impl AppState {
         }
     }
     pub fn on_resize(&mut self, id: &WindowEntryId, width: u32, height: u32) -> bool {
-        if let Some(window) = self.windows.get_mut(id) {
-            if let Some(handle) = &mut window.handle {
-                if handle.on_resize(&self.gpu.device, width, height) {
-                    handle.winit_window.request_redraw();
-                    return true;
-                }
-            }
+        if let Some(window) = self.windows.get_mut(id)
+            && let Some(handle) = &mut window.handle
+            && handle.on_resize(&self.gpu.device, width, height)
+        {
+            handle.winit_window.request_redraw();
+            return true;
         }
         false
     }
@@ -634,10 +633,10 @@ pub fn op_set_input_value(
     let app_state = state.borrow::<SharedAppState>().clone();
     with_state(&app_state, |s| {
         let entry = s.windows.get_mut(&window_id).expect("window not found");
-        if let Some(node) = entry.dom.nodes.get_mut(nid) {
-            if let Some(is) = node.behavior.as_input_mut() {
-                is.set_value(value);
-            }
+        if let Some(node) = entry.dom.nodes.get_mut(nid)
+            && let Some(is) = node.behavior.as_input_mut()
+        {
+            is.set_value(value);
         }
     });
 }
@@ -674,10 +673,10 @@ pub fn op_set_input_placeholder(
     let app_state = state.borrow::<SharedAppState>().clone();
     with_state(&app_state, |s| {
         let entry = s.windows.get_mut(&window_id).expect("window not found");
-        if let Some(node) = entry.dom.nodes.get_mut(nid) {
-            if let Some(is) = node.behavior.as_input_mut() {
-                is.placeholder = placeholder;
-            }
+        if let Some(node) = entry.dom.nodes.get_mut(nid)
+            && let Some(is) = node.behavior.as_input_mut()
+        {
+            is.placeholder = placeholder;
         }
     });
 }
@@ -693,10 +692,10 @@ pub fn op_set_input_disabled(
     let app_state = state.borrow::<SharedAppState>().clone();
     with_state(&app_state, |s| {
         let entry = s.windows.get_mut(&window_id).expect("window not found");
-        if let Some(node) = entry.dom.nodes.get_mut(nid) {
-            if let Some(is) = node.behavior.as_input_mut() {
-                is.disabled = disabled;
-            }
+        if let Some(node) = entry.dom.nodes.get_mut(nid)
+            && let Some(is) = node.behavior.as_input_mut()
+        {
+            is.disabled = disabled;
         }
     });
 }
@@ -712,14 +711,14 @@ pub fn op_set_input_max_length(
     let app_state = state.borrow::<SharedAppState>().clone();
     with_state(&app_state, |s| {
         let entry = s.windows.get_mut(&window_id).expect("window not found");
-        if let Some(node) = entry.dom.nodes.get_mut(nid) {
-            if let Some(is) = node.behavior.as_input_mut() {
-                is.model.max_length = if max_length > 0 {
-                    Some(max_length as usize)
-                } else {
-                    None
-                };
-            }
+        if let Some(node) = entry.dom.nodes.get_mut(nid)
+            && let Some(is) = node.behavior.as_input_mut()
+        {
+            is.model.max_length = if max_length > 0 {
+                Some(max_length as usize)
+            } else {
+                None
+            };
         }
     });
 }
@@ -735,10 +734,10 @@ pub fn op_set_input_multiline(
     let app_state = state.borrow::<SharedAppState>().clone();
     with_state(&app_state, |s| {
         let entry = s.windows.get_mut(&window_id).expect("window not found");
-        if let Some(node) = entry.dom.nodes.get_mut(nid) {
-            if let Some(is) = node.behavior.as_input_mut() {
-                is.multiline = multiline;
-            }
+        if let Some(node) = entry.dom.nodes.get_mut(nid)
+            && let Some(is) = node.behavior.as_input_mut()
+        {
+            is.multiline = multiline;
         }
     });
 }
@@ -754,10 +753,10 @@ pub fn op_set_input_secure(
     let app_state = state.borrow::<SharedAppState>().clone();
     with_state(&app_state, |s| {
         let entry = s.windows.get_mut(&window_id).expect("window not found");
-        if let Some(node) = entry.dom.nodes.get_mut(nid) {
-            if let Some(is) = node.behavior.as_input_mut() {
-                is.secure = secure;
-            }
+        if let Some(node) = entry.dom.nodes.get_mut(nid)
+            && let Some(is) = node.behavior.as_input_mut()
+        {
+            is.secure = secure;
         }
     });
 }
@@ -1300,10 +1299,10 @@ impl ApplicationHandler<UserEvent> for Application {
             }
             UserEvent::RequestRedraw { id } => {
                 let state = self.app_state.borrow();
-                if let Some(entry) = state.windows.get(&id) {
-                    if let Some(ref handle) = entry.handle {
-                        handle.winit_window.request_redraw();
-                    }
+                if let Some(entry) = state.windows.get(&id)
+                    && let Some(ref handle) = entry.handle
+                {
+                    handle.winit_window.request_redraw();
                 }
             }
             UserEvent::Quit => {
@@ -1357,11 +1356,10 @@ impl ApplicationHandler<UserEvent> for Application {
                 let mouse_buttons = state.mouse_buttons;
                 if let Some(entry) = state.windows.get_mut(&wid) {
                     let WindowEntry { handle, dom, .. } = entry;
-                    if let Some(handle) = handle {
-                        if event_dispatch::handle_cursor_moved(dom, handle, position, mouse_buttons)
-                        {
-                            needs_redraw = true;
-                        }
+                    if let Some(handle) = handle
+                        && event_dispatch::handle_cursor_moved(dom, handle, position, mouse_buttons)
+                    {
+                        needs_redraw = true;
                     }
                 }
             }
@@ -1445,13 +1443,13 @@ impl ApplicationHandler<UserEvent> for Application {
                         // 2a. Check for clipboard shortcuts (Ctrl+C/X/V)
                         let clipboard_cmd = {
                             let state = self.app_state.borrow();
-                            let cmd = state.windows.get(&wid).and_then(|entry| {
+
+                            state.windows.get(&wid).and_then(|entry| {
                                 let mut cb = state.clipboard.borrow_mut();
                                 event_dispatch::build_clipboard_command(
                                     &entry.dom, &key_event, modifiers, &mut cb,
                                 )
-                            });
-                            cmd
+                            })
                         };
 
                         let clipboard_consumed = if let Some(cmd) = clipboard_cmd {
@@ -1490,13 +1488,13 @@ impl ApplicationHandler<UserEvent> for Application {
                                 // Scroll input to cursor after clipboard mutation
                                 if needs_redraw {
                                     let mut state = self.app_state.borrow_mut();
-                                    if let Some(entry) = state.windows.get_mut(&wid) {
-                                        if let Some(handle) = entry.handle.as_mut() {
-                                            event_dispatch::scroll_input_to_cursor(
-                                                &mut entry.dom,
-                                                handle,
-                                            );
-                                        }
+                                    if let Some(entry) = state.windows.get_mut(&wid)
+                                        && let Some(handle) = entry.handle.as_mut()
+                                    {
+                                        event_dispatch::scroll_input_to_cursor(
+                                            &mut entry.dom,
+                                            handle,
+                                        );
                                     }
                                 }
                             }
@@ -1534,16 +1532,15 @@ impl ApplicationHandler<UserEvent> for Application {
                             // Handle view text selection shortcuts (only when no input is focused)
                             {
                                 let mut state = self.app_state.borrow_mut();
-                                if let Some(entry) = state.windows.get_mut(&wid) {
-                                    if entry.dom.focused_node.is_none() {
-                                        if event_dispatch::handle_key_for_view_selection(
-                                            &mut entry.dom,
-                                            &key_event,
-                                            modifiers,
-                                        ) {
-                                            needs_redraw = true;
-                                        }
-                                    }
+                                if let Some(entry) = state.windows.get_mut(&wid)
+                                    && entry.dom.focused_node.is_none()
+                                    && event_dispatch::handle_key_for_view_selection(
+                                        &mut entry.dom,
+                                        &key_event,
+                                        modifiers,
+                                    )
+                                {
+                                    needs_redraw = true;
                                 }
                             }
                         }
@@ -1573,14 +1570,12 @@ impl ApplicationHandler<UserEvent> for Application {
                 let mut state = self.app_state.borrow_mut();
                 if let Some(entry) = state.windows.get_mut(&wid) {
                     entry.dom.window_focused = focused;
-                    if focused {
-                        if let Some(nid) = entry.dom.focused_node {
-                            if let Some(node) = entry.dom.nodes.get_mut(nid) {
-                                if let Some(is) = node.behavior.as_input_mut() {
-                                    is.reset_blink();
-                                }
-                            }
-                        }
+                    if focused
+                        && let Some(nid) = entry.dom.focused_node
+                        && let Some(node) = entry.dom.nodes.get_mut(nid)
+                        && let Some(is) = node.behavior.as_input_mut()
+                    {
+                        is.reset_blink();
                     }
                     needs_redraw = true;
                 }
@@ -1602,10 +1597,10 @@ impl ApplicationHandler<UserEvent> for Application {
                     winit::event::MouseScrollDelta::LineDelta(_, y) => y as f64 * 40.0,
                     winit::event::MouseScrollDelta::PixelDelta(pos) => pos.y,
                 };
-                if let Some(entry) = state.windows.get_mut(&wid) {
-                    if event_dispatch::handle_mouse_wheel(&mut entry.dom, scroll_delta_y) {
-                        needs_redraw = true;
-                    }
+                if let Some(entry) = state.windows.get_mut(&wid)
+                    && event_dispatch::handle_mouse_wheel(&mut entry.dom, scroll_delta_y)
+                {
+                    needs_redraw = true;
                 }
             }
             WindowEvent::CloseRequested => {
@@ -1622,10 +1617,10 @@ impl ApplicationHandler<UserEvent> for Application {
 
         if needs_redraw {
             let state = self.app_state.borrow();
-            if let Some(entry) = state.windows.get(&wid) {
-                if let Some(ref handle) = entry.handle {
-                    handle.winit_window.request_redraw();
-                }
+            if let Some(entry) = state.windows.get(&wid)
+                && let Some(ref handle) = entry.handle
+            {
+                handle.winit_window.request_redraw();
             }
         }
     }

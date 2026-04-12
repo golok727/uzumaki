@@ -151,7 +151,7 @@ pub(crate) fn compute_selection_rects(
     let mut line_ys: Vec<f32> = Vec::new();
     for i in sel_start..=sel_end_idx {
         let y = positions[i].y;
-        if line_ys.last().map_or(true, |&ly| (y - ly).abs() > 1.0) {
+        if line_ys.last().is_none_or(|&ly| (y - ly).abs() > 1.0) {
             line_ys.push(y);
         }
     }
