@@ -1,0 +1,107 @@
+name: Release
+
+on:
+  workflow_dispatch:
+    inputs:
+      version:
+        description: Version to publish (e.g. 0.1.0)
+        required: true
+        type: string
+      dry_run:
+        description: Dry run (build but skip publishing)
+        required: false
+        default: true
+        type: boolean
+
+jobs:
+  build:
+    name: Build ${{ matrix.target.name }}
+    runs-on: ${{ matrix.target.runner }}
+    strategy:
+      fail-fast: false
+      matrix:
+        target:
+          - name: windows-x64
+            runner: windows-latest
+            binary: uzumaki.exe
+            platform-id: win32-x64
+          - name: macos-x64
+            runner: macos-13
+            binary: uzumaki
+            platform-id: darwin-x64
+          - name: macos-arm64
+            runner: macos-latest
+            binary: uzumaki
+            platform-id: darwin-arm64
+
+    env:
+      CARGO_TERM_COLOR: always
+      RUST_BACKTRACE: 1
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: dsherret/rust-toolchain-file@v1
+
+      - name: Cache cargo registry
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.cargo/registry/index
+            ~/.cargo/registry/cache
+            ~/.cargo/git/db
+          key: cargo-registry-${{ matrix.target.name }}-${{ hashFiles('**/Cargo.lock') }}
+          restore-keys: cargo-registry-${{ matrix.target.name }}-
+
+      - name: Cache cargo target
+        uses: actions/cache@v4
+        with:
+          path: target
+          key: cargo-target-${{ matrix.target.name }}-dist-${{ hashFiles('**/Cargo.lock') }}
+          restore-keys: cargo-target-${{ matrix.target.name }}-dist-
+
+      - name: Build
+        run: cargo build --profile dist -p uzumaki
+
+      - name: Upload binary
+        uses: actions/upload-artifact@v4
+        with:
+          name: ${{ matrix.target.platform-id }}
+          path: target/dist/${{ matrix.target.binary }}
+          retention-days: 1
+
+  publish:
+    name: Publish to npm
+    needs: [build]
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: pnpm/action-setup@v4
+        with:
+          version: latest
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+          registry-url: https://registry.npmjs.org
+
+      - uses: oven-sh/setup-bun@v2
+
+      - run: pnpm install --frozen-lockfile
+
+      - name: Download artifacts
+        uses: actions/download-artifact@v4
+        with:
+          path: artifacts
+
+      - name: Publish
+        env:
+          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
+        run: >
+          bun scripts/publish.ts
+          --version "${{ inputs.version }}"
+          --artifacts artifacts
+          ${{ inputs.dry_run && '--dry-run' || '' }}

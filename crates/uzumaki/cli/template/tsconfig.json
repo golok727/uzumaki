@@ -1,0 +1,13 @@
+{
+  "compilerOptions": {
+    "lib": ["ESNext"],
+    "target": "ESNext",
+    "module": "Preserve",
+    "moduleResolution": "bundler",
+    "jsx": "react-jsx",
+    "jsxImportSource": "uzumaki-ui/react",
+    "strict": true,
+    "noEmit": true,
+    "skipLibCheck": true
+  }
+}

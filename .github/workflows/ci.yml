@@ -1,0 +1,96 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  lint-rust:
+    name: Lint Rust
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: dsherret/rust-toolchain-file@v1
+
+      - uses: actions/cache@v4
+        with:
+          path: |
+            ~/.cargo/registry/index
+            ~/.cargo/registry/cache
+            ~/.cargo/git/db
+          key: cargo-registry-lint-${{ hashFiles('**/Cargo.lock') }}
+          restore-keys: cargo-registry-lint-
+
+      - uses: actions/cache@v4
+        with:
+          path: target
+          key: cargo-target-lint-${{ hashFiles('**/Cargo.lock') }}
+          restore-keys: cargo-target-lint-
+
+      - name: cargo fmt --check
+        run: cargo fmt --all -- --check
+
+      - name: cargo clippy
+        run: cargo clippy --workspace -- -D warnings
+
+  build:
+    name: Build (${{ matrix.target.name }})
+    runs-on: ${{ matrix.target.runner }}
+    strategy:
+      fail-fast: false
+      matrix:
+        target:
+          - name: windows-x64
+            runner: windows-latest
+          - name: macos-arm64
+            runner: macos-latest
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: dsherret/rust-toolchain-file@v1
+
+      - uses: actions/cache@v4
+        with:
+          path: |
+            ~/.cargo/registry/index
+            ~/.cargo/registry/cache
+            ~/.cargo/git/db
+          key: cargo-registry-${{ matrix.target.name }}-${{ hashFiles('**/Cargo.lock') }}
+          restore-keys: cargo-registry-${{ matrix.target.name }}-
+
+      - uses: actions/cache@v4
+        with:
+          path: target
+          key: cargo-target-${{ matrix.target.name }}-${{ hashFiles('**/Cargo.lock') }}
+          restore-keys: cargo-target-${{ matrix.target.name }}-
+
+      - name: cargo build
+        run: cargo build -p uzumaki
+
+  lint-js:
+    name: Lint JS/TS
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: pnpm/action-setup@v4
+        with:
+          version: latest
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+
+      - run: pnpm install --frozen-lockfile
+
+      - name: oxlint
+        run: pnpm lint

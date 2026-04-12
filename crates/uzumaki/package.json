@@ -26,6 +26,15 @@
     "bin/**/*",
     "js/**/*"
   ],
+  "keywords": [
+    "desktop",
+    "ui",
+    "react",
+    "native",
+    "gpu",
+    "wgpu",
+    "vello"
+  ],
   "scripts": {
     "start": "bun js/index.js",
     "build": "napi build --release --platform -o ./js/bindings",

@@ -50,6 +50,11 @@ function dim(text: string) {
   return `\u001B[2m${text}\u001B[22m`;
 }
 
+const TEMPLATE_DIR = path.resolve(
+  path.dirname(fileURLToPath(new URL(import.meta.url))),
+  'template',
+);
+
 const args = process.argv.slice(2);
 
 const CONFIG_FILENAMES = [
@@ -61,6 +66,11 @@ const CONFIG_FILENAMES = [
 
 function help() {
   const commands = [
+    {
+      name: 'init',
+      desc: 'Create a new Uzumaki project',
+      args: '[directory]',
+    },
     {
       name: 'run',
       desc: 'Run a JS/TS file in uzumaki runtime',
@@ -483,6 +493,82 @@ async function buildApp(rawArgs: string[]) {
   return await child.exited;
 }
 
+function copyDirSync(src: string, dest: string) {
+  fs.mkdirSync(dest, { recursive: true });
+  for (const entry of fs.readdirSync(src, { withFileTypes: true })) {
+    const srcPath = path.join(src, entry.name);
+    const destPath = path.join(dest, entry.name);
+    if (entry.isDirectory()) {
+      copyDirSync(srcPath, destPath);
+    } else {
+      fs.copyFileSync(srcPath, destPath);
+    }
+  }
+}
+
+function replaceTemplateVars(filePath: string, vars: Record<string, string>) {
+  let content = fs.readFileSync(filePath, 'utf8');
+  for (const [key, value] of Object.entries(vars)) {
+    content = content.replaceAll(`{{${key}}}`, value);
+  }
+  fs.writeFileSync(filePath, content, 'utf8');
+}
+
+async function initProject(targetArg?: string) {
+  if (process.platform === 'linux') {
+    console.error(
+      `${color('error:', '#ef4444')} Linux is not supported yet. Linux support is on the way!`,
+    );
+    return 1;
+  }
+
+  const projectDir = path.resolve(process.cwd(), targetArg ?? '.');
+  const projectName = path.basename(projectDir);
+
+  if (fs.existsSync(projectDir) && fs.readdirSync(projectDir).length > 0) {
+    console.error(
+      `${color('error:', '#ef4444')} directory ${dim(projectDir)} is not empty`,
+    );
+    return 1;
+  }
+
+  console.log(
+    `\n${bold(color('Uzumaki', '#60a5fa'))} Creating project ${bold(projectName)}...\n`,
+  );
+
+  copyDirSync(TEMPLATE_DIR, projectDir);
+
+  const templateFiles = [
+    path.join(projectDir, 'package.json'),
+    path.join(projectDir, 'uzumaki.config.ts'),
+    path.join(projectDir, 'src', 'index.tsx'),
+  ];
+
+  for (const file of templateFiles) {
+    replaceTemplateVars(file, { PROJECT_NAME: projectName });
+  }
+
+  console.log(`  ${color('created', '#22c55e')} ${projectName}/package.json`);
+  console.log(`  ${color('created', '#22c55e')} ${projectName}/tsconfig.json`);
+  console.log(
+    `  ${color('created', '#22c55e')} ${projectName}/uzumaki.config.ts`,
+  );
+  console.log(`  ${color('created', '#22c55e')} ${projectName}/src/index.tsx`);
+
+  console.log(`\n${bold('Prerequisites:')}\n`);
+  console.log(`  ${dim('Bun is required for building.')} https://bun.sh`);
+
+  console.log(`\n${bold('Next steps:')}\n`);
+  if (targetArg) {
+    console.log(`  cd ${projectName}`);
+  }
+  console.log('  pnpm install');
+  console.log('  pnpm dev');
+  console.log('');
+
+  return 0;
+}
+
 async function main() {
   if (args.length === 0) {
     help();
@@ -491,6 +577,10 @@ async function main() {
 
   const cmd = args[0]!;
   switch (cmd) {
+    case 'init': {
+      return await initProject(args[1]);
+    }
+
     case 'run': {
       const entryPoint = args[1];
       if (!entryPoint) {
