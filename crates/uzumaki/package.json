@@ -1,6 +1,7 @@
 {
   "name": "uzumaki-ui",
   "type": "module",
+  "version": "0.0.1",
   "bin": {
     "uzumaki": "./cli/main.ts"
   },
