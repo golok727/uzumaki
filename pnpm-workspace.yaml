@@ -1,3 +1,4 @@
 packages:
   - 'crates/uzumaki'
   - 'packages/*'
+  - 'docs'

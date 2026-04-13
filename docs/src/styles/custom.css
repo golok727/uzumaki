@@ -1,0 +1,111 @@
+/* Uzumaki docs — dark, minimal, black + orange */
+
+:root {
+  --sl-font: 'IBM Plex Mono', monospace;
+  --sl-font-mono: 'IBM Plex Mono', monospace;
+}
+
+/* Force dark only */
+:root[data-theme='light'] {
+  --sl-color-accent-low: #1a0f00;
+  --sl-color-accent: #e8690a;
+  --sl-color-accent-high: #ffd6b3;
+  --sl-color-white: #e4e4e7;
+  --sl-color-gray-1: #a1a1aa;
+  --sl-color-gray-2: #71717a;
+  --sl-color-gray-3: #3f3f46;
+  --sl-color-gray-4: #27272a;
+  --sl-color-gray-5: #18181b;
+  --sl-color-gray-6: #0a0a0a;
+  --sl-color-black: #000000;
+  --sl-color-bg-sidebar: #0a0a0a;
+  --sl-color-bg-nav: #0a0a0a;
+  --sl-color-bg: #0a0a0a;
+  --sl-color-hairline-shade: #1a1a1a;
+  --sl-color-hairline-light: #27272a;
+  --sl-color-text: #e4e4e7;
+  --sl-color-text-accent: #e8690a;
+}
+
+[data-theme='dark'] {
+  --sl-color-accent-low: #1a0f00;
+  --sl-color-accent: #e8690a;
+  --sl-color-accent-high: #ffd6b3;
+  --sl-color-white: #e4e4e7;
+  --sl-color-gray-1: #a1a1aa;
+  --sl-color-gray-2: #71717a;
+  --sl-color-gray-3: #3f3f46;
+  --sl-color-gray-4: #27272a;
+  --sl-color-gray-5: #18181b;
+  --sl-color-gray-6: #0a0a0a;
+  --sl-color-black: #000000;
+  --sl-color-bg-sidebar: #0a0a0a;
+  --sl-color-bg-nav: #0a0a0a;
+  --sl-color-bg: #0a0a0a;
+  --sl-color-hairline-shade: #1a1a1a;
+  --sl-color-hairline-light: #27272a;
+  --sl-color-text: #e4e4e7;
+  --sl-color-text-accent: #e8690a;
+}
+
+/* Site title */
+.site-title {
+  font-weight: 700;
+  letter-spacing: -0.02em;
+}
+
+/* Code blocks */
+.expressive-code pre {
+  border: 1px solid #27272a;
+  background: #0f0f0f !important;
+}
+
+/* Links */
+a {
+  text-decoration: none;
+}
+
+/* Hero section overrides */
+.hero {
+  border-bottom: none !important;
+}
+
+/* Sidebar */
+nav.sidebar {
+  border-right-color: #1a1a1a;
+}
+
+/* Content area */
+.content-panel {
+  border-top-color: #1a1a1a;
+}
+
+/* Inline code */
+:not(pre) > code {
+  background: #1a1a1a;
+  border: 1px solid #27272a;
+  color: #e8690a;
+  padding: 0.15em 0.35em;
+  border-radius: 4px;
+  font-size: 0.9em;
+}
+
+/* Aside/callout boxes */
+.starlight-aside {
+  border-color: #e8690a;
+  background: #1a0f00;
+}
+
+.starlight-aside--caution {
+  border-color: #e8690a;
+}
+
+/* Tabs */
+starlight-tabs [role='tablist'] {
+  border-bottom-color: #27272a;
+}
+
+starlight-tabs [role='tab'][aria-selected='true'] {
+  border-bottom-color: #e8690a;
+  color: #e8690a;
+}
