@@ -23,6 +23,9 @@ export default defineConfig({
           href: 'https://x.com/golok727',
         },
       ],
+      components: {
+        Footer: './src/components/Footer.astro',
+      },
       customCss: ['./src/styles/custom.css'],
       sidebar: [
         {
