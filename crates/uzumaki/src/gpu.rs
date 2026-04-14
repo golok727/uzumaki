@@ -15,7 +15,8 @@ impl GpuContext {
         } else if cfg!(target_os = "macos") {
             wgpu::Backends::METAL
         } else {
-            wgpu::Backends::from_env().unwrap_or_default()
+            // GLES teardown segfaults on Wayland shutdown.
+            wgpu::Backends::from_env().unwrap_or(wgpu::Backends::VULKAN)
         };
 
         // WGPU_BACKEND=vulkan,dx12 (comma separated)
