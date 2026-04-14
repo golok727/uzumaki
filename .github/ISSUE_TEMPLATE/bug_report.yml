@@ -1,0 +1,79 @@
+name: Bug Report
+description: Report a bug in Uzumaki
+labels: ['bug']
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thanks for taking the time to report a bug. Please fill out the sections below.
+
+  - type: textarea
+    id: description
+    attributes:
+      label: Description
+      description: A clear description of the bug.
+      placeholder: What happened?
+    validations:
+      required: true
+
+  - type: textarea
+    id: reproduction
+    attributes:
+      label: Steps to reproduce
+      description: Minimal steps or code to reproduce the issue.
+      placeholder: |
+        1. Create a file with...
+        2. Run `uzumaki dev`
+        3. Click on...
+    validations:
+      required: true
+
+  - type: textarea
+    id: expected
+    attributes:
+      label: Expected behavior
+      description: What did you expect to happen?
+    validations:
+      required: true
+
+  - type: textarea
+    id: actual
+    attributes:
+      label: Actual behavior
+      description: What actually happened? Include error output or screenshots if applicable.
+    validations:
+      required: true
+
+  - type: input
+    id: uzumaki-version
+    attributes:
+      label: Uzumaki version
+      description: Output of `uzumaki --version`
+      placeholder: 'e.g. 0.1.0'
+    validations:
+      required: true
+
+  - type: input
+    id: os
+    attributes:
+      label: OS
+      placeholder: 'e.g. Windows 11, macOS 15.2, Ubuntu 24.04'
+    validations:
+      required: true
+
+  - type: input
+    id: rust-version
+    attributes:
+      label: Rust version
+      description: Output of `rustc -V`
+      placeholder: 'e.g. rustc 1.92.0'
+    validations:
+      required: false
+
+  - type: textarea
+    id: additional
+    attributes:
+      label: Additional context
+      description: Anything else that might be relevant (logs, GPU info, etc.)
+    validations:
+      required: false

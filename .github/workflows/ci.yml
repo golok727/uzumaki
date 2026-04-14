@@ -77,6 +77,32 @@ jobs:
       - name: cargo build
         run: cargo build -p uzumaki
 
+  test-rust:
+    name: Test Rust
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: dsherret/rust-toolchain-file@v1
+
+      - uses: actions/cache@v4
+        with:
+          path: |
+            ~/.cargo/registry/index
+            ~/.cargo/registry/cache
+            ~/.cargo/git/db
+          key: cargo-registry-test-${{ hashFiles('**/Cargo.lock') }}
+          restore-keys: cargo-registry-test-
+
+      - uses: actions/cache@v4
+        with:
+          path: target
+          key: cargo-target-test-${{ hashFiles('**/Cargo.lock') }}
+          restore-keys: cargo-target-test-
+
+      - name: cargo test
+        run: cargo test --workspace
+
   lint-js:
     name: Lint JS/TS
     runs-on: ubuntu-latest
