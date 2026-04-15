@@ -2,7 +2,7 @@ use serde::Serialize;
 use winit::keyboard::{Key, NamedKey};
 
 use crate::clipboard::SystemClipboard;
-use crate::element::{Dom, NodeId, ScrollDragState};
+use crate::element::{ElementTree, NodeId, ScrollDragState};
 use crate::input;
 use crate::selection::{DomSelection, SelectionRange};
 use crate::window::Window;
@@ -93,7 +93,7 @@ pub enum AppEvent {
 }
 
 pub fn handle_redraw(
-    dom: &mut Dom,
+    dom: &mut ElementTree,
     handle: &mut Window,
     device: &wgpu::Device,
     queue: &wgpu::Queue,
@@ -103,7 +103,7 @@ pub fn handle_redraw(
 
 /// Scroll the focused input so the cursor stays visible.
 /// Call this after any action that moves the cursor (key press, click, drag).
-pub fn scroll_input_to_cursor(dom: &mut Dom, handle: &mut Window) {
+pub fn scroll_input_to_cursor(dom: &mut ElementTree, handle: &mut Window) {
     let Some(focused_id) = dom.focused_node else {
         return;
     };
@@ -177,7 +177,7 @@ pub fn scroll_input_to_cursor(dom: &mut Dom, handle: &mut Window) {
 // ── Cursor moved ─────────────────────────────────────────────────────
 
 pub fn handle_cursor_moved(
-    dom: &mut Dom,
+    dom: &mut ElementTree,
     handle: &mut Window,
     position: winit::dpi::PhysicalPosition<f64>,
     mouse_buttons: u8,
@@ -324,7 +324,7 @@ pub fn handle_cursor_moved(
 /// Hit-test a mouse position against all text nodes in a textSelect run.
 /// Returns the flat grapheme index if a suitable text node is found.
 fn hit_text_in_run(
-    dom: &Dom,
+    dom: &ElementTree,
     text_renderer: &mut crate::text::TextRenderer,
     root_id: crate::element::NodeId,
     mx: f64,
@@ -382,7 +382,7 @@ fn point_to_rect_dist(px: f64, py: f64, bounds: &crate::style::Bounds) -> f64 {
 
 /// Find word boundaries around a flat grapheme index within a text run.
 fn word_boundaries_in_run(
-    dom: &Dom,
+    dom: &ElementTree,
     root_id: crate::element::NodeId,
     flat_idx: usize,
 ) -> (usize, usize) {
@@ -447,7 +447,7 @@ fn word_boundaries_in_run(
 // ── Mouse input ──────────────────────────────────────────────────────
 
 pub fn handle_mouse_input(
-    dom: &mut Dom,
+    dom: &mut ElementTree,
     handle: &mut Window,
     wid: u32,
     btn_state: winit::event::ElementState,
@@ -861,7 +861,7 @@ pub fn handle_mouse_input(
 
 /// Build the raw KeyDown/KeyUp event. Returns None for F5 (hot reload) or unmappable keys.
 pub fn build_key_event(
-    dom: &Dom,
+    dom: &ElementTree,
     wid: u32,
     key_event: &winit::event::KeyEvent,
     modifiers: u32,
@@ -906,7 +906,7 @@ pub fn build_key_event(
 /// event has been dispatched to JS (so preventDefault can suppress this).
 /// Returns (needs_redraw, events_to_dispatch).
 pub fn handle_key_for_input(
-    dom: &mut Dom,
+    dom: &mut ElementTree,
     handle: &mut Window,
     wid: u32,
     key_event: &winit::event::KeyEvent,
@@ -1009,7 +1009,7 @@ pub fn handle_key_for_input(
 /// Called after input-level processing, only when there's no focused input.
 /// Returns true if a redraw is needed.
 pub fn handle_key_for_view_selection(
-    dom: &mut Dom,
+    dom: &mut ElementTree,
     key_event: &winit::event::KeyEvent,
     modifiers: u32,
 ) -> bool {
@@ -1107,7 +1107,7 @@ pub enum ClipboardCommand {
 }
 
 /// Resolve the current clipboard target from DOM state.
-fn resolve_clipboard_target(dom: &Dom) -> Option<ClipboardTarget> {
+fn resolve_clipboard_target(dom: &ElementTree) -> Option<ClipboardTarget> {
     if let Some(focused_id) = dom.focused_node
         && let Some(node) = dom.nodes.get(focused_id)
         && node.behavior.as_input().is_some()
@@ -1125,7 +1125,7 @@ fn resolve_clipboard_target(dom: &Dom) -> Option<ClipboardTarget> {
 /// Detect whether a key event is a clipboard shortcut and build the corresponding
 /// command. Returns `None` if the key is not a clipboard shortcut.
 pub fn build_clipboard_command(
-    dom: &Dom,
+    dom: &ElementTree,
     key_event: &winit::event::KeyEvent,
     modifiers: u32,
     clipboard: &mut SystemClipboard,
@@ -1276,7 +1276,7 @@ pub fn clipboard_command_to_event(cmd: &ClipboardCommand, wid: u32) -> AppEvent 
 /// Apply the default clipboard action. Returns (needs_redraw, follow_up_events).
 pub fn apply_clipboard_command(
     cmd: ClipboardCommand,
-    dom: &mut Dom,
+    dom: &mut ElementTree,
     wid: u32,
     clipboard: &mut SystemClipboard,
 ) -> (bool, Vec<AppEvent>) {
@@ -1344,7 +1344,11 @@ pub fn apply_clipboard_command(
 }
 
 /// Find the previous word boundary from a flat grapheme index in a text select run.
-fn prev_word_boundary_in_run(dom: &Dom, root_id: crate::element::NodeId, flat_idx: usize) -> usize {
+fn prev_word_boundary_in_run(
+    dom: &ElementTree,
+    root_id: crate::element::NodeId,
+    flat_idx: usize,
+) -> usize {
     let Some(run) = dom
         .selectable_text_runs
         .iter()
@@ -1376,7 +1380,11 @@ fn prev_word_boundary_in_run(dom: &Dom, root_id: crate::element::NodeId, flat_id
 }
 
 /// Find the next word boundary from a flat grapheme index in a text select run.
-fn next_word_boundary_in_run(dom: &Dom, root_id: crate::element::NodeId, flat_idx: usize) -> usize {
+fn next_word_boundary_in_run(
+    dom: &ElementTree,
+    root_id: crate::element::NodeId,
+    flat_idx: usize,
+) -> usize {
     let Some(run) = dom
         .selectable_text_runs
         .iter()
@@ -1408,7 +1416,7 @@ fn next_word_boundary_in_run(dom: &Dom, root_id: crate::element::NodeId, flat_id
     i
 }
 
-pub fn handle_mouse_wheel(dom: &mut Dom, scroll_delta_y: f64) -> bool {
+pub fn handle_mouse_wheel(dom: &mut ElementTree, scroll_delta_y: f64) -> bool {
     let mut needs_redraw = false;
     let Some((mx, my)) = dom.hit_state.mouse_position else {
         return false;

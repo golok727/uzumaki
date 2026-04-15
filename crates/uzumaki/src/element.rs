@@ -3,7 +3,7 @@ use std::collections::HashMap;
 use std::rc::Rc;
 
 use cosmic_text::Attrs;
-use slotmap::{SlotMap, new_key_type};
+use slab::Slab;
 use unicode_segmentation::UnicodeSegmentation;
 use vello::Scene;
 use vello::kurbo::{Affine, Rect, RoundedRect, RoundedRectRadii};
@@ -75,9 +75,7 @@ impl RangeProvider for DomRangeProvider {
 
 pub type InputState = BaseInputState<DomRangeProvider>;
 
-new_key_type! {
-    pub struct NodeId;
-}
+pub type NodeId = usize;
 
 pub struct ScrollState {
     pub scroll_offset_y: f32,
@@ -247,8 +245,8 @@ pub struct Node {
     pub selectable: Option<bool>,
 }
 
-pub struct Dom {
-    pub nodes: SlotMap<NodeId, Node>,
+pub struct ElementTree {
+    pub nodes: Slab<Node>,
     pub taffy: taffy::TaffyTree<NodeContext>,
     pub root: Option<NodeId>,
     /// Hitboxes registered during the last paint pass.
@@ -284,19 +282,19 @@ pub struct Dom {
 }
 
 // Safety:  We only access it from main thread
-unsafe impl Send for Dom {}
-unsafe impl Sync for Dom {}
+unsafe impl Send for ElementTree {}
+unsafe impl Sync for ElementTree {}
 
-impl Default for Dom {
+impl Default for ElementTree {
     fn default() -> Self {
         Self::new()
     }
 }
 
-impl Dom {
+impl ElementTree {
     pub fn new() -> Self {
         Self {
-            nodes: SlotMap::with_key(),
+            nodes: Slab::new(),
             taffy: taffy::TaffyTree::new(),
             root: None,
             hitbox_store: HitboxStore::default(),
@@ -499,6 +497,59 @@ impl Dom {
         }
     }
 
+    /// Single source of truth for clearing stale NodeId references when a node
+    /// is about to be freed. With plain `usize` NodeIds (slab), any long-lived
+    /// field holding a removed id would silently retarget to whatever node
+    /// reuses the slot. Every removal path MUST funnel through here.
+    ///
+    /// When adding a new long-lived `NodeId` field to `Dom`, register it here.
+    fn on_node_removed(&mut self, id: NodeId) {
+        if self.focused_node == Some(id) {
+            self.focused_node = None;
+        }
+        if self.dragging_input == Some(id) {
+            self.dragging_input = None;
+        }
+        if self.dragging_view_selection == Some(id) {
+            self.dragging_view_selection = None;
+        }
+        if self.last_click_node == Some(id) {
+            self.last_click_node = None;
+            self.click_count = 0;
+            self.last_click_time = None;
+        }
+        if let Some(d) = &self.scroll_drag
+            && d.node_id == id
+        {
+            self.scroll_drag = None;
+        }
+        if let Some((nid, _)) = self.scroll_lock
+            && nid == id
+        {
+            self.scroll_lock = None;
+        }
+        if let Some(sel) = self.selection.get()
+            && sel.root == id
+        {
+            self.selection.clear();
+        }
+
+        self.hit_state.hovered_nodes.retain(|&n| n != id);
+        if self.hit_state.top_node == Some(id) {
+            self.hit_state.top_node = None;
+        }
+        if self.hit_state.active_node == Some(id) {
+            self.hit_state.active_node = None;
+        }
+
+        self.scroll_thumbs.retain(|t| t.node_id != id);
+        self.hitbox_store.retain_by_node(|n| n != id);
+
+        // Selectable text runs reference nodes as both roots and entries.
+        self.selectable_text_runs
+            .retain(|r| r.root_id != id && !r.entries.iter().any(|e| e.node_id == id));
+    }
+
     pub fn remove_child(&mut self, parent_id: NodeId, child_id: NodeId) {
         let parent_taffy = self.nodes[parent_id].taffy_node;
         let child_taffy = self.nodes[child_id].taffy_node;
@@ -531,10 +582,11 @@ impl Dom {
             }
         }
 
-        // Free taffy nodes + slotmap entries
+        // remove taffy and slab nodes
         for nid in to_remove {
             let tn = self.nodes[nid].taffy_node;
             let _ = self.taffy.remove(tn);
+            self.on_node_removed(nid);
             self.nodes.remove(nid);
         }
     }
@@ -593,20 +645,17 @@ impl Dom {
             let _ = self.taffy.remove_child(parent_taffy, tc);
         }
 
-        // Remove descendants from taffy + slotmap
+        // Remove descendants from taffy + slab; scrub stale NodeId references first.
         for nid in to_remove {
             let tn = self.nodes[nid].taffy_node;
             let _ = self.taffy.remove(tn);
+            self.on_node_removed(nid);
             self.nodes.remove(nid);
         }
 
         // Reset parent pointers
         self.nodes[parent_id].first_child = None;
         self.nodes[parent_id].last_child = None;
-
-        // Stale hitboxes reference removed nodes
-        self.hitbox_store.clear();
-        self.hit_state = HitTestState::default();
     }
 
     pub fn compute_layout(&mut self, width: f32, height: f32, text_renderer: &mut TextRenderer) {
@@ -1504,12 +1553,12 @@ fn available_as_option(space: taffy::AvailableSpace) -> Option<f32> {
 
 #[cfg(test)]
 mod tests {
-    use super::Dom;
+    use super::ElementTree;
     use crate::style::Bounds;
 
     #[test]
     fn refresh_hit_test_retargets_stationary_pointer_after_hitboxes_change() {
-        let mut dom = Dom::new();
+        let mut dom = ElementTree::new();
         let first = dom.create_view(Default::default());
         let second = dom.create_view(Default::default());
 

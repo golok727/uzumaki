@@ -1,4 +1,1 @@
-export type NodeId = {
-  version: number;
-  idx: number;
-};
+export type NodeId = number;

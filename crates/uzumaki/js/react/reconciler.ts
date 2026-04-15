@@ -6,6 +6,7 @@ import type { JSX } from './jsx/runtime';
 
 import core, { PropKey } from '../core';
 import { eventManager } from '../events';
+import type { NodeId } from '../types';
 import { Window } from '../window';
 
 const PROP_NAME_TO_KEY: Record<string, number> = {
@@ -690,7 +691,7 @@ class TextElement extends BaseElement<Record<string, any>> {
 
 type Container = {
   window: Window;
-  rootNodeId: any;
+  rootNodeId: NodeId;
 };
 
 function getWindowId(container: Container): number {

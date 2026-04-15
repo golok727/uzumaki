@@ -41,7 +41,7 @@ use std::sync::Arc;
 use winit::event_loop::EventLoopProxy;
 use winit::{application::ApplicationHandler, event::WindowEvent, window::WindowId};
 
-use crate::element::{Dom, NodeId};
+use crate::element::{ElementTree, NodeId};
 use crate::gpu::GpuContext;
 use crate::prop_keys::PropKey;
 use crate::selection::{DomSelection, SelectionRange};
@@ -70,7 +70,7 @@ pub fn create_snapshot(
 }
 
 pub struct WindowEntry {
-    pub dom: Dom,
+    pub dom: ElementTree,
     pub handle: Option<window::Window>,
     pub rem_base: f32,
 }
@@ -161,7 +161,7 @@ pub fn op_create_window(
 
     let app_state = state.borrow::<SharedAppState>().clone();
     with_state(&app_state, |s| {
-        let mut dom = Dom::new();
+        let mut dom = ElementTree::new();
         let root = dom.create_view(Style {
             display: Display::Flex,
             size: Size {
@@ -223,57 +223,55 @@ pub fn op_request_redraw(
     Ok(())
 }
 
-#[op2]
-#[serde]
-pub fn op_get_root_node_id(state: &mut OpState, #[smi] window_id: u32) -> serde_json::Value {
+#[op2(fast)]
+pub fn op_get_root_node_id(state: &mut OpState, #[smi] window_id: u32) -> u32 {
     let app_state = state.borrow::<SharedAppState>().clone();
     with_state(&app_state, |s| {
         let entry = s.windows.get(&window_id).expect("window not found");
-        serde_json::to_value(entry.dom.root.expect("no root node")).unwrap()
+        entry.dom.root.expect("no root node") as u32
     })
 }
 
-#[op2]
-#[serde]
+#[op2(fast)]
 pub fn op_create_element(
     state: &mut OpState,
     #[smi] window_id: u32,
     #[string] element_type: String,
-) -> serde_json::Value {
+) -> u32 {
     let app_state = state.borrow::<SharedAppState>().clone();
     with_state(&app_state, |s| {
         let entry = s.windows.get_mut(&window_id).expect("window not found");
-        if element_type == "input" {
-            serde_json::to_value(entry.dom.create_input(Style::default())).unwrap()
+        let id = if element_type == "input" {
+            entry.dom.create_input(Style::default())
         } else {
-            serde_json::to_value(entry.dom.create_view(Style::default())).unwrap()
-        }
+            entry.dom.create_view(Style::default())
+        };
+        id as u32
     })
 }
 
-#[op2]
-#[serde]
+#[op2(fast)]
 pub fn op_create_text_node(
     state: &mut OpState,
     #[smi] window_id: u32,
     #[string] text: String,
-) -> serde_json::Value {
+) -> u32 {
     let app_state = state.borrow::<SharedAppState>().clone();
     with_state(&app_state, |s| {
         let entry = s.windows.get_mut(&window_id).expect("window not found");
-        serde_json::to_value(entry.dom.create_text(text, Style::default())).unwrap()
+        entry.dom.create_text(text, Style::default()) as u32
     })
 }
 
-#[op2]
+#[op2(fast)]
 pub fn op_append_child(
     state: &mut OpState,
     #[smi] window_id: u32,
-    #[serde] parent_id: serde_json::Value,
-    #[serde] child_id: serde_json::Value,
+    #[smi] parent_id: u32,
+    #[smi] child_id: u32,
 ) {
-    let pid = serde_json::from_value::<NodeId>(parent_id).unwrap();
-    let cid = serde_json::from_value::<NodeId>(child_id).unwrap();
+    let pid = parent_id as NodeId;
+    let cid = child_id as NodeId;
     let app_state = state.borrow::<SharedAppState>().clone();
     with_state(&app_state, |s| {
         let entry = s.windows.get_mut(&window_id).expect("window not found");
@@ -281,17 +279,17 @@ pub fn op_append_child(
     });
 }
 
-#[op2]
+#[op2(fast)]
 pub fn op_insert_before(
     state: &mut OpState,
     #[smi] window_id: u32,
-    #[serde] parent_id: serde_json::Value,
-    #[serde] child_id: serde_json::Value,
-    #[serde] before_id: serde_json::Value,
+    #[smi] parent_id: u32,
+    #[smi] child_id: u32,
+    #[smi] before_id: u32,
 ) {
-    let pid = serde_json::from_value::<NodeId>(parent_id).unwrap();
-    let cid = serde_json::from_value::<NodeId>(child_id).unwrap();
-    let bid = serde_json::from_value::<NodeId>(before_id).unwrap();
+    let pid = parent_id as NodeId;
+    let cid = child_id as NodeId;
+    let bid = before_id as NodeId;
     let app_state = state.borrow::<SharedAppState>().clone();
     with_state(&app_state, |s| {
         let entry = s.windows.get_mut(&window_id).expect("window not found");
@@ -299,15 +297,15 @@ pub fn op_insert_before(
     });
 }
 
-#[op2]
+#[op2(fast)]
 pub fn op_remove_child(
     state: &mut OpState,
     #[smi] window_id: u32,
-    #[serde] parent_id: serde_json::Value,
-    #[serde] child_id: serde_json::Value,
+    #[smi] parent_id: u32,
+    #[smi] child_id: u32,
 ) {
-    let pid = serde_json::from_value::<NodeId>(parent_id).unwrap();
-    let cid = serde_json::from_value::<NodeId>(child_id).unwrap();
+    let pid = parent_id as NodeId;
+    let cid = child_id as NodeId;
     let app_state = state.borrow::<SharedAppState>().clone();
     with_state(&app_state, |s| {
         let entry = s.windows.get_mut(&window_id).expect("window not found");
@@ -315,14 +313,14 @@ pub fn op_remove_child(
     });
 }
 
-#[op2]
+#[op2(fast)]
 pub fn op_set_text(
     state: &mut OpState,
     #[smi] window_id: u32,
-    #[serde] node_id: serde_json::Value,
+    #[smi] node_id: u32,
     #[string] text: String,
 ) {
-    let nid = serde_json::from_value::<NodeId>(node_id).unwrap();
+    let nid = node_id as NodeId;
     let app_state = state.borrow::<SharedAppState>().clone();
     with_state(&app_state, |s| {
         let entry = s.windows.get_mut(&window_id).expect("window not found");
@@ -341,16 +339,16 @@ pub fn op_reset_dom(state: &mut OpState, #[smi] window_id: u32) {
     });
 }
 
-#[op2]
+#[op2(fast)]
 pub fn op_set_length_prop(
     state: &mut OpState,
     #[smi] window_id: u32,
-    #[serde] node_id: serde_json::Value,
+    #[smi] node_id: u32,
     #[smi] prop: u32,
     value: f64,
     #[smi] unit: u32,
 ) {
-    let nid = serde_json::from_value::<NodeId>(node_id).unwrap();
+    let nid = node_id as NodeId;
     let Ok(prop) = PropKey::try_from(prop) else {
         return;
     };
@@ -377,18 +375,18 @@ pub fn op_set_length_prop(
     });
 }
 
-#[op2]
+#[op2(fast)]
 pub fn op_set_color_prop(
     state: &mut OpState,
     #[smi] window_id: u32,
-    #[serde] node_id: serde_json::Value,
+    #[smi] node_id: u32,
     #[smi] prop: u32,
     #[smi] r: u32,
     #[smi] g: u32,
     #[smi] b: u32,
     #[smi] a: u32,
 ) {
-    let nid = serde_json::from_value::<NodeId>(node_id).unwrap();
+    let nid = node_id as NodeId;
     let Ok(prop) = PropKey::try_from(prop) else {
         return;
     };
@@ -440,15 +438,15 @@ pub fn op_set_color_prop(
     });
 }
 
-#[op2]
+#[op2(fast)]
 pub fn op_set_f32_prop(
     state: &mut OpState,
     #[smi] window_id: u32,
-    #[serde] node_id: serde_json::Value,
+    #[smi] node_id: u32,
     #[smi] prop: u32,
     value: f64,
 ) {
-    let nid = serde_json::from_value::<NodeId>(node_id).unwrap();
+    let nid = node_id as NodeId;
     let Ok(prop) = PropKey::try_from(prop) else {
         return;
     };
@@ -569,15 +567,15 @@ pub fn op_set_f32_prop(
     });
 }
 
-#[op2]
+#[op2(fast)]
 pub fn op_set_enum_prop(
     state: &mut OpState,
     #[smi] window_id: u32,
-    #[serde] node_id: serde_json::Value,
+    #[smi] node_id: u32,
     #[smi] prop: u32,
     #[smi] value: i32,
 ) {
-    let nid = serde_json::from_value::<NodeId>(node_id).unwrap();
+    let nid = node_id as NodeId;
     let Ok(prop) = PropKey::try_from(prop) else {
         return;
     };
@@ -634,14 +632,14 @@ pub fn op_set_enum_prop(
 
 // ── Input attribute ops ─────────────────────────────────────────────
 
-#[op2]
+#[op2(fast)]
 pub fn op_set_input_value(
     state: &mut OpState,
     #[smi] window_id: u32,
-    #[serde] node_id: serde_json::Value,
+    #[smi] node_id: u32,
     #[string] value: String,
 ) {
-    let nid = serde_json::from_value::<NodeId>(node_id).unwrap();
+    let nid = node_id as NodeId;
     let app_state = state.borrow::<SharedAppState>().clone();
     with_state(&app_state, |s| {
         let entry = s.windows.get_mut(&window_id).expect("window not found");
@@ -658,9 +656,9 @@ pub fn op_set_input_value(
 pub fn op_get_input_value(
     state: &mut OpState,
     #[smi] window_id: u32,
-    #[serde] node_id: serde_json::Value,
+    #[smi] node_id: u32,
 ) -> String {
-    let nid = serde_json::from_value::<NodeId>(node_id).unwrap();
+    let nid = node_id as NodeId;
     let app_state = state.borrow::<SharedAppState>().clone();
     with_state(&app_state, |s| {
         let entry = s.windows.get(&window_id).expect("window not found");
@@ -674,14 +672,14 @@ pub fn op_get_input_value(
     })
 }
 
-#[op2]
+#[op2(fast)]
 pub fn op_set_input_placeholder(
     state: &mut OpState,
     #[smi] window_id: u32,
-    #[serde] node_id: serde_json::Value,
+    #[smi] node_id: u32,
     #[string] placeholder: String,
 ) {
-    let nid = serde_json::from_value::<NodeId>(node_id).unwrap();
+    let nid = node_id as NodeId;
     let app_state = state.borrow::<SharedAppState>().clone();
     with_state(&app_state, |s| {
         let entry = s.windows.get_mut(&window_id).expect("window not found");
@@ -693,14 +691,14 @@ pub fn op_set_input_placeholder(
     });
 }
 
-#[op2]
+#[op2(fast)]
 pub fn op_set_input_disabled(
     state: &mut OpState,
     #[smi] window_id: u32,
-    #[serde] node_id: serde_json::Value,
+    #[smi] node_id: u32,
     disabled: bool,
 ) {
-    let nid = serde_json::from_value::<NodeId>(node_id).unwrap();
+    let nid = node_id as NodeId;
     let app_state = state.borrow::<SharedAppState>().clone();
     with_state(&app_state, |s| {
         let entry = s.windows.get_mut(&window_id).expect("window not found");
@@ -712,14 +710,14 @@ pub fn op_set_input_disabled(
     });
 }
 
-#[op2]
+#[op2(fast)]
 pub fn op_set_input_max_length(
     state: &mut OpState,
     #[smi] window_id: u32,
-    #[serde] node_id: serde_json::Value,
+    #[smi] node_id: u32,
     #[smi] max_length: i32,
 ) {
-    let nid = serde_json::from_value::<NodeId>(node_id).unwrap();
+    let nid = node_id as NodeId;
     let app_state = state.borrow::<SharedAppState>().clone();
     with_state(&app_state, |s| {
         let entry = s.windows.get_mut(&window_id).expect("window not found");
@@ -735,14 +733,14 @@ pub fn op_set_input_max_length(
     });
 }
 
-#[op2]
+#[op2(fast)]
 pub fn op_set_input_multiline(
     state: &mut OpState,
     #[smi] window_id: u32,
-    #[serde] node_id: serde_json::Value,
+    #[smi] node_id: u32,
     multiline: bool,
 ) {
-    let nid = serde_json::from_value::<NodeId>(node_id).unwrap();
+    let nid = node_id as NodeId;
     let app_state = state.borrow::<SharedAppState>().clone();
     with_state(&app_state, |s| {
         let entry = s.windows.get_mut(&window_id).expect("window not found");
@@ -754,14 +752,14 @@ pub fn op_set_input_multiline(
     });
 }
 
-#[op2]
+#[op2(fast)]
 pub fn op_set_input_secure(
     state: &mut OpState,
     #[smi] window_id: u32,
-    #[serde] node_id: serde_json::Value,
+    #[smi] node_id: u32,
     secure: bool,
 ) {
-    let nid = serde_json::from_value::<NodeId>(node_id).unwrap();
+    let nid = node_id as NodeId;
     let app_state = state.borrow::<SharedAppState>().clone();
     with_state(&app_state, |s| {
         let entry = s.windows.get_mut(&window_id).expect("window not found");
@@ -773,13 +771,9 @@ pub fn op_set_input_secure(
     });
 }
 
-#[op2]
-pub fn op_focus_input(
-    state: &mut OpState,
-    #[smi] window_id: u32,
-    #[serde] node_id: serde_json::Value,
-) {
-    let nid = serde_json::from_value::<NodeId>(node_id).unwrap();
+#[op2(fast)]
+pub fn op_focus_input(state: &mut OpState, #[smi] window_id: u32, #[smi] node_id: u32) {
+    let nid = node_id as NodeId;
     let app_state = state.borrow::<SharedAppState>().clone();
     with_state(&app_state, |s| {
         let entry = s.windows.get_mut(&window_id).expect("window not found");
@@ -842,16 +836,16 @@ pub fn op_get_window_title(state: &mut OpState, #[smi] window_id: u32) -> Option
 pub fn op_get_ancestor_path(
     state: &mut OpState,
     #[smi] window_id: u32,
-    #[serde] node_id: serde_json::Value,
-) -> Vec<serde_json::Value> {
-    let nid = serde_json::from_value::<NodeId>(node_id).unwrap();
+    #[smi] node_id: u32,
+) -> Vec<u32> {
+    let nid = node_id as NodeId;
     let app_state = state.borrow::<SharedAppState>().clone();
     with_state(&app_state, |s| {
         let entry = s.windows.get(&window_id).expect("window not found");
         let mut path = Vec::new();
         let mut current = Some(nid);
         while let Some(id) = current {
-            path.push(serde_json::to_value(id).unwrap());
+            path.push(id as u32);
             current = entry.dom.nodes.get(id).and_then(|n| n.parent);
         }
         path
@@ -863,6 +857,19 @@ pub fn op_get_ancestor_path(
 #[op2]
 #[serde]
 pub fn op_get_selection(state: &mut OpState, #[smi] window_id: u32) -> serde_json::Value {
+    #[derive(serde::Serialize)]
+    #[serde(rename_all = "camelCase")]
+    struct SelectionState {
+        root_node_id: u32,
+        anchor_offset: usize,
+        active_offset: usize,
+        start: usize,
+        end: usize,
+        run_length: usize,
+        is_collapsed: bool,
+        text: String,
+    }
+
     let app_state = state.borrow::<SharedAppState>().clone();
     with_state(&app_state, |s| {
         let entry = s.windows.get(&window_id).expect("window not found");
@@ -872,17 +879,17 @@ pub fn op_get_selection(state: &mut OpState, #[smi] window_id: u32) -> serde_jso
         };
         let run_length = dom.selection_run_length().unwrap_or(0);
         let text = dom.selected_text();
-        // bro use a typed struct  TT
-        serde_json::json!({
-            "rootNodeId": serde_json::to_value(sel.root).unwrap(),
-            "anchorOffset": sel.anchor(),
-            "activeOffset": sel.active(),
-            "start": sel.start(),
-            "end": sel.end(),
-            "runLength": run_length,
-            "isCollapsed": sel.is_collapsed(),
-            "text": text,
+        serde_json::to_value(SelectionState {
+            root_node_id: sel.root as u32,
+            anchor_offset: sel.anchor(),
+            active_offset: sel.active(),
+            start: sel.start(),
+            end: sel.end(),
+            run_length,
+            is_collapsed: sel.is_collapsed(),
+            text,
         })
+        .unwrap()
     })
 }
 
@@ -923,7 +930,7 @@ pub fn op_write_clipboard_text(state: &mut OpState, #[string] text: String) -> b
     }
 }
 
-fn sync_taffy(dom: &mut Dom, node_id: NodeId) {
+fn sync_taffy(dom: &mut ElementTree, node_id: NodeId) {
     let node = &dom.nodes[node_id];
     let taffy_style = node.style.to_taffy();
     let tn = node.taffy_node;

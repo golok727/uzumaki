@@ -9,29 +9,29 @@ interface Core {
   }): number;
   requestClose(): void;
   requestRedraw(windowId: number): void;
-  getRootNodeId(windowId: number): any;
-  createElement(windowId: number, elementType: string): any;
-  createTextNode(windowId: number, text: string): any;
-  appendChild(windowId: number, parentId: any, childId: any): void;
+  getRootNodeId(windowId: number): NodeId;
+  createElement(windowId: number, elementType: string): NodeId;
+  createTextNode(windowId: number, text: string): NodeId;
+  appendChild(windowId: number, parentId: NodeId, childId: NodeId): void;
   insertBefore(
     windowId: number,
-    parentId: any,
-    childId: any,
-    beforeId: any,
+    parentId: NodeId,
+    childId: NodeId,
+    beforeId: NodeId,
   ): void;
-  removeChild(windowId: number, parentId: any, childId: any): void;
-  setText(windowId: number, nodeId: any, text: string): void;
+  removeChild(windowId: number, parentId: NodeId, childId: NodeId): void;
+  setText(windowId: number, nodeId: NodeId, text: string): void;
   resetDom(windowId: number): void;
   setLengthProp(
     windowId: number,
-    nodeId: any,
+    nodeId: NodeId,
     prop: number,
     value: number,
     unit: number,
   ): void;
   setColorProp(
     windowId: number,
-    nodeId: any,
+    nodeId: NodeId,
     prop: number,
     r: number,
     g: number,

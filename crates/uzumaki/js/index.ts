@@ -57,11 +57,7 @@ const EVENT_TYPE_MAP: Record<string, EventType> = {
 ): boolean {
   // WindowLoad is a special event dispatched directly to window handlers
   if (event.type === 'windowLoad') {
-    eventManager.dispatchWindowEvent(
-      event.windowId,
-      EventType.WindowLoad,
-      event,
-    );
+    eventManager.dispatchWindowEvent(event.windowId, EventType.WindowLoad);
     return false;
   }
 

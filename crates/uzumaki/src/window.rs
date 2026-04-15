@@ -5,7 +5,7 @@ use vello::{AaSupport, RenderParams, RendererOptions, Scene};
 
 use winit::window::Window as WinitWindow;
 
-use crate::element::Dom;
+use crate::element::ElementTree;
 use crate::gpu::GpuContext;
 use crate::text::TextRenderer;
 
@@ -90,7 +90,7 @@ impl Window {
         &mut self,
         device: &wgpu::Device,
         queue: &wgpu::Queue,
-        dom: &mut Dom,
+        dom: &mut ElementTree,
     ) {
         if !self.valid_surface {
             return;

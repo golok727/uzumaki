@@ -56,6 +56,12 @@ impl HitboxStore {
         self.next_id = 0;
     }
 
+    /// Drop any hitbox whose `node_id` no longer passes `keep`.
+    /// Used by Dom::on_node_removed to scrub stale references after a node is freed.
+    pub fn retain_by_node(&mut self, mut keep: impl FnMut(NodeId) -> bool) {
+        self.hitboxes.retain(|h| keep(h.node_id));
+    }
+
     /// Register a hitbox and return its ID.
     pub fn insert(&mut self, node_id: NodeId, bounds: Bounds) -> HitboxId {
         let id = HitboxId(self.next_id);

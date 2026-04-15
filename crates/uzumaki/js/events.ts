@@ -117,10 +117,6 @@ const NON_BUBBLING: Set<EventType> = new Set([
   EventType.WindowLoad,
 ]);
 
-function nodeKey(id: any): string {
-  return JSON.stringify(id);
-}
-
 function isMouseType(t: EventType): boolean {
   return t >= 0 && t <= 3;
 }
@@ -150,7 +146,7 @@ type NodeHandlers = Map<EventType, HandlerEntry[]>;
 
 export class EventManager {
   /** nodeKey -> EventType -> HandlerEntry[] */
-  private handlers = new Map<string, NodeHandlers>();
+  private handlers = new Map<number, NodeHandlers>();
 
   /** windowId (number) -> EventType -> HandlerEntry[] */
   private windowHandlers = new Map<number, Map<EventType, HandlerEntry[]>>();
@@ -161,7 +157,7 @@ export class EventManager {
     handler: Function,
     capture = false,
   ): void {
-    const key = nodeKey(nodeId);
+    const key = nodeId;
     let typeMap = this.handlers.get(key);
     if (!typeMap) {
       typeMap = new Map();
@@ -181,7 +177,7 @@ export class EventManager {
     handler: Function,
     capture = false,
   ): void {
-    const key = nodeKey(nodeId);
+    const key = nodeId;
     const typeMap = this.handlers.get(key);
     if (!typeMap) return;
     const entries = typeMap.get(eventType);
@@ -195,11 +191,11 @@ export class EventManager {
   }
 
   clearNode(nodeId: NodeId): void {
-    this.handlers.delete(nodeKey(nodeId));
+    this.handlers.delete(nodeId);
   }
 
   hasHandlers(nodeId: NodeId): boolean {
-    const typeMap = this.handlers.get(nodeKey(nodeId));
+    const typeMap = this.handlers.get(nodeId);
     return typeMap != null && typeMap.size > 0;
   }
 
@@ -224,7 +220,7 @@ export class EventManager {
   }
 
   clearHandlersByName(nodeId: NodeId, eventName: string): void {
-    const key = nodeKey(nodeId);
+    const key = nodeId;
     const typeMap = this.handlers.get(key);
     if (!typeMap) return;
     const t = EVENT_NAME_TO_TYPE[eventName];
@@ -297,7 +293,7 @@ export class EventManager {
   }
 
   private fireHandlers(
-    key: string,
+    key: number,
     type: EventType,
     event: UzumakiEvent,
     capturePhase: boolean,
@@ -489,7 +485,7 @@ export class EventManager {
     // Walk path in reverse (root → target) for capture
     for (let i = path.length - 1; i > 0 && !_stopped; i--) {
       event.currentTarget = path[i];
-      const res = this.fireHandlers(nodeKey(path[i]), type, event, true);
+      const res = this.fireHandlers(path[i], type, event, true);
       if (res.stopped) _stopped = true;
     }
 
@@ -498,7 +494,7 @@ export class EventManager {
       _eventPhase = EventPhase.Target;
       event.currentTarget = path[0];
       const res = this.fireHandlers(
-        nodeKey(path[0]),
+        path[0],
         type,
         event,
         false, // doesn't matter for target phase — fireHandlers fires all
@@ -513,7 +509,7 @@ export class EventManager {
       // Walk from parent of target up to root
       for (let i = 1; i < path.length && !_stopped; i++) {
         event.currentTarget = path[i];
-        const res = this.fireHandlers(nodeKey(path[i]), type, event, false);
+        const res = this.fireHandlers(path[i], type, event, false);
         if (res.stopped) _stopped = true;
       }
 
