@@ -582,7 +582,7 @@ impl ApplicationHandler<UserEvent> for Application {
                 // 2. If not prevented, handle clipboard shortcuts, then input-level processing
                 if !prevented {
                     if let Some(event_dispatch::AppEvent::HotReload) = raw_event {
-                        // HotReload is already dispatched, nothing more to do
+                        // todo hotreload :3
                     } else {
                         // 2a. Check for clipboard shortcuts (Ctrl+C/X/V)
                         let clipboard_cmd = {
