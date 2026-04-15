@@ -7,6 +7,7 @@ use winit::window::Window as WinitWindow;
 
 use crate::cursor::CursorIcon;
 use crate::element::ElementTree;
+use crate::element::render::Painter;
 use crate::gpu::GpuContext;
 use crate::text::TextRenderer;
 
@@ -119,10 +120,10 @@ impl Window {
             height as f32 / scale as f32,
             &mut self.text_renderer,
         );
-        dom.render(&mut self.scene, &mut self.text_renderer, scale);
+        Painter::new(dom, &mut self.scene, &mut self.text_renderer, scale).paint();
         if dom.refresh_hit_test() {
             self.scene.reset();
-            dom.render(&mut self.scene, &mut self.text_renderer, scale);
+            Painter::new(dom, &mut self.scene, &mut self.text_renderer, scale).paint();
         }
 
         let target_view = Self::ensure_vello_target(&mut self.vello_target, device, width, height);
