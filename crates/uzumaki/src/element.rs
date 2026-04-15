@@ -10,12 +10,16 @@ use vello::kurbo::{Affine, Rect, RoundedRect, RoundedRectRadii};
 use vello::peniko::{Color as VelloColor, Fill};
 
 use crate::cursor::CursorIcon;
-use crate::elements::input::{InputRenderInfo, compute_selection_rects};
+use crate::element::input::{InputRenderInfo, compute_selection_rects};
 use crate::input::{BaseInputState, RangeProvider};
 use crate::interactivity::{HitTestState, HitboxStore, Interactivity};
 use crate::selection::{DomSelection, SelectionRange};
 use crate::style::{Bounds, Color, Style};
 use crate::text::TextRenderer;
+
+pub mod input;
+pub mod text;
+pub mod view;
 
 #[derive(Debug, Clone)]
 pub struct SharedSelectionState {
@@ -1027,7 +1031,7 @@ impl ElementTree {
                     }
 
                     if let Some(input_info) = &info.input {
-                        let content_info = crate::elements::input::paint_input(
+                        let content_info = crate::element::input::paint_input(
                             scene,
                             text_renderer,
                             bounds,
@@ -1163,7 +1167,7 @@ impl ElementTree {
                                 );
                             });
                         } else {
-                            crate::elements::text::paint_text(
+                            crate::element::text::paint_text(
                                 scene,
                                 text_renderer,
                                 bounds,
@@ -1175,13 +1179,7 @@ impl ElementTree {
                             );
                         }
                     } else {
-                        crate::elements::view::paint_view(
-                            scene,
-                            bounds,
-                            &info.style,
-                            scale,
-                            |_| {},
-                        );
+                        crate::element::view::paint_view(scene, bounds, &info.style, scale, |_| {});
                     }
                 }
                 RenderCommand::PushClip(rect, s) => {

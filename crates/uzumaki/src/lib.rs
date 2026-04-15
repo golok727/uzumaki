@@ -4,7 +4,6 @@ pub mod app;
 pub mod clipboard;
 pub mod cursor;
 pub mod element;
-pub mod elements;
 pub mod event_dispatch;
 pub mod geometry;
 pub mod gpu;
