@@ -46,7 +46,12 @@ fn main() {
 }
 
 fn run_launch_mode(mode: standalone::LaunchMode) {
-    let tokio_runtime = uzumaki_runtime::deno_runtime::tokio_util::create_basic_runtime();
+    let tokio_runtime = tokio::runtime::Builder::new_multi_thread()
+        .worker_threads(1)
+        .enable_io()
+        .enable_time()
+        .build()
+        .expect("failed to create tokio runtime");
     let entry = mode.entry_path().to_path_buf();
     let app_root = mode.app_root().to_path_buf();
     let mut app = tokio_runtime.block_on(async {

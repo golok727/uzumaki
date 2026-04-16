@@ -6,6 +6,7 @@ import { App as DashboardApp } from './app';
 import { Button } from './button';
 import { App as CounterApp } from './counter';
 import { ACCENT_ORANGE, BASE_BG, BORDER, PANEL, SUBTEXT } from './styles';
+import { Timer } from './timer';
 
 const window = new Window('main', {
   width: 1200,
@@ -17,12 +18,12 @@ window.on('click', (_ev) => {
   // console.log('Click window');
 });
 
-type Examples = 'counter' | 'dashboard';
-
-const exampleMap: Record<Examples, React.ReactNode> = {
+const exampleMap = {
   counter: <CounterApp />,
   dashboard: <DashboardApp />,
-};
+  timer: <Timer />,
+} as const;
+type Examples = keyof typeof exampleMap;
 
 function Playground() {
   const [example, setExample] = useState<Examples | null>('dashboard');
@@ -41,8 +42,9 @@ function Playground() {
       >
         <text fontSize={24}>Select an example:</text>
         <view display="flex" flexDir="col" gap="16">
-          <Button onClick={() => setExample('counter')}>Counter</Button>
           <Button onClick={() => setExample('dashboard')}>Dashboard</Button>
+          <Button onClick={() => setExample('counter')}>Counter</Button>
+          <Button onClick={() => setExample('timer')}>Timer</Button>
         </view>
       </view>
     );

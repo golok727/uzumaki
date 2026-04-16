@@ -24,3 +24,4 @@ zip.workspace = true
 tempfile.workspace = true
 libsui = "0.14"
 dirs.workspace = true
+tokio = { workspace = true, features = ["rt-multi-thread", "time", "net"] }

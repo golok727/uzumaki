@@ -3,9 +3,12 @@ use std::collections::HashMap;
 use std::path::PathBuf;
 use std::rc::Rc;
 use std::sync::Arc;
+use std::sync::atomic::{AtomicBool, Ordering};
+use std::task::{Context, Poll};
 
 use anyhow::Result;
-use deno_core::v8;
+use deno_core::futures::task::{ArcWake, waker};
+use deno_core::{PollEventLoopOptions, v8};
 use deno_resolver::npm::{
     ByonmNpmResolverCreateOptions, CreateInNpmPkgCheckerOptions, DenoInNpmPackageChecker,
     NpmResolver, NpmResolverCreateOptions,
@@ -103,7 +106,31 @@ pub(crate) enum UserEvent {
     RequestRedraw {
         id: u32,
     },
+    WakeJs,
     Quit,
+}
+
+struct JsWakeHandle {
+    proxy: winit::event_loop::EventLoopProxy<UserEvent>,
+    queued: AtomicBool,
+}
+
+impl JsWakeHandle {
+    fn wake(&self) {
+        if !self.queued.swap(true, Ordering::SeqCst) {
+            let _ = self.proxy.send_event(UserEvent::WakeJs);
+        }
+    }
+
+    fn clear(&self) {
+        self.queued.store(false, Ordering::SeqCst);
+    }
+}
+
+impl ArcWake for JsWakeHandle {
+    fn wake_by_ref(arc_self: &Arc<Self>) {
+        JsWakeHandle::wake(arc_self.as_ref());
+    }
 }
 
 pub struct Application {
@@ -116,6 +143,7 @@ pub struct Application {
     module_loaded: bool,
     pub tokio_runtime: Option<tokio::runtime::Runtime>,
     global_app_event_dispatch_fn: Option<v8::Global<v8::Function>>,
+    js_wake_handle: Arc<JsWakeHandle>,
 }
 
 impl Application {
@@ -230,6 +258,11 @@ impl Application {
 
         let event_loop: winit::event_loop::EventLoop<UserEvent> =
             winit::event_loop::EventLoop::with_user_event().build()?;
+        let event_loop_proxy = event_loop.create_proxy();
+        let js_wake_handle = Arc::new(JsWakeHandle {
+            proxy: event_loop_proxy.clone(),
+            queued: AtomicBool::new(false),
+        });
 
         // Create GPU context
         let gpu = pollster::block_on(GpuContext::new()).expect("Failed to create GPU context");
@@ -251,7 +284,7 @@ impl Application {
             let op_state = worker.js_runtime.op_state();
             let mut borrow = op_state.borrow_mut();
             borrow.put(app_state.clone());
-            borrow.put(event_loop.create_proxy());
+            borrow.put(event_loop_proxy);
         }
 
         Ok(Self {
@@ -263,6 +296,7 @@ impl Application {
             module_loaded: false,
             tokio_runtime: None,
             global_app_event_dispatch_fn: None,
+            js_wake_handle,
         })
     }
 
@@ -275,19 +309,23 @@ impl Application {
         Ok(())
     }
 
-    fn tick_js(&mut self) {
+    fn pump_js(&mut self) {
+        let wake_handle = self.js_wake_handle.clone();
+        wake_handle.clear();
+
         let rt = self.tokio_runtime.as_ref().unwrap();
-        rt.block_on(async {
-            tokio::select! {
-                biased;
-                result = self.worker.run_event_loop(false) => {
-                    if let Err(e) = result {
-                        eprintln!("JS error: {e}");
-                    }
-                }
-                _ = tokio::task::yield_now() => {}
-            }
-        });
+        let _guard = rt.enter();
+        let waker = waker(wake_handle);
+        let mut cx = Context::from_waker(&waker);
+
+        match self
+            .worker
+            .js_runtime
+            .poll_event_loop(&mut cx, PollEventLoopOptions::default())
+        {
+            Poll::Ready(Ok(())) | Poll::Pending => {}
+            Poll::Ready(Err(e)) => eprintln!("JS error: {e}"),
+        }
     }
 
     fn load_main_module(&mut self) {
@@ -298,7 +336,7 @@ impl Application {
         rt.block_on(async {
             self.worker.execute_main_module(&specifier).await.unwrap();
         });
-        self.tick_js();
+        self.pump_js();
     }
 
     fn ensure_dispatch_fn(&mut self) -> Result<()> {
@@ -380,7 +418,7 @@ impl ApplicationHandler<UserEvent> for Application {
     }
 
     fn about_to_wait(&mut self, _event_loop: &winit::event_loop::ActiveEventLoop) {
-        self.tick_js();
+        self.pump_js();
     }
 
     fn user_event(&mut self, event_loop: &winit::event_loop::ActiveEventLoop, event: UserEvent) {
@@ -448,6 +486,10 @@ impl ApplicationHandler<UserEvent> for Application {
                 {
                     handle.winit_window.request_redraw();
                 }
+            }
+            UserEvent::WakeJs => {
+                self.js_wake_handle.clear();
+                self.pump_js();
             }
             UserEvent::Quit => {
                 let mut state = self.app_state.borrow_mut();

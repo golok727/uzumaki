@@ -9248,6 +9248,7 @@ dependencies = [
  "serde",
  "serde_json",
  "tempfile",
+ "tokio",
  "ureq",
  "uzumaki_runtime",
  "winapi",

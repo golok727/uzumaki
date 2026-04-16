@@ -3,8 +3,8 @@
   "type": "module",
   "private": true,
   "dependencies": {
-    "uzumaki-ui": "workspace:*",
-    "react": "^19.2.4"
+    "react": "^19.2.4",
+    "uzumaki-ui": "workspace:*"
   },
   "scripts": {
     "dev": "cargo r -p uzumaki --release -- src/index.tsx",
@@ -13,6 +13,7 @@
     "preview": "cargo r -p uzumaki --release -- dist/index.js"
   },
   "devDependencies": {
+    "@types/node": "^25.6.0",
     "@types/react": "^19.2.14"
   },
   "peerDependencies": {
