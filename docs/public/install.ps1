@@ -4,27 +4,44 @@
 $ErrorActionPreference = "Stop"
 
 $Repo = "golok727/uzumaki"
-$InstallDir = if ($env:UZUMAKI_INSTALL) { $env:UZUMAKI_INSTALL } else { "$env:USERPROFILE\.uzumaki\bin" }
+$InstallDir = if ($env:UZUMAKI_INSTALL)
+{ $env:UZUMAKI_INSTALL
+} else
+{ "$env:USERPROFILE\.uzumaki\bin"
+}
 
 # Detect architecture
-$Arch = switch ([System.Runtime.InteropServices.RuntimeInformation]::OSArchitecture) {
-    "X64"   { "x64" }
-    "Arm64" { "arm64" }
-    default { Write-Error "Unsupported architecture: $_"; exit 1 }
+$RawArch = (Get-ItemProperty 'HKLM:\SYSTEM\CurrentControlSet\Control\Session Manager\Environment').PROCESSOR_ARCHITECTURE
+$Arch = switch ($RawArch)
+{
+  "AMD64"
+  { "x64"
+  }
+  "ARM64"
+  { "arm64"
+  }
+  default
+  {
+    Write-Error "Unsupported architecture: $RawArch"
+    exit 1
+  }
 }
 
 $Asset = "uzumaki-windows-${Arch}.zip"
 
 # Fetch latest version
-if ($env:UZUMAKI_VERSION) {
-    $Version = "v$($env:UZUMAKI_VERSION -replace '^v', '')"
-} else {
-    $Response = Invoke-RestMethod -Uri "https://api.github.com/repos/$Repo/releases/latest" -Headers @{ "User-Agent" = "uzumaki-installer" }
-    $Version = $Response.tag_name
-    if (-not $Version) {
-        Write-Error "Could not determine latest version"
-        exit 1
-    }
+if ($env:UZUMAKI_VERSION)
+{
+  $Version = "v$($env:UZUMAKI_VERSION -replace '^v', '')"
+} else
+{
+  $Response = Invoke-RestMethod -Uri "https://api.github.com/repos/$Repo/releases/latest" -Headers @{ "User-Agent" = "uzumaki-installer" }
+  $Version = $Response.tag_name
+  if (-not $Version)
+  {
+    Write-Error "Could not determine latest version"
+    exit 1
+  }
 }
 
 $Url = "https://github.com/$Repo/releases/download/$Version/$Asset"
@@ -64,10 +81,11 @@ Write-Host ""
 
 # Check PATH
 $UserPath = [Environment]::GetEnvironmentVariable("PATH", "User")
-if ($UserPath -notlike "*$InstallDir*") {
-    Write-Host "  Adding $InstallDir to your PATH..."
-    [Environment]::SetEnvironmentVariable("PATH", "$InstallDir;$UserPath", "User")
-    $env:PATH = "$InstallDir;$env:PATH"
-    Write-Host "  Done! You may need to restart your terminal." -ForegroundColor Yellow
-    Write-Host ""
+if ($UserPath -notlike "*$InstallDir*")
+{
+  Write-Host "  Adding $InstallDir to your PATH..."
+  [Environment]::SetEnvironmentVariable("PATH", "$InstallDir;$UserPath", "User")
+  $env:PATH = "$InstallDir;$env:PATH"
+  Write-Host "  Done! You may need to restart your terminal." -ForegroundColor Yellow
+  Write-Host ""
 }
