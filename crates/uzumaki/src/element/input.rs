@@ -112,23 +112,23 @@ pub fn paint_input(
             let oy = if input.multiline {
                 text_y + top_pad - scroll_y
             } else {
-                text_y + ((text_h as f64 - line_height as f64) / 2.0).max(0.0)
+                text_y + ((text_h - line_height as f64) / 2.0).max(0.0)
             };
             for rect in &input.selection_rects {
-                let x1 = text_x + rect.x0 as f64
+                let x1 = text_x + rect.x0
                     - if input.multiline {
                         0.0
                     } else {
                         input.scroll_offset as f64
                     };
-                let x2 = text_x + rect.x1 as f64
+                let x2 = text_x + rect.x1
                     - if input.multiline {
                         0.0
                     } else {
                         input.scroll_offset as f64
                     };
-                let y1 = oy + rect.y0 as f64;
-                let y2 = oy + rect.y1 as f64;
+                let y1 = oy + rect.y0;
+                let y2 = oy + rect.y1;
                 scene.fill(
                     Fill::NonZero,
                     Affine::scale(scale),
@@ -173,97 +173,94 @@ pub fn paint_input(
     }
 
     // Preedit (IME composition text)
-    if let Some(preedit) = &input.preedit {
-        if let Some(cr) = &input.cursor_rect {
-            let oy = if input.multiline {
-                text_y + top_pad - scroll_y
+    if let Some(preedit) = &input.preedit
+        && let Some(cr) = &input.cursor_rect
+    {
+        let oy = if input.multiline {
+            text_y + top_pad - scroll_y
+        } else {
+            text_y + ((text_h - line_height as f64) / 2.0).max(0.0)
+        };
+        let px = text_x + cr.x0
+            - if input.multiline {
+                0.0
             } else {
-                text_y + ((text_h as f64 - line_height as f64) / 2.0).max(0.0)
+                input.scroll_offset as f64
             };
-            let px = text_x + cr.x0 as f64
-                - if input.multiline {
-                    0.0
-                } else {
-                    input.scroll_offset as f64
-                };
-            let py = oy + cr.y0 as f64;
-            let preedit_h = cr.y1 as f64 - cr.y0 as f64;
+        let py = oy + cr.y0;
+        let preedit_h = cr.y1 - cr.y0;
 
-            // Background highlight for preedit
-            let preedit_bg = VelloColor::from_rgba8(50, 50, 60, 180);
-            let preedit_rect = Rect::new(px, py, px + preedit.width as f64, py + preedit_h);
-            scene.fill(
-                Fill::NonZero,
-                Affine::scale(scale),
-                preedit_bg,
-                None,
-                &preedit_rect,
-            );
+        // Background highlight for preedit
+        let preedit_bg = VelloColor::from_rgba8(50, 50, 60, 180);
+        let preedit_rect = Rect::new(px, py, px + preedit.width as f64, py + preedit_h);
+        scene.fill(
+            Fill::NonZero,
+            Affine::scale(scale),
+            preedit_bg,
+            None,
+            &preedit_rect,
+        );
 
-            // Preedit text
-            text_renderer.draw_text(
-                scene,
-                &preedit.text,
-                input.font_size,
-                preedit.width + 100.0,
-                text_h as f32,
-                (px as f32, py as f32),
-                input.text_color.to_vello(),
-                scale,
-            );
+        // Preedit text
+        text_renderer.draw_text(
+            scene,
+            &preedit.text,
+            input.font_size,
+            preedit.width + 100.0,
+            text_h as f32,
+            (px as f32, py as f32),
+            input.text_color.to_vello(),
+            scale,
+        );
 
-            // Underline
-            let underline_y = py + preedit_h - 1.0;
-            let underline = Rect::new(
-                px,
-                underline_y,
-                px + preedit.width as f64,
-                underline_y + 1.0,
-            );
-            scene.fill(
-                Fill::NonZero,
-                Affine::scale(scale),
-                VelloColor::from_rgba8(180, 180, 180, 255),
-                None,
-                &underline,
-            );
-        }
+        // Underline
+        let underline_y = py + preedit_h - 1.0;
+        let underline = Rect::new(
+            px,
+            underline_y,
+            px + preedit.width as f64,
+            underline_y + 1.0,
+        );
+        scene.fill(
+            Fill::NonZero,
+            Affine::scale(scale),
+            VelloColor::from_rgba8(180, 180, 180, 255),
+            None,
+            &underline,
+        );
     }
 
     // Cursor (hide during preedit)
-    if input.focused && input.blink_visible && input.preedit.is_none() {
-        if let Some(cr) = &input.cursor_rect {
-            let oy = if input.multiline {
-                text_y + top_pad - scroll_y
+    if input.focused
+        && input.blink_visible
+        && input.preedit.is_none()
+        && let Some(cr) = &input.cursor_rect
+    {
+        let oy = if input.multiline {
+            text_y + top_pad - scroll_y
+        } else {
+            text_y + ((text_h - line_height as f64) / 2.0).max(0.0)
+        };
+        let cx = text_x + cr.x0
+            - if input.multiline {
+                0.0
             } else {
-                text_y + ((text_h as f64 - line_height as f64) / 2.0).max(0.0)
+                input.scroll_offset as f64
             };
-            let cx = text_x + cr.x0 as f64
-                - if input.multiline {
-                    0.0
-                } else {
-                    input.scroll_offset as f64
-                };
-            let cy = oy + cr.y0 as f64;
-            let cursor_rect = Rect::new(
-                cx,
-                cy + 2.0,
-                cx + 1.5,
-                cy + cr.y1 as f64 - cr.y0 as f64 - 2.0,
-            );
-            scene.fill(
-                Fill::NonZero,
-                Affine::scale(scale),
-                VelloColor::from_rgba8(212, 212, 212, 255),
-                None,
-                &cursor_rect,
-            );
-        }
+        let cy = oy + cr.y0;
+        let cursor_rect = Rect::new(cx, cy + 2.0, cx + 1.5, cy + cr.y1 - cr.y0 - 2.0);
+        scene.fill(
+            Fill::NonZero,
+            Affine::scale(scale),
+            VelloColor::from_rgba8(212, 212, 212, 255),
+            None,
+            &cursor_rect,
+        );
     }
 
     scene.pop_layer();
 
-    let content_info = if input.multiline {
+    if input.multiline {
         let content_height = input.layout_height as f64 + top_pad;
         Some(InputContentInfo {
             content_height,
@@ -272,6 +269,5 @@ pub fn paint_input(
         })
     } else {
         None
-    };
-    content_info
+    }
 }

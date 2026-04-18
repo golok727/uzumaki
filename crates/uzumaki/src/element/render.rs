@@ -49,13 +49,12 @@ fn compute_selection_rects(
             } else {
                 (0.0, end_x)
             }
+        } else if line_end_x > 1.0 {
+            (0.0, line_end_x)
         } else {
-            if line_end_x > 1.0 {
-                (0.0, line_end_x)
-            } else {
-                (0.0, 8.0)
-            }
+            (0.0, 8.0)
         };
+
         if x2 > x1 {
             rects.push([x1, y, x2, y + line_height]);
         }
@@ -226,14 +225,13 @@ impl<'a> Painter<'a> {
                         } else {
                             is.set_width(None);
                         }
-                        is.refresh_layout(&mut self.text_renderer);
+                        is.refresh_layout(self.text_renderer);
                         let cursor_rect = if blink_visible || preedit_state.is_some() {
-                            is.display_cursor_geometry(1.5, &mut self.text_renderer)
+                            is.display_cursor_geometry(1.5, self.text_renderer)
                         } else {
                             None
                         };
-                        let selection_rects =
-                            is.display_selection_geometry(&mut self.text_renderer);
+                        let selection_rects = is.display_selection_geometry(self.text_renderer);
                         let layout_height =
                             is.editor.try_layout().map(|l| l.height()).unwrap_or(0.0);
                         let preedit = preedit_state.map(|ps| {

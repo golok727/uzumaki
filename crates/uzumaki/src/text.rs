@@ -90,7 +90,7 @@ impl TextRenderer {
                         .draw(
                             Fill::NonZero,
                             glyph_run.positioned_glyphs().map(|g| vello::Glyph {
-                                id: g.id as u32,
+                                id: g.id,
                                 x: px + g.x,
                                 y: py + g.y,
                             }),
@@ -153,7 +153,7 @@ impl TextRenderer {
         let first_line_y = layout
             .lines()
             .next()
-            .map(|l| (l.metrics().baseline - l.metrics().ascent) as f32)
+            .map(|l| l.metrics().baseline - l.metrics().ascent)
             .unwrap_or(0.0);
 
         let mut positions = Vec::new();

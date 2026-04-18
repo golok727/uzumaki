@@ -110,7 +110,7 @@ impl ElementNode {
     }
 
     pub fn new_text_input(state: InputState) -> Self {
-        Self::new(ElementData::TextInput(state))
+        Self::new(ElementData::TextInput(Box::new(state)))
     }
 
     pub fn is_text_input(&self) -> bool {
@@ -129,7 +129,7 @@ impl ElementNode {
 #[derive(Default)]
 pub enum ElementData {
     // this is text Element <text>
-    TextInput(InputState),
+    TextInput(Box<InputState>),
     // for view nodes
     #[default]
     None,

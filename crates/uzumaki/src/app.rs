@@ -810,33 +810,31 @@ impl ApplicationHandler<UserEvent> for Application {
                     }
                     Ime::Preedit(text, cursor) => {
                         let mut state = self.app_state.borrow_mut();
-                        if let Some(entry) = state.windows.get_mut(&wid) {
-                            if let Some(fid) = entry.dom.focused_node
-                                && let Some(node) = entry.dom.nodes.get_mut(fid)
-                                && let Some(is) = node.as_text_input_mut()
-                            {
-                                is.set_preedit(text.clone(), cursor);
-                                if let Some(handle) = entry.handle.as_mut() {
-                                    event_dispatch::update_ime_cursor_area(&mut entry.dom, handle);
-                                }
-                                needs_redraw = true;
+                        if let Some(entry) = state.windows.get_mut(&wid)
+                            && let Some(fid) = entry.dom.focused_node
+                            && let Some(node) = entry.dom.nodes.get_mut(fid)
+                            && let Some(is) = node.as_text_input_mut()
+                        {
+                            is.set_preedit(text.clone(), cursor);
+                            if let Some(handle) = entry.handle.as_mut() {
+                                event_dispatch::update_ime_cursor_area(&mut entry.dom, handle);
                             }
+                            needs_redraw = true;
                         }
                     }
                     Ime::Enabled => {}
                     Ime::Disabled => {
                         let mut state = self.app_state.borrow_mut();
-                        if let Some(entry) = state.windows.get_mut(&wid) {
-                            if let Some(fid) = entry.dom.focused_node
-                                && let Some(node) = entry.dom.nodes.get_mut(fid)
-                                && let Some(is) = node.as_text_input_mut()
-                            {
-                                is.clear_preedit();
-                                if let Some(handle) = entry.handle.as_mut() {
-                                    event_dispatch::update_ime_cursor_area(&mut entry.dom, handle);
-                                }
-                                needs_redraw = true;
+                        if let Some(entry) = state.windows.get_mut(&wid)
+                            && let Some(fid) = entry.dom.focused_node
+                            && let Some(node) = entry.dom.nodes.get_mut(fid)
+                            && let Some(is) = node.as_text_input_mut()
+                        {
+                            is.clear_preedit();
+                            if let Some(handle) = entry.handle.as_mut() {
+                                event_dispatch::update_ime_cursor_area(&mut entry.dom, handle);
                             }
+                            needs_redraw = true;
                         }
                     }
                 }
