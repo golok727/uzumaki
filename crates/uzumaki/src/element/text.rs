@@ -1,10 +1,8 @@
-use cosmic_text::Attrs;
 use vello::Scene;
 
 use crate::style::{Bounds, Color, UzStyle};
 use crate::text::TextRenderer;
 
-/// Paint a text element: background/borders from style, then text content.
 #[allow(clippy::too_many_arguments)]
 pub fn paint_text(
     scene: &mut Scene,
@@ -20,7 +18,6 @@ pub fn paint_text(
         text_renderer.draw_text(
             scene,
             content,
-            Attrs::new(),
             font_size,
             bounds.width as f32,
             bounds.height as f32,

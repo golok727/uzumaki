@@ -232,7 +232,6 @@ fn paint_multiline(
         text_renderer.draw_text(
             scene,
             &input.placeholder,
-            cosmic_text::Attrs::new(),
             input.font_size,
             text_w as f32,
             text_h as f32,
@@ -265,7 +264,6 @@ fn paint_multiline(
         text_renderer.draw_text(
             scene,
             &input.display_text,
-            cosmic_text::Attrs::new(),
             input.font_size,
             text_w as f32,
             text_h as f32 + input.scroll_offset_y + 10000.0,
@@ -362,7 +360,6 @@ fn paint_singleline(
         text_renderer.draw_text(
             scene,
             &input.placeholder,
-            cosmic_text::Attrs::new(),
             input.font_size,
             text_w as f32,
             text_h as f32,
@@ -397,7 +394,6 @@ fn paint_singleline(
         text_renderer.draw_text(
             scene,
             &input.display_text,
-            cosmic_text::Attrs::new(),
             input.font_size,
             text_w as f32 + input.scroll_offset + 10000.0,
             text_h as f32,

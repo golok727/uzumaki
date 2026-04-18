@@ -1,6 +1,5 @@
 use std::collections::HashMap;
 
-use cosmic_text::Attrs;
 use vello::Scene;
 use vello::kurbo::{Affine, Rect, RoundedRect, RoundedRectRadii};
 use vello::peniko::{Color as VelloColor, Fill};
@@ -418,7 +417,6 @@ impl<'a> Painter<'a> {
                     text_renderer.draw_text(
                         scene,
                         content,
-                        Attrs::new(),
                         *font_size,
                         bounds.width as f32,
                         bounds.height as f32,
@@ -607,7 +605,6 @@ pub(crate) fn measure(
     if let Some(text) = &ctx.text {
         let (measured_width, measured_height) = text_renderer.measure_text(
             &text.content,
-            Attrs::new(),
             ctx.font_size,
             known_dimensions
                 .width

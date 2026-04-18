@@ -36,7 +36,7 @@ node_resolver = "0.79.0"
 deno_resolver = "0.72.0"
 
 # Rendering
-cosmic-text = "0.18.2"
+parley = "0.8.0"
 slab = "0.4"
 taffy = "0.9.2"
 vello = "0.8.0"
