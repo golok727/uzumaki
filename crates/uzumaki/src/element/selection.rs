@@ -108,8 +108,12 @@ impl UIState {
             && let Some(node) = self.nodes.get(fid)
             && let Some(is) = node.as_text_input()
         {
-            let r = is.range();
-            return Some(TextSelection::new(fid, r.anchor, r.active));
+            let sel = is.editor.raw_selection();
+            return Some(TextSelection::new(
+                fid,
+                sel.anchor().index(),
+                sel.focus().index(),
+            ));
         }
         self.get_text_selection()
     }
@@ -120,7 +124,7 @@ impl UIState {
             && let Some(node) = self.nodes.get(fid)
             && let Some(is) = node.as_text_input()
         {
-            return Some(is.grapheme_count());
+            return Some(is.text().len());
         }
         let root = self.text_selection.root?;
         let run = self

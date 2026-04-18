@@ -4,7 +4,8 @@ use vello::Scene;
 use vello::kurbo::Affine;
 use vello::peniko::{Brush, Color, Fill};
 
-type TextBrush = [u8; 4];
+#[derive(Debug, Clone, Copy, Default, PartialEq)]
+pub struct TextBrush;
 
 #[derive(Clone, Copy, Debug)]
 pub struct GlyphPos2D {
@@ -14,7 +15,7 @@ pub struct GlyphPos2D {
 
 pub struct TextRenderer {
     pub font_ctx: FontContext,
-    layout_ctx: LayoutContext<TextBrush>,
+    pub layout_ctx: LayoutContext<TextBrush>,
 }
 
 impl Default for TextRenderer {
@@ -255,8 +256,6 @@ impl TextRenderer {
         (w.ceil(), h.ceil())
     }
 }
-
-// ── Tests ────────────────────────────────────────────────────────────
 
 #[cfg(test)]
 mod tests {

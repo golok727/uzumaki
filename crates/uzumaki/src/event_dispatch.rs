@@ -102,80 +102,152 @@ pub fn handle_redraw(
     handle.paint_and_present(device, queue, dom);
 }
 
+struct FocusedInputLayoutMeta {
+    taffy_x: f64,
+    taffy_y: f64,
+    input_padding: f32,
+    top_pad: f32,
+    multiline: bool,
+    font_size: f32,
+    input_width: f32,
+    input_height: f32,
+}
+
+fn focused_input_layout_meta(
+    dom: &UIState,
+    focused_id: UzNodeId,
+) -> Option<FocusedInputLayoutMeta> {
+    let node = dom.nodes.get(focused_id)?;
+    let is = node.as_text_input()?;
+    let padding = node.style.padding.left;
+    let input_padding = if padding > 0.0 { padding } else { 8.0 };
+    let pt = node.style.padding.top;
+    let top_pad = if pt > 0.0 { pt } else { 4.0 };
+    let font_size = node.style.text.font_size;
+    let layout = dom.taffy.layout(node.taffy_node).ok()?;
+    Some(FocusedInputLayoutMeta {
+        taffy_x: layout.location.x as f64,
+        taffy_y: layout.location.y as f64,
+        input_padding,
+        top_pad,
+        multiline: is.multiline,
+        font_size,
+        input_width: (layout.size.width - input_padding * 2.0).max(0.0),
+        input_height: layout.size.height,
+    })
+}
+
+fn sync_focused_input_cursor(
+    dom: &mut UIState,
+    handle: &mut Window,
+    focused_id: UzNodeId,
+    meta: &FocusedInputLayoutMeta,
+) -> Option<(parley::BoundingBox, f32, f32)> {
+    let node = dom.nodes.get_mut(focused_id)?;
+    let is = node.as_text_input_mut()?;
+    is.set_font_size(meta.font_size);
+    if meta.multiline {
+        is.set_width(Some(meta.input_width));
+    } else {
+        is.set_width(None);
+    }
+    is.refresh_layout(&mut handle.text_renderer);
+    let cursor_rect = is.display_cursor_geometry(1.5, &mut handle.text_renderer)?;
+    Some((cursor_rect, is.scroll_offset, is.scroll_offset_y))
+}
+
+fn set_ime_cursor_area(
+    handle: &mut Window,
+    meta: &FocusedInputLayoutMeta,
+    cursor_rect: &parley::BoundingBox,
+    _scroll_offset_x: f32,
+    scroll_offset_y: f32,
+) {
+    let line_height = (meta.font_size * 1.2).round() as f64;
+    let text_origin_y = if meta.multiline {
+        meta.taffy_y + meta.top_pad as f64 - scroll_offset_y as f64
+    } else {
+        meta.taffy_y + ((meta.input_height as f64 - line_height) / 2.0).max(0.0)
+    };
+    let caret_x = meta.taffy_x + meta.input_padding as f64 + cursor_rect.x0;
+    let line_left_x = meta.taffy_x + meta.input_padding as f64;
+    let line_top_y = text_origin_y + cursor_rect.y0;
+    let line_right_x = meta.taffy_x + meta.input_padding as f64 + meta.input_width as f64;
+    let area_x = (caret_x - 4.0).max(line_left_x);
+    let area_width = (line_right_x - area_x).clamp(24.0, meta.input_width as f64);
+    let position = winit::dpi::LogicalPosition::new(area_x, line_top_y);
+    let size = winit::dpi::LogicalSize::new(area_width as f32, line_height.max(1.0) as f32);
+    handle.winit_window.set_ime_cursor_area(position, size);
+}
+
+pub fn update_ime_cursor_area(dom: &mut UIState, handle: &mut Window) {
+    let Some(focused_id) = dom.focused_node else {
+        return;
+    };
+    let Some(meta) = focused_input_layout_meta(dom, focused_id) else {
+        return;
+    };
+    let Some((cursor_rect, scroll_offset_x, scroll_offset_y)) =
+        sync_focused_input_cursor(dom, handle, focused_id, &meta)
+    else {
+        return;
+    };
+    set_ime_cursor_area(
+        handle,
+        &meta,
+        &cursor_rect,
+        scroll_offset_x,
+        scroll_offset_y,
+    );
+}
+
 /// Scroll the focused input so the cursor stays visible.
 /// Call this after any action that moves the cursor (key press, click, drag).
 pub fn scroll_input_to_cursor(dom: &mut UIState, handle: &mut Window) {
     let Some(focused_id) = dom.focused_node else {
         return;
     };
-    let scroll_info = dom.nodes.get(focused_id).and_then(|node| {
-        node.as_text_input().map(|is| {
-            let display_text = is.display_text();
-            let font_size = node.style.text.font_size;
-            let padding = node.style.padding.left;
-            let input_padding = if padding > 0.0 { padding } else { 8.0 };
-            let pt = node.style.padding.top;
-            let top_pad = if pt > 0.0 { pt } else { 4.0 };
-            let cursor_pos = is.range().active;
-            let taffy_node = node.taffy_node;
-            let multiline = is.multiline;
-            (
-                display_text,
-                font_size,
-                input_padding,
-                top_pad,
-                cursor_pos,
-                taffy_node,
-                multiline,
-            )
-        })
-    });
-    let Some((display_text, font_size, input_padding, top_pad, cursor_pos, taffy_node, multiline)) =
-        scroll_info
-    else {
+    let Some(meta) = focused_input_layout_meta(dom, focused_id) else {
         return;
     };
 
-    let (input_width, input_height) = dom
-        .taffy
-        .layout(taffy_node)
-        .map(|l| (l.size.width - input_padding * 2.0, l.size.height))
-        .unwrap_or((200.0, 100.0));
-
-    if multiline {
-        let positions =
-            handle
-                .text_renderer
-                .grapheme_positions_2d(&display_text, font_size, Some(input_width));
-        let cursor_y = if cursor_pos < positions.len() {
-            positions[cursor_pos].y
+    if let Some(node) = dom.nodes.get_mut(focused_id)
+        && let Some(is) = node.as_text_input_mut()
+    {
+        is.set_font_size(meta.font_size);
+        if meta.multiline {
+            is.set_width(Some(meta.input_width));
         } else {
-            positions.last().map(|p| p.y).unwrap_or(0.0)
-        };
-        let line_height = (font_size * 1.2).round();
-        if let Some(node) = dom.nodes.get_mut(focused_id)
-            && let Some(is) = node.as_text_input_mut()
-        {
-            is.update_scroll_y(cursor_y, line_height, input_height - top_pad * 2.0);
+            is.set_width(None);
         }
-    } else {
-        let positions = handle
-            .text_renderer
-            .grapheme_x_positions(&display_text, font_size);
-        let cursor_x = if cursor_pos < positions.len() {
-            positions[cursor_pos]
-        } else {
-            positions.last().copied().unwrap_or(0.0)
-        };
-        if let Some(node) = dom.nodes.get_mut(focused_id)
-            && let Some(is) = node.as_text_input_mut()
-        {
-            is.update_scroll(cursor_x, input_width);
+        is.refresh_layout(&mut handle.text_renderer);
+        let cursor_rect = is.display_cursor_geometry(1.5, &mut handle.text_renderer);
+        if let Some(rect) = cursor_rect {
+            if meta.multiline {
+                let line_height = (meta.font_size * 1.2).round();
+                is.update_scroll_y(
+                    rect.y0 as f32,
+                    line_height,
+                    meta.input_height - meta.top_pad * 2.0,
+                );
+            } else {
+                is.update_scroll(rect.x0 as f32, meta.input_width);
+            }
         }
     }
-}
 
-// ── Cursor moved ─────────────────────────────────────────────────────
+    if let Some((cursor_rect, scroll_offset_x, scroll_offset_y)) =
+        sync_focused_input_cursor(dom, handle, focused_id, &meta)
+    {
+        set_ime_cursor_area(
+            handle,
+            &meta,
+            &cursor_rect,
+            scroll_offset_x,
+            scroll_offset_y,
+        );
+    }
+}
 
 pub fn handle_cursor_moved(
     dom: &mut UIState,
@@ -216,83 +288,47 @@ pub fn handle_cursor_moved(
     // Input drag selection
     if mouse_buttons & 1 != 0 {
         if let Some(drag_nid) = dom.dragging_input {
-            let cursor_info = dom.nodes.get(drag_nid).and_then(|node| {
-                node.as_text_input().map(|is| {
-                    let display_text = is.display_text();
-                    let font_size = node.style.text.font_size;
-                    let scroll_offset = is.scroll_offset;
-                    let scroll_offset_y = is.scroll_offset_y;
-                    let is_multiline = is.multiline;
-                    let padding = node.style.padding.left as f64;
-                    let input_padding = if padding > 0.0 { padding } else { 8.0 };
-                    let pad_top = node.style.padding.top;
-                    let top_pad = if pad_top > 0.0 { pad_top } else { 4.0 };
-                    let hitbox_bounds = node
-                        .interactivity
-                        .hitbox_id
-                        .and_then(|hid| dom.hitbox_store.get(hid))
-                        .map(|hb| hb.bounds);
-                    let taffy_node = node.taffy_node;
-                    (
-                        display_text,
-                        font_size,
-                        scroll_offset,
-                        scroll_offset_y,
-                        is_multiline,
-                        input_padding,
-                        top_pad,
-                        hitbox_bounds,
-                        taffy_node,
-                    )
-                })
+            let hit_info = dom.nodes.get(drag_nid).and_then(|node| {
+                let is = node.as_text_input()?;
+                let padding = node.style.padding.left as f64;
+                let input_padding = if padding > 0.0 { padding } else { 8.0 };
+                let pad_top = node.style.padding.top;
+                let top_pad = if pad_top > 0.0 { pad_top } else { 4.0 };
+                let hb = node
+                    .interactivity
+                    .hitbox_id
+                    .and_then(|hid| dom.hitbox_store.get(hid))?
+                    .bounds;
+                Some((
+                    is.scroll_offset,
+                    is.scroll_offset_y,
+                    is.multiline,
+                    input_padding,
+                    top_pad,
+                    hb,
+                ))
             });
 
-            // TODO  oh my gaaah TT please refactor this
             if let Some((
-                display_text,
-                font_size,
                 scroll_offset,
                 scroll_offset_y,
                 is_multiline,
                 input_padding,
                 top_pad,
-                Some(hb),
-                taffy_node,
-            )) = cursor_info
+                hb,
+            )) = hit_info
             {
-                let grapheme_idx = if !display_text.is_empty() {
-                    if is_multiline {
-                        let wrap_width = dom
-                            .taffy
-                            .layout(taffy_node)
-                            .map(|l| l.size.width - input_padding as f32 * 2.0)
-                            .unwrap_or(200.0);
-                        let relative_x = (logical_x - hb.x - input_padding) as f32;
-                        let relative_y = (logical_y - hb.y) as f32 + scroll_offset_y - top_pad;
-                        handle.text_renderer.hit_to_grapheme_2d(
-                            &display_text,
-                            font_size,
-                            Some(wrap_width),
-                            relative_x,
-                            relative_y,
-                        )
-                    } else {
-                        let relative_x = (logical_x - hb.x - input_padding) as f32 + scroll_offset;
-                        handle
-                            .text_renderer
-                            .hit_to_grapheme(&display_text, font_size, relative_x)
-                    }
+                let relative_x = if is_multiline {
+                    (logical_x - hb.x - input_padding) as f32
                 } else {
-                    0
+                    (logical_x - hb.x - input_padding) as f32 + scroll_offset
                 };
+                let relative_y = (logical_y - hb.y) as f32 + scroll_offset_y - top_pad;
 
                 if let Some(node) = dom.nodes.get_mut(drag_nid)
                     && let Some(is) = node.as_text_input_mut()
                 {
-                    is.update_range(|range| {
-                        range.active = grapheme_idx;
-                    });
-                    is.reset_blink();
+                    is.extend_selection_to_point(relative_x, relative_y, &mut handle.text_renderer);
                 }
                 scroll_input_to_cursor(dom, handle);
                 needs_redraw = true;
@@ -588,102 +624,55 @@ pub fn handle_mouse_input(
                     }
 
                     // Place cursor at click position
-                    let cursor_info = {
+                    let click_info = {
                         let node = &dom.nodes[nid];
                         let is = node.as_text_input().unwrap();
-                        let display_text = is.display_text();
-                        let font_size = node.style.text.font_size;
-                        let scroll_offset = is.scroll_offset;
-                        let scroll_offset_y = is.scroll_offset_y;
-                        let is_multiline = is.multiline;
                         let padding = node.style.padding.left as f64;
                         let input_padding = if padding > 0.0 { padding } else { 8.0 };
                         let pad_top = node.style.padding.top;
                         let top_pad = if pad_top > 0.0 { pad_top } else { 4.0 };
-                        let hitbox_bounds = node
+                        let hb = node
                             .interactivity
                             .hitbox_id
                             .and_then(|hid| dom.hitbox_store.get(hid))
                             .map(|hb| hb.bounds);
-                        let taffy_node = node.taffy_node;
                         (
-                            display_text,
-                            font_size,
-                            scroll_offset,
-                            scroll_offset_y,
-                            is_multiline,
+                            is.scroll_offset,
+                            is.scroll_offset_y,
+                            is.multiline,
                             input_padding,
                             top_pad,
-                            hitbox_bounds,
-                            taffy_node,
+                            hb,
                         )
                     };
                     let (
-                        display_text,
-                        font_size,
                         scroll_offset,
                         scroll_offset_y,
                         is_multiline,
                         input_padding,
                         top_pad,
                         hitbox_bounds,
-                        taffy_node,
-                    ) = cursor_info;
+                    ) = click_info;
 
                     if let Some(hb) = hitbox_bounds {
-                        let grapheme_idx = if !display_text.is_empty() {
-                            if is_multiline {
-                                let wrap_width = dom
-                                    .taffy
-                                    .layout(taffy_node)
-                                    .map(|l| l.size.width - input_padding as f32 * 2.0)
-                                    .unwrap_or(200.0);
-                                let relative_x = (mx - hb.x - input_padding) as f32;
-                                let relative_y = (my - hb.y) as f32 + scroll_offset_y - top_pad;
-                                handle.text_renderer.hit_to_grapheme_2d(
-                                    &display_text,
-                                    font_size,
-                                    Some(wrap_width),
-                                    relative_x,
-                                    relative_y,
-                                )
-                            } else {
-                                let relative_x = (mx - hb.x - input_padding) as f32 + scroll_offset;
-                                handle.text_renderer.hit_to_grapheme(
-                                    &display_text,
-                                    font_size,
-                                    relative_x,
-                                )
-                            }
+                        let relative_x = if is_multiline {
+                            (mx - hb.x - input_padding) as f32
                         } else {
-                            0
+                            (mx - hb.x - input_padding) as f32 + scroll_offset
                         };
+                        let relative_y = (my - hb.y) as f32 + scroll_offset_y - top_pad;
 
-                        // Focus the input (clears view selection, blurs previous input).
                         dom.focus_input(nid);
 
                         if let Some(node) = dom.nodes.get_mut(nid)
                             && let Some(is) = node.as_text_input_mut()
                         {
+                            let renderer = &mut handle.text_renderer;
                             match dom.click_count {
-                                2 => {
-                                    // Double-click: select word
-                                    let (ws, we) = is.word_at(grapheme_idx);
-                                    is.set_selection(ws, we);
-                                }
-                                3 => {
-                                    // Triple-click: select line/paragraph
-                                    let (ls, le) = is.line_at(grapheme_idx);
-                                    is.set_selection(ls, le);
-                                }
-                                4 => {
-                                    // Quad-click: select all
-                                    is.select_all();
-                                }
-                                _ => {
-                                    // Single click: place cursor
-                                    is.set_cursor(grapheme_idx);
-                                }
+                                2 => is.select_word_at_point(relative_x, relative_y, renderer),
+                                3 => is.select_line_at_point(relative_x, relative_y, renderer),
+                                4 => is.select_all(renderer),
+                                _ => is.move_to_point(relative_x, relative_y, renderer),
                             }
                             is.reset_blink();
                         }
@@ -924,71 +913,46 @@ pub fn handle_key_for_input(
         .with_focused_node(|node, focused_id| {
             let mut new_focus = Some(focused_id);
 
-            let shift = modifiers & 4 != 0;
-
-            // Handle ArrowUp/ArrowDown externally (vertical nav)
-            let is_vertical_nav = matches!(
-                key_event.logical_key,
-                Key::Named(NamedKey::ArrowUp) | Key::Named(NamedKey::ArrowDown)
-            );
-
-            if is_vertical_nav {
-                let is_up = key_event.logical_key == Key::Named(NamedKey::ArrowUp);
-                let extend = shift;
-
-                if let Some(is) = node.as_text_input_mut() {
-                    let (_, cur_col) = is.cursor_rowcol();
-                    let sticky = is.sticky_col.unwrap_or(cur_col);
-                    if is_up {
-                        is.move_up(extend, Some(sticky));
-                    } else {
-                        is.move_down(extend, Some(sticky));
+            if let Some(input_state) = node.as_text_input_mut() {
+                let result = input_state.handle_key(
+                    &key_event.logical_key,
+                    modifiers,
+                    &mut handle.text_renderer,
+                );
+                match result {
+                    KeyResult::Edit(edit) => {
+                        let value = input_state.text();
+                        let input_type = match edit.kind {
+                            input::EditKind::Insert => "insertText",
+                            input::EditKind::InsertFromPaste => "insertFromPaste",
+                            input::EditKind::DeleteBackward => "deleteContentBackward",
+                            input::EditKind::DeleteForward => "deleteContentForward",
+                            input::EditKind::DeleteWordBackward => "deleteWordBackward",
+                            input::EditKind::DeleteWordForward => "deleteWordForward",
+                            input::EditKind::DeleteByCut => "deleteByCut",
+                        };
+                        events.push(AppEvent::Input(InputEventData {
+                            window_id: wid,
+                            node_id: focused_id,
+                            value,
+                            input_type: input_type.to_string(),
+                            data: edit.inserted,
+                        }));
+                        needs_redraw = true;
                     }
-                    is.sticky_col = Some(sticky);
-                    is.sticky_x = None;
-                    is.reset_blink();
-                }
-
-                needs_redraw = true;
-            } else {
-                // Non-vertical key: delegate to InputState::handle_key
-                if let Some(input_state) = node.as_text_input_mut() {
-                    let result = input_state.handle_key(&key_event.logical_key, modifiers);
-                    match result {
-                        KeyResult::Edit(edit) => {
-                            let value = input_state.model.text();
-                            let input_type = match edit.kind {
-                                input::EditKind::Insert => "insertText",
-                                input::EditKind::InsertFromPaste => "insertFromPaste",
-                                input::EditKind::DeleteBackward => "deleteContentBackward",
-                                input::EditKind::DeleteForward => "deleteContentForward",
-                                input::EditKind::DeleteWordBackward => "deleteWordBackward",
-                                input::EditKind::DeleteWordForward => "deleteWordForward",
-                                input::EditKind::DeleteByCut => "deleteByCut",
-                            };
-                            events.push(AppEvent::Input(InputEventData {
-                                window_id: wid,
-                                node_id: focused_id,
-                                value,
-                                input_type: input_type.to_string(),
-                                data: edit.inserted,
-                            }));
-                            needs_redraw = true;
-                        }
-                        KeyResult::Blur => {
-                            input_state.focused = false;
-                            new_focus = None;
-                            events.push(AppEvent::Blur(FocusEventData {
-                                window_id: wid,
-                                node_id: focused_id,
-                            }));
-                            needs_redraw = true;
-                        }
-                        KeyResult::Handled => {
-                            needs_redraw = true;
-                        }
-                        KeyResult::Ignored => {}
+                    KeyResult::Blur => {
+                        input_state.focused = false;
+                        new_focus = None;
+                        events.push(AppEvent::Blur(FocusEventData {
+                            window_id: wid,
+                            node_id: focused_id,
+                        }));
+                        needs_redraw = true;
                     }
+                    KeyResult::Handled => {
+                        needs_redraw = true;
+                    }
+                    KeyResult::Ignored => {}
                 }
             }
             new_focus
@@ -1078,8 +1042,6 @@ pub fn handle_key_for_view_selection(
         _ => false,
     }
 }
-
-// ── Clipboard command pipeline ──────────────────────────────────────
 
 /// Identifies the target of a clipboard operation.
 pub enum ClipboardTarget {
@@ -1281,6 +1243,7 @@ pub fn apply_clipboard_command(
     dom: &mut UIState,
     wid: u32,
     clipboard: &mut SystemClipboard,
+    text_renderer: &mut crate::text::TextRenderer,
 ) -> (bool, Vec<AppEvent>) {
     let mut events = Vec::new();
     let mut needs_redraw = false;
@@ -1303,9 +1266,9 @@ pub fn apply_clipboard_command(
                 && let Some(target_id) = target
                 && let Some(node) = dom.nodes.get_mut(target_id)
                 && let Some(is) = node.as_text_input_mut()
-                && let Some((_cut_text, _edit)) = is.cut_selected_text()
+                && let Some((_cut_text, _edit)) = is.cut_selected_text(text_renderer)
             {
-                let value = is.model.text();
+                let value = is.text();
                 events.push(AppEvent::Input(InputEventData {
                     window_id: wid,
                     node_id: target_id,
@@ -1326,9 +1289,9 @@ pub fn apply_clipboard_command(
                 && let (Some(target_id), Some(text)) = (target, clipboard_text)
                 && let Some(node) = dom.nodes.get_mut(target_id)
                 && let Some(is) = node.as_text_input_mut()
-                && let Some(_edit) = is.paste_text(&text)
+                && let Some(_edit) = is.paste_text(&text, text_renderer)
             {
-                let value = is.model.text();
+                let value = is.text();
                 events.push(AppEvent::Input(InputEventData {
                     window_id: wid,
                     node_id: target_id,
@@ -1418,7 +1381,7 @@ fn next_word_boundary_in_run(
     i
 }
 
-pub fn handle_mouse_wheel(dom: &mut UIState, scroll_delta_y: f64) -> bool {
+pub fn handle_mouse_wheel(dom: &mut UIState, handle: &mut Window, scroll_delta_y: f64) -> bool {
     let mut needs_redraw = false;
     let Some((mx, my)) = dom.hit_state.mouse_position else {
         return false;
@@ -1473,6 +1436,10 @@ pub fn handle_mouse_wheel(dom: &mut UIState, scroll_delta_y: f64) -> bool {
             }
             needs_redraw = true;
         }
+    }
+
+    if needs_redraw {
+        update_ime_cursor_area(dom, handle);
     }
 
     needs_redraw

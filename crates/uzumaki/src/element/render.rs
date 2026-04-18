@@ -4,11 +4,65 @@ use vello::Scene;
 use vello::kurbo::{Affine, Rect, RoundedRect, RoundedRectRadii};
 use vello::peniko::{Color as VelloColor, Fill};
 
-use crate::element::input::{InputRenderInfo, compute_selection_rects};
+use crate::element::input::InputRenderInfo;
 use crate::element::{InheritedProperties, NodeContext, ScrollThumbRect, UzNodeId};
 use crate::style::{Bounds, Color, UzStyle, Visibility};
-use crate::text::TextRenderer;
+use crate::text::{GlyphPos2D, TextRenderer};
 use crate::ui::UIState;
+
+fn compute_selection_rects(
+    positions: &[GlyphPos2D],
+    sel_start: usize,
+    sel_end: usize,
+    _text_w: f64,
+    line_height: f64,
+) -> Vec<[f64; 4]> {
+    if sel_start >= sel_end || positions.is_empty() {
+        return vec![];
+    }
+    let sel_end_idx = sel_end.min(positions.len() - 1);
+    let start_x = positions[sel_start].x as f64;
+    let end_x = positions[sel_end_idx].x as f64;
+    let mut line_ys: Vec<f32> = Vec::new();
+    for pos in &positions[sel_start..=sel_end_idx] {
+        let y = pos.y;
+        if line_ys.last().is_none_or(|&ly| (y - ly).abs() > 1.0) {
+            line_ys.push(y);
+        }
+    }
+    let num_lines = line_ys.len();
+    let mut rects = Vec::new();
+    for (idx, &ly) in line_ys.iter().enumerate() {
+        let y = ly as f64;
+        let line_end_x = positions
+            .iter()
+            .filter(|pos| (pos.y - ly).abs() < 1.0)
+            .map(|pos| pos.x as f64)
+            .fold(0.0, f64::max);
+        let (x1, x2) = if num_lines == 1 {
+            (start_x, end_x)
+        } else if idx == 0 {
+            (start_x, line_end_x)
+        } else if idx == num_lines - 1 {
+            if end_x < 1.0 {
+                (0.0, 8.0)
+            } else {
+                (0.0, end_x)
+            }
+        } else {
+            if line_end_x > 1.0 {
+                (0.0, line_end_x)
+            } else {
+                (0.0, 8.0)
+            }
+        };
+        if x2 > x1 {
+            rects.push([x1, y, x2, y + line_height]);
+        }
+    }
+    rects
+}
+
 /// Renders an `ElementTree` into a Vello `Scene`. Also rebuilds hitboxes and
 /// scroll thumbs as a side effect of walking the tree.
 pub struct Painter<'a> {
@@ -77,7 +131,7 @@ impl<'a> Painter<'a> {
                         taffy_node,
                         computed_style,
                         text,
-                        input,
+                        input_snapshot,
                         needs_hitbox,
                         is_scrollable,
                         first_child,
@@ -108,24 +162,22 @@ impl<'a> Painter<'a> {
                             )
                         });
 
-                        let input = node.as_text_input().map(|is| {
-                            let range = is.range();
-                            InputRenderInfo {
-                                display_text: is.display_text(),
-                                placeholder: is.placeholder.clone(),
-                                font_size: computed_style.text.font_size,
-                                text_color: computed_style.text.color,
-                                focused: is.focused,
-                                sel_start: range.start(),
-                                sel_end: range.end(),
-                                cursor_pos: range.active,
-                                scroll_offset: is.scroll_offset,
-                                scroll_offset_y: is.scroll_offset_y,
-                                blink_visible: is.blink_visible(self.dom.window_focused),
-                                multiline: is.multiline,
-                            }
-                        });
-
+                        let is_input = node.is_text_input();
+                        let input_snapshot = if is_input {
+                            let is = node.as_text_input().unwrap();
+                            Some((
+                                is.display_text(),
+                                is.placeholder.clone(),
+                                is.focused,
+                                is.scroll_offset,
+                                is.scroll_offset_y,
+                                is.blink_visible(self.dom.window_focused),
+                                is.multiline,
+                                is.preedit.clone(),
+                            ))
+                        } else {
+                            None
+                        };
                         // Text nodes inside textSelect views need hitboxes for click-to-select
                         let selectable_text = inherited.text_selectable && node.is_text_node();
                         let needs_hitbox = node.interactivity.needs_hitbox() || selectable_text;
@@ -136,14 +188,13 @@ impl<'a> Painter<'a> {
                             taffy_node,
                             computed_style,
                             text,
-                            input,
+                            input_snapshot,
                             needs_hitbox,
                             is_scrollable,
                             first_child,
                             inherited,
                         )
                     };
-                    // immutable borrow of self.dom.nodes is now dropped
 
                     if computed_style.visibility == Visibility::Hidden {
                         continue;
@@ -151,6 +202,77 @@ impl<'a> Painter<'a> {
 
                     let Ok(layout) = self.dom.taffy.layout(taffy_node) else {
                         continue;
+                    };
+
+                    // Populate InputRenderInfo with geometry from PlainEditor (needs mut access)
+                    let input = if let Some((
+                        display_text,
+                        placeholder,
+                        focused,
+                        scroll_offset,
+                        scroll_offset_y,
+                        blink_visible,
+                        multiline,
+                        preedit_state,
+                    )) = input_snapshot
+                    {
+                        let padding: f32 = 8.0;
+                        let text_w = (layout.size.width - padding * 2.0).max(0.0);
+                        let node_mut = &mut self.dom.nodes[node_id];
+                        let is = node_mut.as_text_input_mut().unwrap();
+                        is.set_font_size(computed_style.text.font_size);
+                        if multiline {
+                            is.set_width(Some(text_w));
+                        } else {
+                            is.set_width(None);
+                        }
+                        is.refresh_layout(&mut self.text_renderer);
+                        let cursor_rect = if blink_visible || preedit_state.is_some() {
+                            is.display_cursor_geometry(1.5, &mut self.text_renderer)
+                        } else {
+                            None
+                        };
+                        let selection_rects =
+                            is.display_selection_geometry(&mut self.text_renderer);
+                        let layout_height =
+                            is.editor.try_layout().map(|l| l.height()).unwrap_or(0.0);
+                        let preedit = preedit_state.map(|ps| {
+                            let font_size = computed_style.text.font_size;
+                            let positions =
+                                self.text_renderer.grapheme_x_positions(&ps.text, font_size);
+                            let width = *positions.last().unwrap_or(&0.0);
+                            crate::element::input::PreeditRenderInfo {
+                                text: ps.text,
+                                cursor_x: ps
+                                    .cursor
+                                    .map(|(start, _)| {
+                                        if start < positions.len() {
+                                            positions[start]
+                                        } else {
+                                            width
+                                        }
+                                    })
+                                    .unwrap_or(width),
+                                width,
+                            }
+                        });
+                        Some(InputRenderInfo {
+                            display_text,
+                            placeholder,
+                            font_size: computed_style.text.font_size,
+                            text_color: computed_style.text.color,
+                            focused,
+                            cursor_rect,
+                            selection_rects,
+                            scroll_offset,
+                            scroll_offset_y,
+                            blink_visible,
+                            multiline,
+                            layout_height,
+                            preedit,
+                        })
+                    } else {
+                        None
                     };
 
                     let x = parent_x + layout.location.x as f64;
@@ -531,8 +653,6 @@ impl<'a> Painter<'a> {
     }
 }
 
-// ── Render-only intermediate types ──────────────────────────────────
-
 struct RenderInfo {
     node_id: UzNodeId,
     x: f64,
@@ -572,8 +692,6 @@ enum StackItem {
     PopClip,
     PaintThumb(ThumbInfo),
 }
-
-// ── Measure (layout callback) ───────────────────────────────────────
 
 pub(crate) fn measure(
     text_renderer: &mut TextRenderer,
@@ -627,5 +745,115 @@ fn available_as_option(space: taffy::AvailableSpace) -> Option<f32> {
     match space {
         taffy::AvailableSpace::Definite(v) => Some(v),
         _ => None,
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn p(x: f32, y: f32) -> GlyphPos2D {
+        GlyphPos2D { x, y }
+    }
+
+    #[test]
+    fn sel_rect_empty_selection() {
+        let positions = vec![p(0.0, 0.0), p(10.0, 0.0)];
+        let rects = compute_selection_rects(&positions, 1, 1, 200.0, 20.0);
+        assert!(rects.is_empty());
+    }
+
+    #[test]
+    fn sel_rect_empty_positions() {
+        let rects = compute_selection_rects(&[], 0, 1, 200.0, 20.0);
+        assert!(rects.is_empty());
+    }
+
+    #[test]
+    fn sel_rect_single_line() {
+        let positions = vec![p(0.0, 0.0), p(10.0, 0.0), p(20.0, 0.0), p(30.0, 0.0)];
+        let rects = compute_selection_rects(&positions, 1, 3, 200.0, 20.0);
+        assert_eq!(rects.len(), 1);
+        assert_eq!(rects[0], [10.0, 0.0, 30.0, 20.0]);
+    }
+
+    #[test]
+    fn sel_rect_single_line_from_start() {
+        let positions = vec![p(0.0, 0.0), p(10.0, 0.0), p(20.0, 0.0)];
+        let rects = compute_selection_rects(&positions, 0, 2, 200.0, 20.0);
+        assert_eq!(rects.len(), 1);
+        assert_eq!(rects[0], [0.0, 0.0, 20.0, 20.0]);
+    }
+
+    #[test]
+    fn sel_rect_two_lines() {
+        let positions = vec![
+            p(0.0, 0.0),
+            p(10.0, 0.0),
+            p(20.0, 0.0),
+            p(0.0, 20.0),
+            p(10.0, 20.0),
+            p(20.0, 20.0),
+        ];
+        let rects = compute_selection_rects(&positions, 1, 4, 200.0, 20.0);
+        assert_eq!(rects.len(), 2);
+        assert_eq!(rects[0], [10.0, 0.0, 20.0, 20.0]);
+        assert_eq!(rects[1], [0.0, 20.0, 10.0, 40.0]);
+    }
+
+    #[test]
+    fn sel_rect_three_lines_middle_full_width() {
+        let positions = vec![
+            p(0.0, 0.0),
+            p(10.0, 0.0),
+            p(0.0, 20.0),
+            p(15.0, 20.0),
+            p(0.0, 40.0),
+            p(10.0, 40.0),
+        ];
+        let rects = compute_selection_rects(&positions, 0, 5, 200.0, 20.0);
+        assert_eq!(rects.len(), 3);
+        assert_eq!(rects[0], [0.0, 0.0, 10.0, 20.0]);
+        assert_eq!(rects[1], [0.0, 20.0, 15.0, 40.0]);
+        assert_eq!(rects[2], [0.0, 40.0, 10.0, 60.0]);
+    }
+
+    #[test]
+    fn sel_rect_last_line_at_x_zero_gets_stub() {
+        let positions = vec![
+            p(0.0, 0.0),
+            p(10.0, 0.0),
+            p(20.0, 0.0),
+            p(30.0, 0.0),
+            p(0.0, 20.0),
+        ];
+        let rects = compute_selection_rects(&positions, 0, 4, 200.0, 20.0);
+        assert_eq!(rects.len(), 2);
+        assert_eq!(rects[0], [0.0, 0.0, 30.0, 20.0]);
+        assert_eq!(rects[1], [0.0, 20.0, 8.0, 40.0]);
+    }
+
+    #[test]
+    fn sel_rect_empty_middle_line_gets_stub() {
+        let positions = vec![
+            p(0.0, 0.0),
+            p(10.0, 0.0),
+            p(0.0, 20.0),
+            p(0.0, 40.0),
+            p(10.0, 40.0),
+        ];
+        let rects = compute_selection_rects(&positions, 0, 4, 200.0, 20.0);
+        assert_eq!(rects.len(), 3);
+        assert_eq!(rects[0], [0.0, 0.0, 10.0, 20.0]);
+        assert_eq!(rects[1], [0.0, 20.0, 8.0, 40.0]);
+        assert_eq!(rects[2], [0.0, 40.0, 10.0, 60.0]);
+    }
+
+    #[test]
+    fn sel_rect_clamped_to_positions_len() {
+        let positions = vec![p(0.0, 0.0), p(10.0, 0.0), p(20.0, 0.0)];
+        let rects = compute_selection_rects(&positions, 0, 100, 200.0, 20.0);
+        assert_eq!(rects.len(), 1);
+        assert_eq!(rects[0], [0.0, 0.0, 20.0, 20.0]);
     }
 }

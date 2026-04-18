@@ -13,8 +13,6 @@ pub mod ops;
 pub mod selection;
 pub mod style;
 pub mod text;
-pub mod text_buffer;
-pub mod text_model;
 pub mod ui;
 pub mod window;
 

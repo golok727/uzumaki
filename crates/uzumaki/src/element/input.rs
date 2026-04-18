@@ -1,32 +1,37 @@
+use parley::BoundingBox;
 use vello::Scene;
 use vello::kurbo::{Affine, Rect};
 use vello::peniko::{Color as VelloColor, Fill};
 
 use crate::style::{Bounds, Color, Corners, Edges, UzStyle};
-use crate::text::{GlyphPos2D, TextRenderer};
+use crate::text::TextRenderer;
 
-/// Returned by `paint_input` for multiline inputs so the caller can render a scrollbar.
 pub struct InputContentInfo {
     pub content_height: f64,
     pub visible_height: f64,
     pub scroll_offset_y: f64,
 }
 
-/// Snapshot of input state collected during the render-tree walk.
-/// Decouples painting from the live InputState/Node.
 pub struct InputRenderInfo {
     pub display_text: String,
     pub placeholder: String,
     pub font_size: f32,
     pub text_color: Color,
     pub focused: bool,
-    pub sel_start: usize,
-    pub sel_end: usize,
-    pub cursor_pos: usize,
+    pub cursor_rect: Option<BoundingBox>,
+    pub selection_rects: Vec<BoundingBox>,
     pub scroll_offset: f32,
     pub scroll_offset_y: f32,
     pub blink_visible: bool,
     pub multiline: bool,
+    pub layout_height: f32,
+    pub preedit: Option<PreeditRenderInfo>,
+}
+
+pub struct PreeditRenderInfo {
+    pub text: String,
+    pub cursor_x: f32,
+    pub width: f32,
 }
 
 /// Paint an input element with its text, selection highlight, and cursor.
@@ -73,562 +78,200 @@ pub fn paint_input(
 
     let is_empty = input.display_text.is_empty();
     let line_height = (input.font_size * 1.2).round();
+    let scroll_y = input.scroll_offset_y as f64;
 
-    let content_info = if input.multiline {
-        Some(paint_multiline(
-            scene,
-            text_renderer,
-            input,
-            text_x,
-            text_y,
-            text_w,
-            text_h,
-            line_height,
-            is_empty,
-            style,
-            scale,
-        ))
-    } else {
-        paint_singleline(
-            scene,
-            text_renderer,
-            input,
-            text_x,
-            text_y,
-            text_w,
-            text_h,
-            line_height,
-            is_empty,
-            scale,
-        );
-        None
-    };
-
-    scene.pop_layer();
-    content_info
-}
-
-// ── Coordinate helpers ───────────────────────────────────────────────
-
-/// Convert a position from `grapheme_positions_2d` to screen coordinates.
-/// Single source of truth for the positions→screen transform used by both
-/// cursor and selection painting.
-pub(crate) fn to_screen(
-    pos: GlyphPos2D,
-    text_x: f64,
-    text_y: f64,
-    top_pad: f64,
-    scroll_y: f64,
-) -> (f64, f64) {
-    (
-        text_x + pos.x as f64,
-        text_y + pos.y as f64 + top_pad - scroll_y,
-    )
-}
-
-/// Compute selection highlight rectangles in positions-relative coordinates.
-/// Returns `(x1, y, x2, y + line_height)` rects — the caller applies the
-/// screen offset via `to_screen` / the shared `(text_x, text_y + top_pad - scroll_y)`.
-///
-/// Coordinate system: x is relative to text-area left edge (0 = left),
-/// y is the zero-based line-top from `grapheme_positions_2d`.
-pub(crate) fn compute_selection_rects(
-    positions: &[GlyphPos2D],
-    sel_start: usize,
-    sel_end: usize,
-    _text_w: f64,
-    line_height: f64,
-) -> Vec<[f64; 4]> {
-    if sel_start >= sel_end || positions.is_empty() {
-        return vec![];
-    }
-
-    let sel_end_idx = sel_end.min(positions.len() - 1);
-    let start_x = positions[sel_start].x as f64;
-    let end_x = positions[sel_end_idx].x as f64;
-
-    // Collect unique visual line y-values within the selection range
-    let mut line_ys: Vec<f32> = Vec::new();
-    for pos in &positions[sel_start..=sel_end_idx] {
-        let y = pos.y;
-        if line_ys.last().is_none_or(|&ly| (y - ly).abs() > 1.0) {
-            line_ys.push(y);
-        }
-    }
-
-    let num_lines = line_ys.len();
-    let mut rects = Vec::new();
-
-    for (idx, &ly) in line_ys.iter().enumerate() {
-        let y = ly as f64;
-        let line_end_x = positions
-            .iter()
-            .filter(|pos| (pos.y - ly).abs() < 1.0)
-            .map(|pos| pos.x as f64)
-            .fold(0.0, f64::max);
-
-        let (x1, x2) = if num_lines == 1 {
-            // Single visual line — exact start-to-end
-            (start_x, end_x)
-        } else if idx == 0 {
-            // First line: from selection start to the line's rendered extent
-            (start_x, line_end_x)
-        } else if idx == num_lines - 1 {
-            // Last line: from left edge to selection end
-            if end_x < 1.0 {
-                // Selection ends at start-of-line (after a newline) — small stub
-                (0.0, 8.0)
-            } else {
-                (0.0, end_x)
-            }
-        } else {
-            // Middle line: clamp to the line's rendered extent, or stub for empty lines
-            if line_end_x > 1.0 {
-                (0.0, line_end_x)
-            } else {
-                (0.0, 8.0)
-            }
-        };
-
-        if x2 > x1 {
-            rects.push([x1, y, x2, y + line_height]);
-        }
-    }
-
-    rects
-}
-
-// ── Multiline input rendering ────────────────────────────────────────
-
-#[allow(clippy::too_many_arguments)]
-fn paint_multiline(
-    scene: &mut Scene,
-    text_renderer: &mut TextRenderer,
-    input: &InputRenderInfo,
-    text_x: f64,
-    text_y: f64,
-    text_w: f64,
-    text_h: f64,
-    line_height: f32,
-    is_empty: bool,
-    style: &UzStyle,
-    scale: f64,
-) -> InputContentInfo {
     let top_pad: f64 = if style.padding.top > 0.0 {
         style.padding.top as f64
     } else {
         4.0
     };
-    let scroll_y: f64 = input.scroll_offset_y as f64;
-    let wrap_width = Some(text_w as f32);
 
-    let positions = if !is_empty {
-        text_renderer.grapheme_positions_2d(&input.display_text, input.font_size, wrap_width)
-    } else {
-        vec![GlyphPos2D { x: 0.0, y: 0.0 }]
-    };
-
+    // Placeholder
     if is_empty && !input.placeholder.is_empty() {
+        let py = if input.multiline {
+            (text_y + top_pad) as f32
+        } else {
+            text_y as f32 + ((text_h as f32 - line_height) / 2.0).max(0.0)
+        };
         text_renderer.draw_text(
             scene,
             &input.placeholder,
             input.font_size,
             text_w as f32,
             text_h as f32,
-            (text_x as f32, (text_y + top_pad - scroll_y) as f32),
+            (text_x as f32, py),
             VelloColor::from_rgba8(128, 128, 128, 255),
             scale,
         );
-    } else if !is_empty {
-        // Draw selection highlight
-        if input.focused
-            && input.sel_start != input.sel_end
-            && input.sel_start < positions.len()
-            && input.sel_end <= positions.len()
-        {
-            paint_multiline_selection(
-                scene,
-                &positions,
-                input,
-                text_x,
-                text_y,
-                text_w,
-                line_height,
-                top_pad,
-                scroll_y,
-                scale,
-            );
+    }
+
+    if !is_empty {
+        // Selection highlights
+        if input.focused && !input.selection_rects.is_empty() {
+            let sel_color = VelloColor::from_rgba8(56, 121, 185, 128);
+            let oy = if input.multiline {
+                text_y + top_pad - scroll_y
+            } else {
+                text_y + ((text_h as f64 - line_height as f64) / 2.0).max(0.0)
+            };
+            for rect in &input.selection_rects {
+                let x1 = text_x + rect.x0 as f64
+                    - if input.multiline {
+                        0.0
+                    } else {
+                        input.scroll_offset as f64
+                    };
+                let x2 = text_x + rect.x1 as f64
+                    - if input.multiline {
+                        0.0
+                    } else {
+                        input.scroll_offset as f64
+                    };
+                let y1 = oy + rect.y0 as f64;
+                let y2 = oy + rect.y1 as f64;
+                scene.fill(
+                    Fill::NonZero,
+                    Affine::scale(scale),
+                    sel_color,
+                    None,
+                    &Rect::new(x1, y1, x2, y2),
+                );
+            }
         }
 
-        // Draw text with wrapping
+        // Text
+        let ty = if input.multiline {
+            (text_y + top_pad - scroll_y) as f32
+        } else {
+            text_y as f32 + ((text_h as f32 - line_height) / 2.0).max(0.0)
+        };
+        let tw = if input.multiline {
+            text_w as f32
+        } else {
+            text_w as f32 + input.scroll_offset + 10000.0
+        };
+        let tx = if input.multiline {
+            text_x as f32
+        } else {
+            text_x as f32 - input.scroll_offset
+        };
         text_renderer.draw_text(
             scene,
             &input.display_text,
             input.font_size,
-            text_w as f32,
-            text_h as f32 + input.scroll_offset_y + 10000.0,
-            (text_x as f32, (text_y + top_pad - scroll_y) as f32),
+            tw,
+            text_h as f32
+                + if input.multiline {
+                    input.scroll_offset_y + 10000.0
+                } else {
+                    0.0
+                },
+            (tx, ty),
             input.text_color.to_vello(),
             scale,
         );
     }
 
-    // Draw cursor — uses same to_screen transform as selection
-    if input.focused && input.blink_visible && !positions.is_empty() {
-        let cp = if input.cursor_pos < positions.len() {
-            positions[input.cursor_pos]
-        } else {
-            *positions.last().unwrap()
-        };
-        let (cx, cy) = to_screen(cp, text_x, text_y, top_pad, scroll_y);
-        paint_cursor(scene, cx, cy, line_height, scale);
-    }
+    // Preedit (IME composition text)
+    if let Some(preedit) = &input.preedit {
+        if let Some(cr) = &input.cursor_rect {
+            let oy = if input.multiline {
+                text_y + top_pad - scroll_y
+            } else {
+                text_y + ((text_h as f64 - line_height as f64) / 2.0).max(0.0)
+            };
+            let px = text_x + cr.x0 as f64
+                - if input.multiline {
+                    0.0
+                } else {
+                    input.scroll_offset as f64
+                };
+            let py = oy + cr.y0 as f64;
+            let preedit_h = cr.y1 as f64 - cr.y0 as f64;
 
-    // Content height = last line's y + one line_height + top padding
-    let last_y = positions.last().map_or(0.0, |p| p.y as f64);
-    let content_height = last_y + line_height as f64 + top_pad;
+            // Background highlight for preedit
+            let preedit_bg = VelloColor::from_rgba8(50, 50, 60, 180);
+            let preedit_rect = Rect::new(px, py, px + preedit.width as f64, py + preedit_h);
+            scene.fill(
+                Fill::NonZero,
+                Affine::scale(scale),
+                preedit_bg,
+                None,
+                &preedit_rect,
+            );
 
-    InputContentInfo {
-        content_height,
-        visible_height: text_h,
-        scroll_offset_y: scroll_y,
-    }
-}
+            // Preedit text
+            text_renderer.draw_text(
+                scene,
+                &preedit.text,
+                input.font_size,
+                preedit.width + 100.0,
+                text_h as f32,
+                (px as f32, py as f32),
+                input.text_color.to_vello(),
+                scale,
+            );
 
-#[allow(clippy::too_many_arguments)]
-fn paint_multiline_selection(
-    scene: &mut Scene,
-    positions: &[GlyphPos2D],
-    input: &InputRenderInfo,
-    text_x: f64,
-    text_y: f64,
-    text_w: f64,
-    line_height: f32,
-    top_pad: f64,
-    scroll_y: f64,
-    scale: f64,
-) {
-    let sel_color = VelloColor::from_rgba8(56, 121, 185, 128);
-
-    let rects = compute_selection_rects(
-        positions,
-        input.sel_start,
-        input.sel_end,
-        text_w,
-        line_height as f64,
-    );
-
-    // Apply the same screen offset used by cursor and text drawing
-    let ox = text_x;
-    let oy = text_y + top_pad - scroll_y;
-
-    for [x1, y1, x2, y2] in rects {
-        scene.fill(
-            Fill::NonZero,
-            Affine::scale(scale),
-            sel_color,
-            None,
-            &Rect::new(ox + x1, oy + y1, ox + x2, oy + y2),
-        );
-    }
-}
-
-// ── Single-line input rendering ──────────────────────────────────────
-
-#[allow(clippy::too_many_arguments)]
-fn paint_singleline(
-    scene: &mut Scene,
-    text_renderer: &mut TextRenderer,
-    input: &InputRenderInfo,
-    text_x: f64,
-    text_y: f64,
-    text_w: f64,
-    text_h: f64,
-    line_height: f32,
-    is_empty: bool,
-    scale: f64,
-) {
-    let text_offset_y = ((text_h as f32 - line_height) / 2.0).max(0.0);
-
-    let positions = if !is_empty {
-        text_renderer.grapheme_x_positions(&input.display_text, input.font_size)
-    } else {
-        vec![0.0]
-    };
-
-    if is_empty && !input.placeholder.is_empty() {
-        text_renderer.draw_text(
-            scene,
-            &input.placeholder,
-            input.font_size,
-            text_w as f32,
-            text_h as f32,
-            (text_x as f32, text_y as f32 + text_offset_y),
-            VelloColor::from_rgba8(128, 128, 128, 255),
-            scale,
-        );
-    } else if !is_empty {
-        // Draw selection highlight
-        if input.focused
-            && input.sel_start != input.sel_end
-            && input.sel_start < positions.len()
-            && input.sel_end <= positions.len()
-        {
-            let x1 = (positions[input.sel_start] - input.scroll_offset) as f64;
-            let x2 = (positions[input.sel_end] - input.scroll_offset) as f64;
-            let sel_rect = Rect::new(
-                text_x + x1,
-                text_y + text_offset_y as f64,
-                text_x + x2,
-                text_y + text_offset_y as f64 + line_height as f64,
+            // Underline
+            let underline_y = py + preedit_h - 1.0;
+            let underline = Rect::new(
+                px,
+                underline_y,
+                px + preedit.width as f64,
+                underline_y + 1.0,
             );
             scene.fill(
                 Fill::NonZero,
                 Affine::scale(scale),
-                VelloColor::from_rgba8(56, 121, 185, 128),
+                VelloColor::from_rgba8(180, 180, 180, 255),
                 None,
-                &sel_rect,
+                &underline,
             );
         }
-
-        text_renderer.draw_text(
-            scene,
-            &input.display_text,
-            input.font_size,
-            text_w as f32 + input.scroll_offset + 10000.0,
-            text_h as f32,
-            (
-                text_x as f32 - input.scroll_offset,
-                text_y as f32 + text_offset_y,
-            ),
-            input.text_color.to_vello(),
-            scale,
-        );
     }
 
-    // Draw cursor
-    if input.focused && input.blink_visible {
-        let cursor_x = if input.cursor_pos < positions.len() {
-            (positions[input.cursor_pos] - input.scroll_offset) as f64
-        } else {
-            0.0
-        };
-        paint_cursor(
-            scene,
-            text_x + cursor_x,
-            text_y + text_offset_y as f64,
-            line_height,
-            scale,
-        );
-    }
-}
-
-// ── Shared helpers ───────────────────────────────────────────────────
-
-fn paint_cursor(scene: &mut Scene, x: f64, y: f64, line_height: f32, scale: f64) {
-    let cursor_rect = Rect::new(x, y + 2.0, x + 1.5, y + line_height as f64 - 2.0);
-    scene.fill(
-        Fill::NonZero,
-        Affine::scale(scale),
-        VelloColor::from_rgba8(212, 212, 212, 255),
-        None,
-        &cursor_rect,
-    );
-}
-
-// ── Tests ────────────────────────────────────────────────────────────
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    fn p(x: f32, y: f32) -> GlyphPos2D {
-        GlyphPos2D { x, y }
+    // Cursor (hide during preedit)
+    if input.focused && input.blink_visible && input.preedit.is_none() {
+        if let Some(cr) = &input.cursor_rect {
+            let oy = if input.multiline {
+                text_y + top_pad - scroll_y
+            } else {
+                text_y + ((text_h as f64 - line_height as f64) / 2.0).max(0.0)
+            };
+            let cx = text_x + cr.x0 as f64
+                - if input.multiline {
+                    0.0
+                } else {
+                    input.scroll_offset as f64
+                };
+            let cy = oy + cr.y0 as f64;
+            let cursor_rect = Rect::new(
+                cx,
+                cy + 2.0,
+                cx + 1.5,
+                cy + cr.y1 as f64 - cr.y0 as f64 - 2.0,
+            );
+            scene.fill(
+                Fill::NonZero,
+                Affine::scale(scale),
+                VelloColor::from_rgba8(212, 212, 212, 255),
+                None,
+                &cursor_rect,
+            );
+        }
     }
 
-    // ── to_screen ───────────────────────────────────────────────────
+    scene.pop_layer();
 
-    #[test]
-    fn to_screen_basic() {
-        let (sx, sy) = to_screen(p(10.0, 20.0), 100.0, 50.0, 4.0, 0.0);
-        assert_eq!(sx, 110.0); // text_x + pos.x
-        assert_eq!(sy, 74.0); // text_y + pos.y + top_pad
-    }
-
-    #[test]
-    fn to_screen_with_scroll() {
-        let (sx, sy) = to_screen(p(10.0, 20.0), 100.0, 50.0, 4.0, 10.0);
-        assert_eq!(sx, 110.0);
-        assert_eq!(sy, 64.0); // 50 + 20 + 4 - 10
-    }
-
-    #[test]
-    fn to_screen_origin() {
-        let (sx, sy) = to_screen(p(0.0, 0.0), 8.0, 0.0, 4.0, 0.0);
-        assert_eq!(sx, 8.0);
-        assert_eq!(sy, 4.0);
-    }
-
-    #[test]
-    fn to_screen_consistency_across_lines() {
-        // Cursor on line 0 and line 1 should differ by exactly line_y_delta
-        let line_height = 20.0f32;
-        let (_, y0) = to_screen(p(5.0, 0.0), 0.0, 0.0, 4.0, 0.0);
-        let (_, y1) = to_screen(p(5.0, line_height), 0.0, 0.0, 4.0, 0.0);
-        assert!((y1 - y0 - line_height as f64).abs() < 0.01);
-    }
-
-    // ── compute_selection_rects ─────────────────────────────────────
-
-    #[test]
-    fn sel_rect_empty_selection() {
-        let positions = vec![p(0.0, 0.0), p(10.0, 0.0)];
-        let rects = compute_selection_rects(&positions, 1, 1, 200.0, 20.0);
-        assert!(rects.is_empty());
-    }
-
-    #[test]
-    fn sel_rect_empty_positions() {
-        let rects = compute_selection_rects(&[], 0, 1, 200.0, 20.0);
-        assert!(rects.is_empty());
-    }
-
-    #[test]
-    fn sel_rect_single_line() {
-        // "abc" on line 0: positions at x = 0, 10, 20, 30
-        let positions = vec![p(0.0, 0.0), p(10.0, 0.0), p(20.0, 0.0), p(30.0, 0.0)];
-        let rects = compute_selection_rects(&positions, 1, 3, 200.0, 20.0);
-        assert_eq!(rects.len(), 1);
-        assert_eq!(rects[0], [10.0, 0.0, 30.0, 20.0]);
-    }
-
-    #[test]
-    fn sel_rect_single_line_from_start() {
-        let positions = vec![p(0.0, 0.0), p(10.0, 0.0), p(20.0, 0.0)];
-        let rects = compute_selection_rects(&positions, 0, 2, 200.0, 20.0);
-        assert_eq!(rects.len(), 1);
-        assert_eq!(rects[0], [0.0, 0.0, 20.0, 20.0]);
-    }
-
-    #[test]
-    fn sel_rect_two_lines() {
-        // Line 0: positions 0-2 at y=0, Line 1: positions 3-5 at y=20
-        let positions = vec![
-            p(0.0, 0.0),
-            p(10.0, 0.0),
-            p(20.0, 0.0), // line 0
-            p(0.0, 20.0),
-            p(10.0, 20.0),
-            p(20.0, 20.0), // line 1
-        ];
-        let rects = compute_selection_rects(&positions, 1, 4, 200.0, 20.0);
-        assert_eq!(rects.len(), 2);
-        // First line: start_x=10 to the rendered end of line 0
-        assert_eq!(rects[0], [10.0, 0.0, 20.0, 20.0]);
-        // Last line: 0 to end_x=10
-        assert_eq!(rects[1], [0.0, 20.0, 10.0, 40.0]);
-    }
-
-    #[test]
-    fn sel_rect_three_lines_middle_full_width() {
-        let positions = vec![
-            p(0.0, 0.0),
-            p(10.0, 0.0), // line 0
-            p(0.0, 20.0),
-            p(15.0, 20.0), // line 1
-            p(0.0, 40.0),
-            p(10.0, 40.0), // line 2
-        ];
-        let rects = compute_selection_rects(&positions, 0, 5, 200.0, 20.0);
-        assert_eq!(rects.len(), 3);
-        // First line → rendered end of line 0
-        assert_eq!(rects[0], [0.0, 0.0, 10.0, 20.0]);
-        // Middle line → rendered end of line 1
-        assert_eq!(rects[1], [0.0, 20.0, 15.0, 40.0]);
-        // Last line → left to end_x
-        assert_eq!(rects[2], [0.0, 40.0, 10.0, 60.0]);
-    }
-
-    #[test]
-    fn sel_rect_last_line_at_x_zero_gets_stub() {
-        // Selection ends at start of new line (after \n)
-        let positions = vec![
-            p(0.0, 0.0),
-            p(10.0, 0.0),
-            p(20.0, 0.0),
-            p(30.0, 0.0), // line 0: "abc"
-            p(0.0, 20.0), // line 1: after \n, x=0
-        ];
-        let rects = compute_selection_rects(&positions, 0, 4, 200.0, 20.0);
-        assert_eq!(rects.len(), 2);
-        // First line ends at the rendered end of line 0
-        assert_eq!(rects[0], [0.0, 0.0, 30.0, 20.0]);
-        // Last line: stub (end_x < 1.0)
-        assert_eq!(rects[1], [0.0, 20.0, 8.0, 40.0]);
-    }
-
-    #[test]
-    fn sel_rect_empty_middle_line_gets_stub() {
-        // Line 0 has content, line 1 is empty (only x=0), line 2 has content
-        let positions = vec![
-            p(0.0, 0.0),
-            p(10.0, 0.0), // line 0
-            p(0.0, 20.0), // line 1 (empty — only x=0 position)
-            p(0.0, 40.0),
-            p(10.0, 40.0), // line 2
-        ];
-        let rects = compute_selection_rects(&positions, 0, 4, 200.0, 20.0);
-        assert_eq!(rects.len(), 3);
-        assert_eq!(rects[0], [0.0, 0.0, 10.0, 20.0]); // first line
-        assert_eq!(rects[1], [0.0, 20.0, 8.0, 40.0]); // empty middle → stub
-        assert_eq!(rects[2], [0.0, 40.0, 10.0, 60.0]); // last line
-    }
-
-    #[test]
-    fn sel_rect_sel_end_clamped_to_positions_len() {
-        let positions = vec![p(0.0, 0.0), p(10.0, 0.0), p(20.0, 0.0)];
-        // sel_end beyond positions.len() should be clamped
-        let rects = compute_selection_rects(&positions, 0, 100, 200.0, 20.0);
-        assert_eq!(rects.len(), 1);
-        assert_eq!(rects[0], [0.0, 0.0, 20.0, 20.0]);
-    }
-
-    // ── Integration: to_screen + compute_selection_rects ────────────
-
-    #[test]
-    fn cursor_and_selection_use_same_offset() {
-        // Verify that cursor at sel_start and selection rect start coincide
-        let positions = vec![
-            p(0.0, 0.0),
-            p(10.0, 0.0),
-            p(20.0, 0.0),
-            p(0.0, 20.0),
-            p(10.0, 20.0),
-        ];
-        let text_x = 50.0;
-        let text_y = 100.0;
-        let top_pad = 4.0;
-        let scroll_y = 0.0;
-
-        // Cursor at position 1
-        let (cx, cy) = to_screen(positions[1], text_x, text_y, top_pad, scroll_y);
-
-        // Selection starting at position 1
-        let rects = compute_selection_rects(&positions, 1, 3, 200.0, 20.0);
-        let sel_x = text_x + rects[0][0]; // offset applied by caller
-        let sel_y = text_y + top_pad - scroll_y + rects[0][1];
-
-        assert!(
-            (cx - sel_x).abs() < 0.01,
-            "cursor x and selection start x must match: {} vs {}",
-            cx,
-            sel_x
-        );
-        assert!(
-            (cy - sel_y).abs() < 0.01,
-            "cursor y and selection start y must match: {} vs {}",
-            cy,
-            sel_y
-        );
-    }
+    let content_info = if input.multiline {
+        let content_height = input.layout_height as f64 + top_pad;
+        Some(InputContentInfo {
+            content_height,
+            visible_height: text_h,
+            scroll_offset_y: scroll_y,
+        })
+    } else {
+        None
+    };
+    content_info
 }

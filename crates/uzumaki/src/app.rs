@@ -655,12 +655,19 @@ impl ApplicationHandler<UserEvent> for Application {
                                     } = *state;
                                     if let Some(entry) = windows.get_mut(&wid) {
                                         let mut cb = clipboard.borrow_mut();
-                                        event_dispatch::apply_clipboard_command(
-                                            cmd,
-                                            &mut entry.dom,
-                                            wid,
-                                            &mut cb,
-                                        )
+                                        let tr =
+                                            entry.handle.as_mut().map(|h| &mut h.text_renderer);
+                                        if let Some(text_renderer) = tr {
+                                            event_dispatch::apply_clipboard_command(
+                                                cmd,
+                                                &mut entry.dom,
+                                                wid,
+                                                &mut cb,
+                                                text_renderer,
+                                            )
+                                        } else {
+                                            (false, Vec::new())
+                                        }
                                     } else {
                                         (false, Vec::new())
                                     }
@@ -763,12 +770,76 @@ impl ApplicationHandler<UserEvent> for Application {
                     {
                         is.reset_blink();
                     }
+                    if focused && let Some(handle) = entry.handle.as_mut() {
+                        event_dispatch::update_ime_cursor_area(&mut entry.dom, handle);
+                    }
                     needs_redraw = true;
                 }
             }
-            WindowEvent::Ime(_ime) => {
-                // todo (aadi): do this next
-                // println!("IME EVENT: {:#?}", ime);
+            WindowEvent::Ime(ime) => {
+                use winit::event::Ime;
+                match ime {
+                    Ime::Commit(text) => {
+                        let input_events = {
+                            let mut state = self.app_state.borrow_mut();
+                            state.windows.get_mut(&wid).and_then(|entry| {
+                                let handle = entry.handle.as_mut()?;
+                                let fid = entry.dom.focused_node?;
+                                let node = entry.dom.nodes.get_mut(fid)?;
+                                let is = node.as_text_input_mut()?;
+                                let _edit = is.commit_ime_text(&text, &mut handle.text_renderer)?;
+                                let value = is.text();
+                                event_dispatch::update_ime_cursor_area(&mut entry.dom, handle);
+                                needs_redraw = true;
+                                Some(vec![event_dispatch::AppEvent::Input(
+                                    event_dispatch::InputEventData {
+                                        window_id: wid,
+                                        node_id: fid,
+                                        value,
+                                        input_type: "insertCompositionText".to_string(),
+                                        data: Some(text.clone()),
+                                    },
+                                )])
+                            })
+                        };
+                        if let Some(events) = input_events {
+                            for event in events {
+                                self.dispatch_event_to_js(&event);
+                            }
+                        }
+                    }
+                    Ime::Preedit(text, cursor) => {
+                        let mut state = self.app_state.borrow_mut();
+                        if let Some(entry) = state.windows.get_mut(&wid) {
+                            if let Some(fid) = entry.dom.focused_node
+                                && let Some(node) = entry.dom.nodes.get_mut(fid)
+                                && let Some(is) = node.as_text_input_mut()
+                            {
+                                is.set_preedit(text.clone(), cursor);
+                                if let Some(handle) = entry.handle.as_mut() {
+                                    event_dispatch::update_ime_cursor_area(&mut entry.dom, handle);
+                                }
+                                needs_redraw = true;
+                            }
+                        }
+                    }
+                    Ime::Enabled => {}
+                    Ime::Disabled => {
+                        let mut state = self.app_state.borrow_mut();
+                        if let Some(entry) = state.windows.get_mut(&wid) {
+                            if let Some(fid) = entry.dom.focused_node
+                                && let Some(node) = entry.dom.nodes.get_mut(fid)
+                                && let Some(is) = node.as_text_input_mut()
+                            {
+                                is.clear_preedit();
+                                if let Some(handle) = entry.handle.as_mut() {
+                                    event_dispatch::update_ime_cursor_area(&mut entry.dom, handle);
+                                }
+                                needs_redraw = true;
+                            }
+                        }
+                    }
+                }
             }
             WindowEvent::CursorLeft { .. } => {
                 let mut state = self.app_state.borrow_mut();
@@ -787,7 +858,8 @@ impl ApplicationHandler<UserEvent> for Application {
                     winit::event::MouseScrollDelta::PixelDelta(pos) => pos.y,
                 };
                 if let Some(entry) = state.windows.get_mut(&wid)
-                    && event_dispatch::handle_mouse_wheel(&mut entry.dom, scroll_delta_y)
+                    && let Some(handle) = entry.handle.as_mut()
+                    && event_dispatch::handle_mouse_wheel(&mut entry.dom, handle, scroll_delta_y)
                 {
                     needs_redraw = true;
                 }

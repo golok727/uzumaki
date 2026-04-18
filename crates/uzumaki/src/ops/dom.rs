@@ -162,7 +162,7 @@ pub fn op_set_input_value(
         if let Some(node) = entry.dom.nodes.get_mut(nid)
             && let Some(is) = node.as_text_input_mut()
         {
-            is.set_value(value);
+            is.set_value(&value);
         }
         Ok(())
     })
@@ -186,7 +186,7 @@ pub fn op_get_input_value(
             .nodes
             .get(nid)
             .and_then(|node| node.as_text_input())
-            .map(|is| is.model.text())
+            .map(|is| is.text())
             .unwrap_or_default())
     })
 }
@@ -251,7 +251,7 @@ pub fn op_set_input_max_length(
         if let Some(node) = entry.dom.nodes.get_mut(nid)
             && let Some(is) = node.as_text_input_mut()
         {
-            is.model.max_length = if max_length > 0 {
+            is.max_length = if max_length > 0 {
                 Some(max_length as usize)
             } else {
                 None
