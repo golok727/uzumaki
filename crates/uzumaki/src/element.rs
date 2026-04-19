@@ -94,6 +94,7 @@ pub struct NodeContext {
     pub dom_id: UzNodeId,
     pub text: Option<TextNode>,
     pub font_size: f32,
+    pub line_height: f32,
     pub is_input: bool,
 }
 

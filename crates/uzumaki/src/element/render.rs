@@ -178,8 +178,8 @@ impl<'a> Painter<'a> {
                         preedit_state,
                     )) = input_snapshot
                     {
-                        let padding: f32 = 8.0;
-                        let text_w = (layout.size.width - padding * 2.0).max(0.0);
+                        let pad_h = computed_style.padding.left + computed_style.padding.right;
+                        let text_w = (layout.size.width - pad_h).max(0.0);
                         let node_mut = &mut self.dom.nodes[node_id];
                         let is = node_mut.as_text_input_mut().unwrap();
                         is.set_font_size(computed_style.text.font_size);
@@ -221,6 +221,7 @@ impl<'a> Painter<'a> {
                             display_text,
                             placeholder,
                             font_size: computed_style.text.font_size,
+                            line_height: computed_style.text.line_height,
                             text_color: computed_style.text.color,
                             focused,
                             cursor_rect,
@@ -681,7 +682,7 @@ pub(crate) fn measure(
                 .unwrap_or(200.0),
             height: known_dimensions
                 .height
-                .unwrap_or(ctx.font_size * 1.2 + 16.0),
+                .unwrap_or((ctx.font_size * ctx.line_height).round()),
         };
     }
 
@@ -689,6 +690,7 @@ pub(crate) fn measure(
         let (measured_width, measured_height) = text_renderer.measure_text(
             &text.content,
             ctx.font_size,
+            ctx.line_height,
             known_dimensions
                 .width
                 .or_else(|| available_as_option(available_space.width)),
@@ -709,6 +711,7 @@ pub(crate) fn measure(
 fn available_as_option(space: taffy::AvailableSpace) -> Option<f32> {
     match space {
         taffy::AvailableSpace::Definite(v) => Some(v),
-        _ => None,
+        taffy::AvailableSpace::MinContent => Some(0.0),
+        taffy::AvailableSpace::MaxContent => None,
     }
 }

@@ -151,6 +151,7 @@ impl UIState {
                     dom_id: node_id,
                     text: None,
                     font_size: 16.0,
+                    line_height: 1.2,
                     is_input: false,
                 }),
             )
@@ -166,6 +167,7 @@ impl UIState {
             content: content.clone(),
         };
         let font_size = style.text.font_size;
+        let line_height = style.text.line_height;
         let node_id = self
             .nodes
             .insert(Node::new(taffy_node, style, TextNode::new(content)));
@@ -177,6 +179,7 @@ impl UIState {
                     dom_id: node_id,
                     text: Some(text),
                     font_size,
+                    line_height,
                     is_input: false,
                 }),
             )
@@ -189,6 +192,7 @@ impl UIState {
         let taffy_style = style.to_taffy();
         let taffy_node = self.taffy.new_leaf(taffy_style).unwrap();
         let font_size = style.text.font_size;
+        let line_height = style.text.line_height;
         let is = InputState::new_single_line();
 
         let node_id = self.nodes.insert(Node::new(
@@ -204,6 +208,7 @@ impl UIState {
                     dom_id: node_id,
                     text: None,
                     font_size,
+                    line_height,
                     is_input: true,
                 }),
             )
@@ -236,6 +241,7 @@ impl UIState {
                     dom_id: node_id,
                     text: None,
                     font_size: 16.0,
+                    line_height: 1.2,
                     is_input: false,
                 }),
             )
@@ -411,6 +417,7 @@ impl UIState {
 
         let taffy_node = node.taffy_node;
         let font_size = node.style.text.font_size;
+        let line_height = node.style.text.line_height;
         self.taffy
             .set_node_context(
                 taffy_node,
@@ -418,6 +425,7 @@ impl UIState {
                     dom_id: node_id,
                     text: Some(tc),
                     font_size,
+                    line_height,
                     is_input: false,
                 }),
             )

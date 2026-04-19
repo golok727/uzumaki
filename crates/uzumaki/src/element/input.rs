@@ -16,6 +16,7 @@ pub struct InputRenderInfo {
     pub display_text: String,
     pub placeholder: String,
     pub font_size: f32,
+    pub line_height: f32,
     pub text_color: Color,
     pub focused: bool,
     pub cursor_rect: Option<BoundingBox>,
@@ -44,11 +45,14 @@ pub fn paint_input(
     input: &InputRenderInfo,
     scale: f64,
 ) -> Option<InputContentInfo> {
-    let padding: f64 = 8.0;
-    let text_x = bounds.x + padding;
+    let pad_l = style.padding.left as f64;
+    let pad_r = style.padding.right as f64;
+    let pad_t = style.padding.top as f64;
+    let pad_b = style.padding.bottom as f64;
+    let text_x = bounds.x + pad_l;
     let text_y = bounds.y;
-    let text_w = (bounds.width - padding * 2.0).max(0.0);
-    let text_h = bounds.height;
+    let text_w = (bounds.width - pad_l - pad_r).max(0.0);
+    let text_h = (bounds.height - pad_t - pad_b).max(0.0);
 
     // Paint background with focus-aware border
     let mut paint_style = style.clone();
@@ -77,14 +81,10 @@ pub fn paint_input(
     scene.push_clip_layer(Fill::NonZero, Affine::scale(scale), &clip_rect);
 
     let is_empty = input.display_text.is_empty();
-    let line_height = (input.font_size * 1.2).round();
+    let line_height = (input.font_size * input.line_height).round();
     let scroll_y = input.scroll_offset_y as f64;
 
-    let top_pad: f64 = if style.padding.top > 0.0 {
-        style.padding.top as f64
-    } else {
-        4.0
-    };
+    let top_pad = pad_t;
 
     // Placeholder
     if is_empty && !input.placeholder.is_empty() {

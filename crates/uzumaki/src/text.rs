@@ -1,6 +1,6 @@
 use parley::{
-    Affinity, BoundingBox, Cursor, FontContext, Layout, LayoutContext, LineHeight, Selection,
-    StyleProperty,
+    Affinity, BoundingBox, Cursor, FontContext, Layout, LayoutContext, LineHeight, OverflowWrap,
+    Selection, StyleProperty,
 };
 use unicode_segmentation::UnicodeSegmentation;
 use vello::Scene;
@@ -36,17 +36,22 @@ impl TextRenderer {
         }
     }
 
+    // todo take in text styles
     fn build_layout(
         &mut self,
         text: &str,
         font_size: f32,
+        line_height: f32,
         max_width: Option<f32>,
     ) -> Layout<TextBrush> {
         let mut builder = self
             .layout_ctx
             .ranged_builder(&mut self.font_ctx, text, 1.0, true);
         builder.push_default(StyleProperty::FontSize(font_size));
-        builder.push_default(StyleProperty::LineHeight(LineHeight::FontSizeRelative(1.2)));
+        builder.push_default(StyleProperty::LineHeight(LineHeight::FontSizeRelative(
+            line_height,
+        )));
+        builder.push_default(StyleProperty::OverflowWrap(OverflowWrap::BreakWord));
         let mut layout = builder.build(text);
         layout.break_all_lines(max_width);
         layout
@@ -82,13 +87,14 @@ impl TextRenderer {
         scene: &mut Scene,
         text: &str,
         font_size: f32,
+        line_height: f32,
         width: f32,
         _height: f32,
         position: (f32, f32),
         color: Color,
         scale: f64,
     ) {
-        let layout = self.build_layout(text, font_size, Some(width));
+        let layout = self.build_layout(text, font_size, line_height, Some(width));
         let (px, py) = position;
 
         for line in layout.lines() {
@@ -126,7 +132,7 @@ impl TextRenderer {
             return vec![0.0];
         }
 
-        let layout = self.build_layout(text, font_size, None);
+        let layout = self.build_layout(text, font_size, 1.2, None);
         let layout_width = layout.width();
         let boundaries = Self::grapheme_boundaries(text);
 
@@ -142,13 +148,14 @@ impl TextRenderer {
     }
 
     pub fn hit_to_grapheme(&mut self, text: &str, font_size: f32, x: f32) -> usize {
-        self.hit_to_grapheme_2d(text, font_size, None, x, 0.0)
+        self.hit_to_grapheme_2d(text, font_size, 1.2, None, x, 0.0)
     }
 
     pub fn hit_to_grapheme_2d(
         &mut self,
         text: &str,
         font_size: f32,
+        line_height: f32,
         wrap_width: Option<f32>,
         x: f32,
         y: f32,
@@ -157,7 +164,7 @@ impl TextRenderer {
             return 0;
         }
 
-        let layout = self.build_layout(text, font_size, wrap_width);
+        let layout = self.build_layout(text, font_size, line_height, wrap_width);
         let boundaries = Self::grapheme_boundaries(text);
         let byte_index = Cursor::from_point(&layout, x, y).index();
         Self::byte_to_grapheme(&boundaries, byte_index)
@@ -167,6 +174,7 @@ impl TextRenderer {
         &mut self,
         text: &str,
         font_size: f32,
+        line_height: f32,
         wrap_width: Option<f32>,
         x: f32,
         y: f32,
@@ -175,7 +183,7 @@ impl TextRenderer {
             return (0, 0);
         }
 
-        let layout = self.build_layout(text, font_size, wrap_width);
+        let layout = self.build_layout(text, font_size, line_height, wrap_width);
         let boundaries = Self::grapheme_boundaries(text);
         let selection = Selection::word_from_point(&layout, x, y);
         let range = selection.text_range();
@@ -189,6 +197,7 @@ impl TextRenderer {
         &mut self,
         text: &str,
         font_size: f32,
+        line_height: f32,
         wrap_width: Option<f32>,
         x: f32,
         y: f32,
@@ -197,7 +206,7 @@ impl TextRenderer {
             return (0, 0);
         }
 
-        let layout = self.build_layout(text, font_size, wrap_width);
+        let layout = self.build_layout(text, font_size, line_height, wrap_width);
         let boundaries = Self::grapheme_boundaries(text);
         let selection = Selection::line_from_point(&layout, x, y);
         let range = selection.text_range();
@@ -211,6 +220,7 @@ impl TextRenderer {
         &mut self,
         text: &str,
         font_size: f32,
+        line_height: f32,
         wrap_width: Option<f32>,
         start: usize,
         end: usize,
@@ -219,7 +229,7 @@ impl TextRenderer {
             return Vec::new();
         }
 
-        let layout = self.build_layout(text, font_size, wrap_width);
+        let layout = self.build_layout(text, font_size, line_height, wrap_width);
         let boundaries = Self::grapheme_boundaries(text);
         let anchor = Self::grapheme_to_byte(&boundaries, start);
         let focus = Self::grapheme_to_byte(&boundaries, end);
@@ -239,14 +249,15 @@ impl TextRenderer {
         &mut self,
         text: &str,
         font_size: f32,
+        line_height: f32,
         max_width: Option<f32>,
         _max_height: Option<f32>,
     ) -> (f32, f32) {
-        let layout = self.build_layout(text, font_size, max_width);
+        let layout = self.build_layout(text, font_size, line_height, max_width);
 
         let measured_width = layout.width();
         let measured_height = layout.height();
-        let line_height = (font_size * 1.2).round();
+        let fallback_height = (font_size * line_height).round();
 
         let w = if measured_width == 0.0 {
             (text.len() as f32) * (font_size * 0.6)
@@ -255,7 +266,7 @@ impl TextRenderer {
         };
 
         let h = if measured_height == 0.0 {
-            line_height
+            fallback_height
         } else {
             measured_height
         };
