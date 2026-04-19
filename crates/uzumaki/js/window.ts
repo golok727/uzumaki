@@ -7,6 +7,7 @@ import {
 } from './events';
 
 const windowsByLabel = new Map<string, Window>();
+const windowsById = new Map<number, Window>();
 
 export interface WindowAttributes {
   width: number;
@@ -20,6 +21,8 @@ export class Window {
   private _width: number;
   private _height: number;
   private _remBase: number = 16;
+  private _disposed: boolean = false;
+  private _disposables: (() => void)[] = [];
 
   constructor(
     label: string,
@@ -39,12 +42,22 @@ export class Window {
     this._label = label;
     this._id = core.createWindow({ width, height, title });
     windowsByLabel.set(label, this);
+    windowsById.set(this._id, this);
   }
 
   close() {
     eventManager.clearWindowHandlers(this._id);
     windowsByLabel.delete(this._label);
+    windowsById.delete(this._id);
     core.requestClose();
+  }
+
+  addDisposable(cb: () => void): void {
+    this._disposables.push(cb);
+  }
+
+  static _getById(id: number): Window | undefined {
+    return windowsById.get(id);
   }
 
   setSize(width: number, height: number) {
@@ -66,6 +79,10 @@ export class Window {
 
   get id(): number {
     return this._id;
+  }
+
+  get isDisposed(): boolean {
+    return this._disposed;
   }
 
   get remBase(): number {
@@ -108,4 +125,22 @@ export class Window {
       );
     }
   }
+}
+
+/** @internal Called when the native window is destroyed. */
+export function disposeWindow(_window: Window) {
+  const window = _window as never as {
+    id: number;
+    label: string;
+    _disposed: boolean;
+    _disposables: (() => void)[];
+  };
+
+  window._disposed = true;
+  for (const cb of window._disposables) {
+    cb();
+  }
+  window._disposables = [];
+  windowsByLabel.delete(window.label);
+  windowsById.delete(window.id);
 }

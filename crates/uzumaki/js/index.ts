@@ -1,4 +1,5 @@
 import { eventManager, EventType } from './events';
+import { disposeWindow, Window } from './window';
 
 export { Window } from './window';
 export { Clipboard } from './clipboard';
@@ -58,6 +59,14 @@ const EVENT_TYPE_MAP: Record<string, EventType> = {
   // WindowLoad is a special event dispatched directly to window handlers
   if (event.type === 'windowLoad') {
     eventManager.dispatchWindowEvent(event.windowId, EventType.WindowLoad);
+    return false;
+  }
+
+  if (event.type === 'windowClose') {
+    const w = Window._getById(event.windowId);
+    if (w) {
+      disposeWindow(w);
+    }
     return false;
   }
 

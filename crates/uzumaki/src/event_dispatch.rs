@@ -90,6 +90,8 @@ pub enum AppEvent {
     Paste(ClipboardEventData),
     #[serde(rename = "windowLoad")]
     WindowLoad(WindowLoadEventData),
+    #[serde(rename = "windowClose")]
+    WindowClose(WindowLoadEventData),
     HotReload,
 }
 

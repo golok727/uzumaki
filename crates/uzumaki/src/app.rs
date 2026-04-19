@@ -863,6 +863,9 @@ impl ApplicationHandler<UserEvent> for Application {
                 }
             }
             WindowEvent::CloseRequested => {
+                self.dispatch_event_to_js(&event_dispatch::AppEvent::WindowClose(
+                    event_dispatch::WindowLoadEventData { window_id: wid },
+                ));
                 let mut state = self.app_state.borrow_mut();
                 state.winit_id_to_entry_id.remove(&window_id);
                 state.windows.remove(&wid);

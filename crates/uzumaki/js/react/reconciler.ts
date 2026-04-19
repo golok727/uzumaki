@@ -292,6 +292,7 @@ abstract class BaseElement<
 > {
   readonly id: any;
   readonly type: string;
+  readonly window: Window;
   readonly windowId: number;
   styles: Record<string, any> = {};
   /** Keyed by stable event identity (name + phase). */
@@ -299,10 +300,11 @@ abstract class BaseElement<
   children: BaseElement[] = [];
   parent: BaseElement | null = null;
 
-  constructor(id: any, type: string, windowId: number) {
+  constructor(id: any, type: string, window: Window) {
     this.id = id;
     this.type = type;
-    this.windowId = windowId;
+    this.window = window;
+    this.windowId = window.id;
   }
 
   abstract commitUpdate(newProps: TProps, oldProps: TProps): void;
@@ -394,9 +396,9 @@ abstract class BaseElement<
 }
 
 class ViewElement extends BaseElement<Record<string, any>> {
-  constructor(windowId: number, type: string, props: Record<string, any>) {
-    const id = core.createElement(windowId, type);
-    super(id, type, windowId);
+  constructor(window: Window, type: string, props: Record<string, any>) {
+    const id = core.createElement(window.id, type);
+    super(id, type, window);
     this.parseProps(props);
     this.applyStyles();
     this.applyEvents();
@@ -464,9 +466,9 @@ class InputElement extends BaseElement<Record<string, any>> {
   private onChangeText: ((value: string) => void) | undefined;
   private onChangeTextListener: ((ev: any) => void) | null = null;
 
-  constructor(windowId: number, props: Record<string, any>) {
-    const id = core.createElement(windowId, 'input');
-    super(id, 'input', windowId);
+  constructor(window: Window, props: Record<string, any>) {
+    const id = core.createElement(window.id, 'input');
+    super(id, 'input', window);
     this.parseProps(props);
     this.applyStyles();
     this.applyInputAttrs();
@@ -627,13 +629,13 @@ class TextElement extends BaseElement<Record<string, any>> {
   textContent: string;
 
   constructor(
-    windowId: number,
+    window: Window,
     type: string,
     text: string,
     props: Record<string, any>,
   ) {
-    const id = core.createTextNode(windowId, text);
-    super(id, type, windowId);
+    const id = core.createTextNode(window.id, text);
+    super(id, type, window);
     this.textContent = text;
     this.parseProps(props);
     this.applyStyles();
@@ -741,7 +743,7 @@ function isTextType(type: string): boolean {
 function createElementInstance(
   type: string,
   props: Record<string, any>,
-  windowId: number,
+  window: Window,
 ): BaseElement {
   if (!INTRINSIC_ELEMENTS.has(type)) {
     throw new Error(
@@ -750,18 +752,13 @@ function createElementInstance(
   }
 
   if (type === 'input') {
-    return new InputElement(windowId, props);
+    return new InputElement(window, props);
   }
 
   if (isTextType(type)) {
-    return new TextElement(
-      windowId,
-      type,
-      getTextContent(props.children),
-      props,
-    );
+    return new TextElement(window, type, getTextContent(props.children), props);
   }
-  return new ViewElement(windowId, type, props);
+  return new ViewElement(window, type, props);
 }
 
 type Type = string;
@@ -799,12 +796,11 @@ const reconciler = ReactReconciler<
   supportsPersistence: false,
 
   createInstance(type, props, rootContainer) {
-    return createElementInstance(type, props, getWindowId(rootContainer));
+    return createElementInstance(type, props, rootContainer.window);
   },
 
   createTextInstance(text, rootContainer) {
-    const windowId = getWindowId(rootContainer);
-    return new TextElement(windowId, '#text', text, {});
+    return new TextElement(rootContainer.window, '#text', text, {});
   },
 
   shouldSetTextContent(type) {
@@ -814,6 +810,7 @@ const reconciler = ReactReconciler<
   appendInitialChild(parent, child) {
     parent.children.push(child);
     child.parent = parent;
+    if (parent.window.isDisposed) return;
     core.appendChild(parent.windowId, parent.id, child.id);
   },
 
@@ -822,14 +819,16 @@ const reconciler = ReactReconciler<
   },
 
   appendChildToContainer(container, child) {
-    const windowId = getWindowId(container);
     child.parent = null;
+    if (container.window.isDisposed) return;
+    const windowId = getWindowId(container);
     core.appendChild(windowId, container.rootNodeId, child.id);
   },
 
   appendChild(parent, child) {
     parent.children.push(child);
     child.parent = parent;
+    if (parent.window.isDisposed) return;
     core.appendChild(parent.windowId, parent.id, child.id);
   },
 
@@ -841,12 +840,14 @@ const reconciler = ReactReconciler<
       parent.children.splice(idx, 0, child);
     }
     child.parent = parent;
+    if (parent.window.isDisposed) return;
     core.insertBefore(parent.windowId, parent.id, child.id, before.id);
   },
 
   insertInContainerBefore(container, child, before) {
-    const windowId = getWindowId(container);
     child.parent = null;
+    if (container.window.isDisposed) return;
+    const windowId = getWindowId(container);
     core.insertBefore(windowId, container.rootNodeId, child.id, before.id);
   },
 
@@ -854,22 +855,28 @@ const reconciler = ReactReconciler<
     const idx = parent.children.indexOf(child);
     if (idx !== -1) parent.children.splice(idx, 1);
     child.parent = null;
-    core.removeChild(parent.windowId, parent.id, child.id);
+    if (!parent.window.isDisposed) {
+      core.removeChild(parent.windowId, parent.id, child.id);
+    }
     child.destroy();
   },
 
   removeChildFromContainer(container, child) {
-    const windowId = getWindowId(container);
     child.parent = null;
-    core.removeChild(windowId, container.rootNodeId, child.id);
+    if (!container.window.isDisposed) {
+      const windowId = getWindowId(container);
+      core.removeChild(windowId, container.rootNodeId, child.id);
+    }
     child.destroy();
   },
 
   commitUpdate(instance, _type, oldProps, newProps, _internalHandle) {
+    if (instance.window.isDisposed) return;
     instance.commitUpdate(newProps, oldProps);
   },
 
   commitTextUpdate(instance, _oldText, newText) {
+    if (instance.window.isDisposed) return;
     instance.setText(newText);
   },
 
@@ -975,10 +982,20 @@ export function render(window: Window, element: JSX.Element) {
     reconciler.updateContainer(null, root, null, null);
     roots.delete(window.label);
   }
-  // todo listen to window distroy event and dispose this container
+
+  window.addDisposable(dispose);
+
   return {
     dispose,
   };
+}
+
+export function disposeRoot(windowLabel: string) {
+  const entry = roots.get(windowLabel);
+  if (entry) {
+    reconciler.updateContainer(null, entry.root, null, null);
+    roots.delete(windowLabel);
+  }
 }
 
 export function disposeAllRoots() {
