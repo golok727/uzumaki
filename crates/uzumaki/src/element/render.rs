@@ -8,60 +8,8 @@ use crate::element::checkbox::CheckboxRenderInfo;
 use crate::element::input::InputRenderInfo;
 use crate::element::{InheritedProperties, NodeContext, ScrollThumbRect, UzNodeId};
 use crate::style::{Bounds, Color, UzStyle, Visibility};
-use crate::text::{GlyphPos2D, TextRenderer};
+use crate::text::TextRenderer;
 use crate::ui::UIState;
-
-fn compute_selection_rects(
-    positions: &[GlyphPos2D],
-    sel_start: usize,
-    sel_end: usize,
-    _text_w: f64,
-    line_height: f64,
-) -> Vec<[f64; 4]> {
-    if sel_start >= sel_end || positions.is_empty() {
-        return vec![];
-    }
-    let sel_end_idx = sel_end.min(positions.len() - 1);
-    let start_x = positions[sel_start].x as f64;
-    let end_x = positions[sel_end_idx].x as f64;
-    let mut line_ys: Vec<f32> = Vec::new();
-    for pos in &positions[sel_start..=sel_end_idx] {
-        let y = pos.y;
-        if line_ys.last().is_none_or(|&ly| (y - ly).abs() > 1.0) {
-            line_ys.push(y);
-        }
-    }
-    let num_lines = line_ys.len();
-    let mut rects = Vec::new();
-    for (idx, &ly) in line_ys.iter().enumerate() {
-        let y = ly as f64;
-        let line_end_x = positions
-            .iter()
-            .filter(|pos| (pos.y - ly).abs() < 1.0)
-            .map(|pos| pos.x as f64)
-            .fold(0.0, f64::max);
-        let (x1, x2) = if num_lines == 1 {
-            (start_x, end_x)
-        } else if idx == 0 {
-            (start_x, line_end_x)
-        } else if idx == num_lines - 1 {
-            if end_x < 1.0 {
-                (0.0, 8.0)
-            } else {
-                (0.0, end_x)
-            }
-        } else if line_end_x > 1.0 {
-            (0.0, line_end_x)
-        } else {
-            (0.0, 8.0)
-        };
-
-        if x2 > x1 {
-            rects.push([x1, y, x2, y + line_height]);
-        }
-    }
-    rects
-}
 
 /// Renders an `ElementTree` into a Vello `Scene`. Also rebuilds hitboxes and
 /// scroll thumbs as a side effect of walking the tree.
@@ -529,31 +477,25 @@ impl<'a> Painter<'a> {
                 let text_renderer = &mut *self.text_renderer;
                 info.style.paint(bounds, scene, scale, |scene| {
                     if let Some((sel_start, sel_end)) = sel_range {
-                        let positions = text_renderer.grapheme_positions_2d(
+                        let rects = text_renderer.selection_rects(
                             content,
                             *font_size,
                             Some(bounds.width as f32),
-                        );
-                        let line_height = (*font_size * 1.2).round();
-                        let rects = compute_selection_rects(
-                            &positions,
                             sel_start,
                             sel_end,
-                            bounds.width,
-                            line_height as f64,
                         );
                         let sel_color = VelloColor::from_rgba8(56, 121, 185, 128);
-                        for [x1, y1, x2, y2] in rects {
+                        for rect in rects {
                             scene.fill(
                                 Fill::NonZero,
                                 Affine::scale(scale),
                                 sel_color,
                                 None,
                                 &Rect::new(
-                                    bounds.x + x1,
-                                    bounds.y + y1,
-                                    bounds.x + x2,
-                                    bounds.y + y2,
+                                    bounds.x + rect.x0,
+                                    bounds.y + rect.y0,
+                                    bounds.x + rect.x1,
+                                    bounds.y + rect.y1,
                                 ),
                             );
                         }
@@ -768,115 +710,5 @@ fn available_as_option(space: taffy::AvailableSpace) -> Option<f32> {
     match space {
         taffy::AvailableSpace::Definite(v) => Some(v),
         _ => None,
-    }
-}
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    fn p(x: f32, y: f32) -> GlyphPos2D {
-        GlyphPos2D { x, y }
-    }
-
-    #[test]
-    fn sel_rect_empty_selection() {
-        let positions = vec![p(0.0, 0.0), p(10.0, 0.0)];
-        let rects = compute_selection_rects(&positions, 1, 1, 200.0, 20.0);
-        assert!(rects.is_empty());
-    }
-
-    #[test]
-    fn sel_rect_empty_positions() {
-        let rects = compute_selection_rects(&[], 0, 1, 200.0, 20.0);
-        assert!(rects.is_empty());
-    }
-
-    #[test]
-    fn sel_rect_single_line() {
-        let positions = vec![p(0.0, 0.0), p(10.0, 0.0), p(20.0, 0.0), p(30.0, 0.0)];
-        let rects = compute_selection_rects(&positions, 1, 3, 200.0, 20.0);
-        assert_eq!(rects.len(), 1);
-        assert_eq!(rects[0], [10.0, 0.0, 30.0, 20.0]);
-    }
-
-    #[test]
-    fn sel_rect_single_line_from_start() {
-        let positions = vec![p(0.0, 0.0), p(10.0, 0.0), p(20.0, 0.0)];
-        let rects = compute_selection_rects(&positions, 0, 2, 200.0, 20.0);
-        assert_eq!(rects.len(), 1);
-        assert_eq!(rects[0], [0.0, 0.0, 20.0, 20.0]);
-    }
-
-    #[test]
-    fn sel_rect_two_lines() {
-        let positions = vec![
-            p(0.0, 0.0),
-            p(10.0, 0.0),
-            p(20.0, 0.0),
-            p(0.0, 20.0),
-            p(10.0, 20.0),
-            p(20.0, 20.0),
-        ];
-        let rects = compute_selection_rects(&positions, 1, 4, 200.0, 20.0);
-        assert_eq!(rects.len(), 2);
-        assert_eq!(rects[0], [10.0, 0.0, 20.0, 20.0]);
-        assert_eq!(rects[1], [0.0, 20.0, 10.0, 40.0]);
-    }
-
-    #[test]
-    fn sel_rect_three_lines_middle_full_width() {
-        let positions = vec![
-            p(0.0, 0.0),
-            p(10.0, 0.0),
-            p(0.0, 20.0),
-            p(15.0, 20.0),
-            p(0.0, 40.0),
-            p(10.0, 40.0),
-        ];
-        let rects = compute_selection_rects(&positions, 0, 5, 200.0, 20.0);
-        assert_eq!(rects.len(), 3);
-        assert_eq!(rects[0], [0.0, 0.0, 10.0, 20.0]);
-        assert_eq!(rects[1], [0.0, 20.0, 15.0, 40.0]);
-        assert_eq!(rects[2], [0.0, 40.0, 10.0, 60.0]);
-    }
-
-    #[test]
-    fn sel_rect_last_line_at_x_zero_gets_stub() {
-        let positions = vec![
-            p(0.0, 0.0),
-            p(10.0, 0.0),
-            p(20.0, 0.0),
-            p(30.0, 0.0),
-            p(0.0, 20.0),
-        ];
-        let rects = compute_selection_rects(&positions, 0, 4, 200.0, 20.0);
-        assert_eq!(rects.len(), 2);
-        assert_eq!(rects[0], [0.0, 0.0, 30.0, 20.0]);
-        assert_eq!(rects[1], [0.0, 20.0, 8.0, 40.0]);
-    }
-
-    #[test]
-    fn sel_rect_empty_middle_line_gets_stub() {
-        let positions = vec![
-            p(0.0, 0.0),
-            p(10.0, 0.0),
-            p(0.0, 20.0),
-            p(0.0, 40.0),
-            p(10.0, 40.0),
-        ];
-        let rects = compute_selection_rects(&positions, 0, 4, 200.0, 20.0);
-        assert_eq!(rects.len(), 3);
-        assert_eq!(rects[0], [0.0, 0.0, 10.0, 20.0]);
-        assert_eq!(rects[1], [0.0, 20.0, 8.0, 40.0]);
-        assert_eq!(rects[2], [0.0, 40.0, 10.0, 60.0]);
-    }
-
-    #[test]
-    fn sel_rect_clamped_to_positions_len() {
-        let positions = vec![p(0.0, 0.0), p(10.0, 0.0), p(20.0, 0.0)];
-        let rects = compute_selection_rects(&positions, 0, 100, 200.0, 20.0);
-        assert_eq!(rects.len(), 1);
-        assert_eq!(rects[0], [0.0, 0.0, 20.0, 20.0]);
     }
 }
