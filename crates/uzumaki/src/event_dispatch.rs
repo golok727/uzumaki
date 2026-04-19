@@ -130,10 +130,14 @@ fn focused_input_layout_meta(
     let pt = node.style.padding.top;
     let top_pad = if pt > 0.0 { pt } else { 4.0 };
     let font_size = node.style.text.font_size;
+    let hb = node
+        .interactivity
+        .hitbox_id
+        .and_then(|hid| dom.hitbox_store.get(hid))?;
     let layout = dom.taffy.layout(node.taffy_node).ok()?;
     Some(FocusedInputLayoutMeta {
-        taffy_x: layout.location.x as f64,
-        taffy_y: layout.location.y as f64,
+        taffy_x: hb.bounds.x,
+        taffy_y: hb.bounds.y,
         input_padding,
         top_pad,
         multiline: is.multiline,
