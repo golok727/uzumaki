@@ -195,7 +195,9 @@ impl<'a> Painter<'a> {
                         )
                     };
 
-                    if computed_style.visibility == Visibility::Hidden {
+                    if computed_style.visibility == Visibility::Hidden
+                        || computed_style.display == crate::style::Display::None
+                    {
                         continue;
                     }
 
