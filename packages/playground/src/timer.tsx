@@ -1,7 +1,8 @@
 import { useEffect, useRef, useState } from 'react';
 
 export function Timer() {
-  const interval = useRef<NodeJS.Timeout | undefined>();
+  // oxlint-disable-next-line unicorn/no-useless-undefined
+  const interval = useRef<NodeJS.Timeout | undefined>(undefined);
 
   const [count, setCount] = useState(0);
   useEffect(() => {
