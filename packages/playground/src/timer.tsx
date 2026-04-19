@@ -15,7 +15,8 @@ export function Timer() {
   }, []);
   return (
     <view h="full" w="full" flex items="center" justify="center" bg="#181818">
-      Count {count}
+      Count {` `}
+      {count}
     </view>
   );
 }
