@@ -35,6 +35,8 @@ pub fn op_create_element(
         };
         let id = if element_type == "input" {
             entry.dom.create_input(UzStyle::default())
+        } else if element_type == "checkbox" {
+            entry.dom.create_checkbox(UzStyle::default())
         } else {
             entry.dom.create_view(UzStyle::default())
         };
@@ -304,6 +306,28 @@ pub fn op_set_input_secure(
             && let Some(is) = node.as_text_input_mut()
         {
             is.secure = secure;
+        }
+        Ok(())
+    })
+}
+
+#[op2(fast)]
+pub fn op_set_checkbox_checked(
+    state: &mut OpState,
+    #[smi] window_id: u32,
+    #[smi] node_id: u32,
+    checked: bool,
+) -> Result<(), deno_error::JsErrorBox> {
+    let nid = node_id as UzNodeId;
+    let app_state = state.borrow::<SharedAppState>().clone();
+    with_state(&app_state, |s| {
+        let Some(entry) = s.windows.get_mut(&window_id) else {
+            return Err(window_not_found());
+        };
+        if let Some(node) = entry.dom.nodes.get_mut(nid)
+            && let Some(value) = node.as_checkbox_input_mut()
+        {
+            *value = checked;
         }
         Ok(())
     })

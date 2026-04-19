@@ -317,6 +317,9 @@ function Dashboard() {
       {/* Input demo */}
       <InputDemo />
 
+      {/* Checkbox demo */}
+      <CheckboxDemo />
+
       <TextSelectDemo />
     </view>
   );
@@ -498,6 +501,99 @@ function InputDemo() {
         value={multiValue}
         onChangeText={setMultiValue}
       />
+    </view>
+  );
+}
+
+function CheckboxDemo() {
+  const [checked, setChecked] = useState(true);
+  const [marketing, setMarketing] = useState(false);
+  const [updates, setUpdates] = useState(true);
+  const [releaseNotes, setReleaseNotes] = useState(false);
+
+  return (
+    <view
+      display="flex"
+      flexDir="col"
+      p="16"
+      gap="14"
+      bg={PANEL}
+      rounded="8"
+      borderColor={BORDER}
+      border="1"
+    >
+      <text fontSize="16" color={TEXT_COLOR}>
+        Checkbox Demo
+      </text>
+
+      <view display="flex" items="center" gap="12">
+        <checkbox
+          checked={checked}
+          onChange={setChecked}
+          bg={ACCENT_BLUE}
+          borderColor={checked ? ACCENT_BLUE : BORDER}
+          color="#ffffff"
+          rounded="6"
+          w="20"
+          h="20"
+          hover:opacity={0.9}
+        />
+        <text fontSize="14" color={TEXT_COLOR}>
+          {checked ? 'Checkbox is checked' : 'Checkbox is unchecked'}
+        </text>
+      </view>
+
+      <view display="flex" flexDir="col" gap="10">
+        <view display="flex" items="center" gap="12">
+          <checkbox
+            checked={marketing}
+            onChange={setMarketing}
+            bg={ACCENT_GREEN}
+            borderColor={marketing ? ACCENT_GREEN : BORDER}
+            color="#08110a"
+            rounded="4"
+            w="18"
+            h="18"
+          />
+          <text fontSize="14" color={TEXT_COLOR}>
+            Email marketing
+          </text>
+        </view>
+
+        <view display="flex" items="center" gap="12">
+          <checkbox
+            checked={updates}
+            onChange={setUpdates}
+            bg={ACCENT_ORANGE}
+            borderColor={updates ? ACCENT_ORANGE : BORDER}
+            color="#1b1104"
+            rounded="9"
+            border="2"
+            w="22"
+            h="22"
+          />
+          <text fontSize="14" color={TEXT_COLOR}>
+            Weekly product updates
+          </text>
+        </view>
+
+        <view display="flex" items="center" gap="12">
+          <checkbox
+            checked={releaseNotes}
+            onChange={setReleaseNotes}
+            bg="#c084fc"
+            borderColor={releaseNotes ? '#c084fc' : '#6b7280'}
+            color="#ffffff"
+            rounded="2"
+            border="1"
+            w="16"
+            h="16"
+          />
+          <text fontSize="14" color={SUBTEXT}>
+            Release notes only
+          </text>
+        </view>
+      </view>
     </view>
   );
 }

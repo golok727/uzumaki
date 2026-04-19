@@ -9,7 +9,7 @@ use crate::{
     input::InputState,
     interactivity::{HitTestState, HitboxStore},
     selection::TextSelection,
-    style::UzStyle,
+    style::{Length, UzStyle},
     text::TextRenderer,
 };
 
@@ -210,6 +210,42 @@ impl UIState {
             .unwrap();
         // Input always needs a hitbox for click-to-focus
         self.nodes[node_id].interactivity.js_interactive = true;
+        node_id
+    }
+
+    pub fn create_checkbox(&mut self, mut style: UzStyle) -> UzNodeId {
+        if matches!(style.size.width, Length::Auto) {
+            style.size.width = Length::Px(18.0);
+        }
+        if matches!(style.size.height, Length::Auto) {
+            style.size.height = Length::Px(18.0);
+        }
+
+        let taffy_style = style.to_taffy();
+        let taffy_node = self.taffy.new_leaf(taffy_style).unwrap();
+        let node_id = self.nodes.insert(Node::new(
+            taffy_node,
+            style,
+            ElementNode::new_checkbox_input(false),
+        ));
+
+        self.taffy
+            .set_node_context(
+                taffy_node,
+                Some(NodeContext {
+                    dom_id: node_id,
+                    text: None,
+                    font_size: 16.0,
+                    is_input: false,
+                }),
+            )
+            .unwrap();
+
+        self.nodes[node_id].interactivity.js_interactive = true;
+        self.nodes[node_id]
+            .as_element_mut()
+            .expect("checkbox should be an element")
+            .set_focussable(true);
         node_id
     }
 

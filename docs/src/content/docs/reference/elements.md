@@ -65,6 +65,9 @@ A pressable element. Supports the same props as `<view>`.
 
 Text input field.
 
+This element is specifically for text entry. Checkbox controls use a separate
+`<checkbox>` intrinsic instead of `type="checkbox"`.
+
 ```tsx
 <input
   w={300}
@@ -92,4 +95,46 @@ Text input field.
 
 // Multiline
 <input multiline h={120} value={text} onChangeText={setText} />
+```
+
+## `<checkbox>`
+
+A boolean form control for checked and unchecked state.
+
+```tsx
+<checkbox
+  checked={done}
+  onChange={setDone}
+  bg="#3b82f6"
+  borderColor="#93c5fd"
+  color="#ffffff"
+  rounded={6}
+  w={20}
+  h={20}
+/>
+```
+
+### Checkbox props
+
+| Prop       | Type                         | Description                   |
+| ---------- | ---------------------------- | ----------------------------- |
+| `checked`  | `boolean`                    | Controlled checked state      |
+| `onChange` | `(checked: boolean) => void` | Called when the value toggles |
+
+Checkboxes also support the normal element props from `<view>`, which makes
+them easy to customize with `bg`, `borderColor`, `color`, `rounded`, `border`,
+`w`, `h`, `opacity`, `hover:*`, and `active:*`.
+
+```tsx
+<view display="flex" items="center" gap={12}>
+  <checkbox
+    checked={marketing}
+    onChange={setMarketing}
+    bg="#22c55e"
+    borderColor={marketing ? '#22c55e' : '#3f3f46'}
+    color="#08110a"
+    rounded={4}
+  />
+  <text color="#e4e4e7">Email marketing</text>
+</view>
 ```

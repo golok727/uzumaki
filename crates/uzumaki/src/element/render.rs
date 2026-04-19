@@ -4,6 +4,7 @@ use vello::Scene;
 use vello::kurbo::{Affine, Rect, RoundedRect, RoundedRectRadii};
 use vello::peniko::{Color as VelloColor, Fill};
 
+use crate::element::checkbox::CheckboxRenderInfo;
 use crate::element::input::InputRenderInfo;
 use crate::element::{InheritedProperties, NodeContext, ScrollThumbRect, UzNodeId};
 use crate::style::{Bounds, Color, UzStyle, Visibility};
@@ -131,6 +132,7 @@ impl<'a> Painter<'a> {
                         computed_style,
                         text,
                         input_snapshot,
+                        checkbox_snapshot,
                         needs_hitbox,
                         is_scrollable,
                         first_child,
@@ -177,6 +179,16 @@ impl<'a> Painter<'a> {
                         } else {
                             None
                         };
+                        let checkbox_snapshot = if node.is_checkbox_input() {
+                            node.as_checkbox_input()
+                                .copied()
+                                .map(|checked| CheckboxRenderInfo {
+                                    checked,
+                                    focused: self.dom.focused_node == Some(node_id),
+                                })
+                        } else {
+                            None
+                        };
                         // Text nodes inside textSelect views need hitboxes for click-to-select
                         let selectable_text = inherited.text_selectable && node.is_text_node();
                         let needs_hitbox = node.interactivity.needs_hitbox() || selectable_text;
@@ -188,6 +200,7 @@ impl<'a> Painter<'a> {
                             computed_style,
                             text,
                             input_snapshot,
+                            checkbox_snapshot,
                             needs_hitbox,
                             is_scrollable,
                             first_child,
@@ -382,6 +395,7 @@ impl<'a> Painter<'a> {
                         text,
                         needs_hitbox,
                         input,
+                        checkbox: checkbox_snapshot,
                     }));
                 }
             }
@@ -498,6 +512,14 @@ impl<'a> Painter<'a> {
                     self.scene.pop_layer();
                 }
             }
+        } else if let Some(checkbox_info) = &info.checkbox {
+            crate::element::checkbox::paint_checkbox(
+                self.scene,
+                bounds,
+                &info.style,
+                checkbox_info,
+                scale,
+            );
         } else if let Some((content, font_size, color)) = &info.text {
             let sel_range = text_sel_map.get(&info.node_id).copied();
             if sel_range.is_some() {
@@ -663,6 +685,7 @@ struct RenderInfo {
     text: Option<(String, f32, Color)>,
     needs_hitbox: bool,
     input: Option<InputRenderInfo>,
+    checkbox: Option<CheckboxRenderInfo>,
 }
 
 struct ThumbInfo {

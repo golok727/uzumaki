@@ -67,6 +67,7 @@ interface Core {
   setInputMaxLength(windowId: number, nodeId: NodeId, maxLength: number): void;
   setInputMultiline(windowId: number, nodeId: NodeId, multiline: boolean): void;
   setInputSecure(windowId: number, nodeId: NodeId, secure: boolean): void;
+  setCheckboxChecked(windowId: number, nodeId: NodeId, checked: boolean): void;
   focusInput(windowId: number, nodeId: NodeId): void;
   setRemBase(windowId: number, value: number): void;
   getWindowWidth(windowId: number): number | null;

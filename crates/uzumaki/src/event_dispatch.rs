@@ -95,6 +95,10 @@ pub enum AppEvent {
     HotReload,
 }
 
+fn checkbox_value_string(checked: bool) -> String {
+    checked.to_string()
+}
+
 pub fn handle_redraw(
     dom: &mut UIState,
     handle: &mut Window,
@@ -591,6 +595,10 @@ pub fn handle_mouse_input(
                     .and_then(|nid| dom.nodes.get(nid))
                     .map(|n| n.is_text_input())
                     .unwrap_or(false);
+                let clicked_is_checkbox = js_target
+                    .and_then(|nid| dom.nodes.get(nid))
+                    .map(|n| n.is_checkbox_input())
+                    .unwrap_or(false);
 
                 let old_focus = dom.focused_node;
 
@@ -682,6 +690,29 @@ pub fn handle_mouse_input(
 
                     scroll_input_to_cursor(dom, handle);
                     dom.dragging_input = Some(nid);
+                } else if clicked_is_checkbox {
+                    let nid = js_target.unwrap();
+
+                    if old_focus != Some(nid) {
+                        if let Some(old_id) = old_focus {
+                            if let Some(old_node) = dom.nodes.get_mut(old_id)
+                                && let Some(is) = old_node.as_text_input_mut()
+                            {
+                                is.focused = false;
+                            }
+                            events.push(AppEvent::Blur(FocusEventData {
+                                window_id: wid,
+                                node_id: old_id,
+                            }));
+                        }
+                        events.push(AppEvent::Focus(FocusEventData {
+                            window_id: wid,
+                            node_id: nid,
+                        }));
+                    }
+
+                    dom.clear_selection();
+                    dom.focused_node = Some(nid);
                 } else {
                     // Clicked non-input: blur focused input
                     if let Some(old_id) = old_focus {
@@ -825,6 +856,21 @@ pub fn handle_mouse_input(
             if let Some(active) = dom.hit_state.active_node
                 && dom.hit_state.is_hovered(active)
             {
+                if mouse_button == crate::interactivity::MouseButton::Left
+                    && let Some(target) = js_target
+                    && let Some(node) = dom.nodes.get_mut(target)
+                    && let Some(checked) = node.as_checkbox_input_mut()
+                {
+                    *checked = !*checked;
+                    let value = checkbox_value_string(*checked);
+                    events.push(AppEvent::Input(InputEventData {
+                        window_id: wid,
+                        node_id: target,
+                        value: value.clone(),
+                        input_type: "toggle".to_string(),
+                        data: Some(value),
+                    }));
+                }
                 dom.dispatch_click(mx, my, mouse_button);
                 if let Some(target) = js_target {
                     events.push(AppEvent::Click(MouseEventData {
@@ -968,6 +1014,49 @@ pub fn handle_key_for_input(
     }
 
     (needs_redraw, events)
+}
+
+pub fn handle_key_for_checkbox(
+    dom: &mut UIState,
+    wid: u32,
+    key_event: &winit::event::KeyEvent,
+) -> (bool, Vec<AppEvent>) {
+    use winit::event::ElementState;
+
+    if key_event.state != ElementState::Pressed {
+        return (false, Vec::new());
+    }
+
+    let should_toggle = matches!(
+        &key_event.logical_key,
+        Key::Named(NamedKey::Space) | Key::Named(NamedKey::Enter)
+    );
+    if !should_toggle {
+        return (false, Vec::new());
+    }
+
+    let Some(focused_id) = dom.focused_node else {
+        return (false, Vec::new());
+    };
+    let Some(node) = dom.nodes.get_mut(focused_id) else {
+        return (false, Vec::new());
+    };
+    let Some(checked) = node.as_checkbox_input_mut() else {
+        return (false, Vec::new());
+    };
+
+    *checked = !*checked;
+    let value = checkbox_value_string(*checked);
+    (
+        true,
+        vec![AppEvent::Input(InputEventData {
+            window_id: wid,
+            node_id: focused_id,
+            value: value.clone(),
+            input_type: "toggle".to_string(),
+            data: Some(value),
+        })],
+    )
 }
 
 /// Handle keyboard shortcuts for view text selection (Shift+Arrows, Ctrl+A, etc.)

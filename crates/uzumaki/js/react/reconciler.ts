@@ -70,6 +70,7 @@ const INTRINSIC_ELEMENTS = new Set([
   'view',
   'text',
   'input',
+  'checkbox',
   'button',
   /* 'canvas' */ // todo
 ]);
@@ -460,6 +461,7 @@ const INPUT_ATTR_NAMES = new Set([
   'multiline',
   'secure',
 ]);
+const CHECKBOX_ATTR_NAMES = new Set(['checked']);
 
 class InputElement extends BaseElement<Record<string, any>> {
   inputAttrs: Record<string, any> = {};
@@ -625,6 +627,139 @@ class InputElement extends BaseElement<Record<string, any>> {
   }
 }
 
+class CheckboxElement extends BaseElement<Record<string, any>> {
+  checkboxAttrs: Record<string, any> = {};
+  private onChange: ((checked: boolean) => void) | undefined;
+  private onChangeListener: ((ev: any) => void) | null = null;
+
+  constructor(window: Window, props: Record<string, any>) {
+    const id = core.createElement(window.id, 'checkbox');
+    super(id, 'checkbox', window);
+    this.parseProps(props);
+    this.applyStyles();
+    this.applyCheckboxAttrs();
+    this.applyEvents();
+    this.bindOnChange(props.onChange);
+  }
+
+  private parseProps(props: Record<string, any>): void {
+    for (const key in props) {
+      if (
+        key === 'children' ||
+        key === 'key' ||
+        key === 'ref' ||
+        key === 'onChange'
+      )
+        continue;
+      const value = props[key];
+      if (value == null) continue;
+      if (isEventProp(key)) {
+        const { name, capture } = parseEventProp(key);
+        this.eventListeners.set(listenerKey(name, capture), {
+          name,
+          handler: value,
+          capture,
+        });
+      } else if (CHECKBOX_ATTR_NAMES.has(key)) {
+        this.checkboxAttrs[key] = value;
+      } else if (PROP_NAME_TO_KEY[key] !== undefined) {
+        this.styles[key] = value;
+      }
+    }
+  }
+
+  private applyCheckboxAttrs(): void {
+    for (const [key, val] of Object.entries(this.checkboxAttrs)) {
+      CheckboxElement.setCheckboxAttr(this.windowId, this.id, key, val);
+    }
+  }
+
+  private bindOnChange(
+    onChange: ((checked: boolean) => void) | undefined,
+  ): void {
+    if (!onChange) return;
+    this.onChange = onChange;
+    this.onChangeListener = (ev: any) => {
+      this.onChange?.(ev.value === 'true');
+    };
+    eventManager.addHandlerByName(this.id, 'input', this.onChangeListener);
+    core.setF32Prop(this.windowId, this.id, PropKey.Interactive, 1);
+  }
+
+  private unbindOnChange(): void {
+    if (this.onChangeListener) {
+      eventManager.removeHandlerByName(this.id, 'input', this.onChangeListener);
+      this.onChangeListener = null;
+    }
+    this.onChange = undefined;
+  }
+
+  commitUpdate(
+    newProps: Record<string, any>,
+    _oldProps: Record<string, any>,
+  ): void {
+    const newStyles: Record<string, any> = {};
+    const newCheckboxAttrs: Record<string, any> = {};
+    const newEvents: Map<string, ListenerEntry> = new Map();
+
+    for (const key in newProps) {
+      if (
+        key === 'children' ||
+        key === 'key' ||
+        key === 'ref' ||
+        key === 'onChange'
+      )
+        continue;
+      const value = newProps[key];
+      if (value == null) continue;
+      if (isEventProp(key)) {
+        const { name, capture } = parseEventProp(key);
+        newEvents.set(listenerKey(name, capture), {
+          name,
+          handler: value,
+          capture,
+        });
+      } else if (CHECKBOX_ATTR_NAMES.has(key)) {
+        newCheckboxAttrs[key] = value;
+      } else if (PROP_NAME_TO_KEY[key] !== undefined) {
+        newStyles[key] = value;
+      }
+    }
+
+    this.updateStyles(newStyles);
+    this.updateEvents(newEvents);
+
+    const newOnChange = newProps.onChange;
+    if (newOnChange !== this.onChange) {
+      this.unbindOnChange();
+      this.bindOnChange(newOnChange);
+    }
+
+    for (const [key, val] of Object.entries(newCheckboxAttrs)) {
+      if (this.checkboxAttrs[key] !== val) {
+        CheckboxElement.setCheckboxAttr(this.windowId, this.id, key, val);
+      }
+    }
+    this.checkboxAttrs = newCheckboxAttrs;
+  }
+
+  override destroy(): void {
+    this.unbindOnChange();
+    super.destroy();
+  }
+
+  static setCheckboxAttr(
+    windowId: number,
+    nodeId: any,
+    key: string,
+    value: any,
+  ): void {
+    if (key === 'checked') {
+      core.setCheckboxChecked(windowId, nodeId, !!value);
+    }
+  }
+}
+
 class TextElement extends BaseElement<Record<string, any>> {
   textContent: string;
 
@@ -753,6 +888,10 @@ function createElementInstance(
 
   if (type === 'input') {
     return new InputElement(window, props);
+  }
+
+  if (type === 'checkbox') {
+    return new CheckboxElement(window, props);
   }
 
   if (isTextType(type)) {

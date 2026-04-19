@@ -70,6 +70,7 @@ extension!(
     op_set_input_max_length,
     op_set_input_multiline,
     op_set_input_secure,
+    op_set_checkbox_checked,
     op_focus_input,
     op_set_rem_base,
     op_get_window_width,

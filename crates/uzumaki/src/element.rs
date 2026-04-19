@@ -3,6 +3,7 @@ use crate::input::InputState;
 use crate::interactivity::Interactivity;
 use crate::style::{Bounds, TextSelectable, UzStyle};
 
+pub mod checkbox;
 pub mod input;
 pub mod render;
 pub mod selection;
@@ -113,8 +114,16 @@ impl ElementNode {
         Self::new(ElementData::TextInput(Box::new(state)))
     }
 
+    pub fn new_checkbox_input(checked: bool) -> Self {
+        Self::new(ElementData::CheckboxInput(checked))
+    }
+
     pub fn is_text_input(&self) -> bool {
         self.data.is_text_input()
+    }
+
+    pub fn is_checkbox_input(&self) -> bool {
+        self.data.is_checkbox_input()
     }
 
     pub fn is_focussable(&self) -> bool {
@@ -130,6 +139,7 @@ impl ElementNode {
 pub enum ElementData {
     // this is text Element <text>
     TextInput(Box<InputState>),
+    CheckboxInput(bool),
     // for view nodes
     #[default]
     None,
@@ -139,12 +149,17 @@ impl ElementData {
     pub fn default_cursor(&self) -> Option<UzCursorIcon> {
         match self {
             Self::TextInput(_) => Some(UzCursorIcon::Text),
+            Self::CheckboxInput(_) => Some(UzCursorIcon::Pointer),
             _ => None,
         }
     }
 
     pub fn is_text_input(&self) -> bool {
         matches!(self, Self::TextInput(_))
+    }
+
+    pub fn is_checkbox_input(&self) -> bool {
+        matches!(self, Self::CheckboxInput(_))
     }
 
     pub fn as_text_input(&self) -> Option<&InputState> {
@@ -157,6 +172,20 @@ impl ElementData {
     pub fn as_text_input_mut(&mut self) -> Option<&mut InputState> {
         match self {
             Self::TextInput(state) => Some(state),
+            _ => None,
+        }
+    }
+
+    pub fn as_checkbox_input(&self) -> Option<&bool> {
+        match self {
+            Self::CheckboxInput(checked) => Some(checked),
+            _ => None,
+        }
+    }
+
+    pub fn as_checkbox_input_mut(&mut self) -> Option<&mut bool> {
+        match self {
+            Self::CheckboxInput(checked) => Some(checked),
             _ => None,
         }
     }
@@ -233,6 +262,20 @@ impl NodeData {
         }
     }
 
+    pub fn as_checkbox_input(&self) -> Option<&bool> {
+        match self {
+            Self::Element(element) => element.data.as_checkbox_input(),
+            _ => None,
+        }
+    }
+
+    pub fn as_checkbox_input_mut(&mut self) -> Option<&mut bool> {
+        match self {
+            Self::Element(element) => element.data.as_checkbox_input_mut(),
+            _ => None,
+        }
+    }
+
     pub fn is_text_node(&self) -> bool {
         matches!(self, Self::Text(_))
     }
@@ -240,6 +283,13 @@ impl NodeData {
     pub fn is_text_input(&self) -> bool {
         match self {
             Self::Element(element) => element.data.is_text_input(),
+            _ => false,
+        }
+    }
+
+    pub fn is_checkbox_input(&self) -> bool {
+        match self {
+            Self::Element(element) => element.data.is_checkbox_input(),
             _ => false,
         }
     }
@@ -346,6 +396,14 @@ impl Node {
         self.data.as_text_input_mut()
     }
 
+    pub fn as_checkbox_input(&self) -> Option<&bool> {
+        self.data.as_checkbox_input()
+    }
+
+    pub fn as_checkbox_input_mut(&mut self) -> Option<&mut bool> {
+        self.data.as_checkbox_input_mut()
+    }
+
     pub fn as_element(&self) -> Option<&ElementNode> {
         self.data.as_element()
     }
@@ -364,6 +422,10 @@ impl Node {
 
     pub fn is_text_input(&self) -> bool {
         self.data.is_text_input()
+    }
+
+    pub fn is_checkbox_input(&self) -> bool {
+        self.data.is_checkbox_input()
     }
 
     pub fn is_text_node(&self) -> bool {

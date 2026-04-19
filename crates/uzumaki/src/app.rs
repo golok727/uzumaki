@@ -715,10 +715,21 @@ impl ApplicationHandler<UserEvent> for Application {
                                         &key_event,
                                         modifiers,
                                     );
+                                    let (checkbox_redraw, checkbox_events) =
+                                        event_dispatch::handle_key_for_checkbox(
+                                            &mut entry.dom,
+                                            wid,
+                                            &key_event,
+                                        );
                                     if redraw {
                                         needs_redraw = true;
                                     }
-                                    events
+                                    if checkbox_redraw {
+                                        needs_redraw = true;
+                                    }
+                                    let mut all_events = events;
+                                    all_events.extend(checkbox_events);
+                                    all_events
                                 })
                             };
 

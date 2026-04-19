@@ -143,5 +143,15 @@ export namespace JSX {
         children?: any;
         key?: string | number;
       };
+    checkbox: ElementAttributes &
+      EventProps & {
+        checked?: boolean;
+        onChange?: (checked: boolean) => void;
+        onInput?: (ev: UzumakiInputEvent) => void;
+        onFocus?: (ev: UzumakiFocusEvent) => void;
+        onBlur?: (ev: UzumakiFocusEvent) => void;
+        children?: any;
+        key?: string | number;
+      };
   }
 }
