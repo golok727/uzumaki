@@ -25,5 +25,9 @@ function openTimerWindow() {
     title: 'Timer',
   });
 
+  setTimeout(() => {
+    window.close();
+  }, 5000);
+
   render(window, <Timer />);
 }

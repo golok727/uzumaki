@@ -7,7 +7,7 @@
     "uzumaki-ui": "workspace:*"
   },
   "scripts": {
-    "dev": "cargo r -p uzumaki --release -- src/index.tsx",
+    "dev": "cargo r -p uzumaki --release -- src/thing.tsx",
     "build": "cargo r -p uzumaki --release -- build",
     "build:js": "bun build src/index.tsx --target node --outdir dist --minify",
     "preview": "cargo r -p uzumaki --release -- dist/index.js"
