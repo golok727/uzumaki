@@ -298,6 +298,7 @@ pub fn apply_text_style_to_editor(editor: &mut parley::PlainEditor<TextBrush>, s
         style.line_height,
     )));
     styles.insert(StyleProperty::FontWeight(style.font_weight.to_parley()));
+    styles.insert(StyleProperty::OverflowWrap(OverflowWrap::BreakWord));
     if style.letter_spacing != 0.0 {
         styles.insert(StyleProperty::LetterSpacing(style.letter_spacing));
     }

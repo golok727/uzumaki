@@ -802,6 +802,24 @@ impl ApplicationHandler<UserEvent> for Application {
                             state.windows.get_mut(&wid).and_then(|entry| {
                                 let handle = entry.handle.as_mut()?;
                                 let fid = entry.dom.focused_node?;
+                                // Apply styles/width before IME commit
+                                if let Some(meta) =
+                                    event_dispatch::input_layout_meta(&entry.dom, fid)
+                                {
+                                    if let Some(node) = entry.dom.nodes.get_mut(fid)
+                                        && let Some(is) = node.as_text_input_mut()
+                                    {
+                                        crate::text::apply_text_style_to_editor(
+                                            &mut is.editor,
+                                            &meta.text_style,
+                                        );
+                                        is.editor.set_width(if meta.multiline {
+                                            Some(meta.input_width)
+                                        } else {
+                                            None
+                                        });
+                                    }
+                                }
                                 let node = entry.dom.nodes.get_mut(fid)?;
                                 let is = node.as_text_input_mut()?;
                                 let _edit = is.commit_ime_text(&text, &mut handle.text_renderer)?;
