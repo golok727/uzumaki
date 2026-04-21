@@ -40,7 +40,6 @@ pub struct InputState {
     pub secure: bool,
     pub multiline: bool,
     pub max_length: Option<usize>,
-    pub font_size: f32,
     pub preedit: Option<PreeditState>,
 }
 
@@ -69,7 +68,6 @@ impl InputState {
             secure: false,
             multiline: true,
             max_length: None,
-            font_size: 16.0,
             preedit: None,
         }
     }
@@ -434,97 +432,6 @@ impl InputState {
         self.editor.set_scale(scale);
     }
 
-    pub fn set_font_size(&mut self, font_size: f32) {
-        use parley::{LineHeight, StyleProperty};
-        self.font_size = font_size;
-        self.editor
-            .edit_styles()
-            .insert(StyleProperty::FontSize(font_size));
-        self.editor
-            .edit_styles()
-            .insert(StyleProperty::LineHeight(LineHeight::FontSizeRelative(1.2)));
-    }
-
-    pub fn refresh_layout(&mut self, renderer: &mut TextRenderer) {
-        self.editor
-            .refresh_layout(&mut renderer.font_ctx, &mut renderer.layout_ctx);
-    }
-
-    pub fn display_cursor_geometry(
-        &mut self,
-        width: f32,
-        renderer: &mut TextRenderer,
-    ) -> Option<parley::BoundingBox> {
-        if !self.secure {
-            return self.editor.cursor_geometry(width);
-        }
-        let sel = self.editor.raw_selection();
-        let byte_idx = sel.focus().index();
-        let char_count = self.editor.raw_text()[..byte_idx].chars().count();
-        let masked = "\u{2022}".repeat(char_count);
-        let font_size = self.font_size;
-        let x = renderer.grapheme_x_positions(&masked, font_size);
-        let cursor_x = *x.last().unwrap_or(&0.0);
-        let line_height = (font_size * 1.2).round();
-        Some(parley::BoundingBox {
-            x0: cursor_x as f64,
-            y0: 0.0,
-            x1: (cursor_x + width) as f64,
-            y1: line_height as f64,
-        })
-    }
-
-    pub fn display_selection_geometry(
-        &mut self,
-        renderer: &mut TextRenderer,
-    ) -> Vec<parley::BoundingBox> {
-        if !self.secure {
-            return self
-                .editor
-                .selection_geometry()
-                .into_iter()
-                .map(|(bb, _)| bb)
-                .collect();
-        }
-        let sel = self.editor.raw_selection();
-        if sel.is_collapsed() {
-            return vec![];
-        }
-        let text = self.editor.raw_text();
-        let anchor_chars = text[..sel.anchor().index()].chars().count();
-        let focus_chars = text[..sel.focus().index()].chars().count();
-        let (start, end) = if anchor_chars < focus_chars {
-            (anchor_chars, focus_chars)
-        } else {
-            (focus_chars, anchor_chars)
-        };
-        let full_masked = "\u{2022}".repeat(end);
-        let font_size = self.font_size;
-        let positions = renderer.grapheme_x_positions(&full_masked, font_size);
-        let x0 = if start < positions.len() {
-            positions[start]
-        } else {
-            0.0
-        };
-        let x1 = if end < positions.len() {
-            positions[end]
-        } else {
-            *positions.last().unwrap_or(&0.0)
-        };
-        let line_height = (font_size * 1.2).round();
-        vec![parley::BoundingBox {
-            x0: x0 as f64,
-            y0: 0.0,
-            x1: x1 as f64,
-            y1: line_height as f64,
-        }]
-    }
-
-    pub fn layout(&mut self, renderer: &mut TextRenderer) -> &parley::Layout<TextBrush> {
-        self.editor
-            .layout(&mut renderer.font_ctx, &mut renderer.layout_ctx)
-    }
-
     pub fn reset_blink(&mut self) {
         self.blink_reset = Instant::now();
     }
@@ -812,14 +719,6 @@ mod tests {
         is.insert_text("old", &mut r);
         is.set_value("new");
         assert_eq!(is.text(), "new");
-    }
-
-    #[test]
-    fn set_font_size_stores_value() {
-        let mut is = InputState::new();
-        assert_eq!(is.font_size, 16.0);
-        is.set_font_size(24.0);
-        assert_eq!(is.font_size, 24.0);
     }
 
     #[test]

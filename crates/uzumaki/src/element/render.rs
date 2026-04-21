@@ -7,8 +7,10 @@ use vello::peniko::{Color as VelloColor, Fill};
 use crate::element::checkbox::CheckboxRenderInfo;
 use crate::element::input::InputRenderInfo;
 use crate::element::{InheritedProperties, NodeContext, ScrollThumbRect, UzNodeId};
-use crate::style::{Bounds, Color, UzStyle, Visibility};
-use crate::text::TextRenderer;
+use crate::style::{Bounds, TextStyle, UzStyle, Visibility};
+use crate::text::{
+    TextRenderer, apply_text_style_to_editor, secure_cursor_geometry, secure_selection_geometry,
+};
 use crate::ui::UIState;
 
 /// Renders an `ElementTree` into a Vello `Scene`. Also rebuilds hitboxes and
@@ -103,13 +105,9 @@ impl<'a> Painter<'a> {
                             &self.dom.hit_state,
                         );
 
-                        let text = node.as_text_node().map(|tc| {
-                            (
-                                tc.content.clone(),
-                                computed_style.text.font_size,
-                                computed_style.text.color,
-                            )
-                        });
+                        let text = node
+                            .as_text_node()
+                            .map(|tc| (tc.content.clone(), computed_style.text.clone()));
 
                         let is_input = node.is_text_input();
                         let input_snapshot = if is_input {
@@ -180,27 +178,52 @@ impl<'a> Painter<'a> {
                     {
                         let pad_h = computed_style.padding.left + computed_style.padding.right;
                         let text_w = (layout.size.width - pad_h).max(0.0);
+                        let text_style = computed_style.text.clone();
+
                         let node_mut = &mut self.dom.nodes[node_id];
                         let is = node_mut.as_text_input_mut().unwrap();
-                        is.set_font_size(computed_style.text.font_size);
-                        if multiline {
-                            is.set_width(Some(text_w));
-                        } else {
-                            is.set_width(None);
-                        }
-                        is.refresh_layout(self.text_renderer);
+
+                        // Apply styles to editor
+                        apply_text_style_to_editor(&mut is.editor, &text_style);
+                        is.editor
+                            .set_width(if multiline { Some(text_w) } else { None });
+                        is.editor.refresh_layout(
+                            &mut self.text_renderer.font_ctx,
+                            &mut self.text_renderer.layout_ctx,
+                        );
+
                         let cursor_rect = if blink_visible || preedit_state.is_some() {
-                            is.display_cursor_geometry(1.5, self.text_renderer)
+                            if is.secure {
+                                secure_cursor_geometry(
+                                    &is.editor,
+                                    1.5,
+                                    &text_style,
+                                    self.text_renderer,
+                                )
+                            } else {
+                                is.editor.cursor_geometry(1.5)
+                            }
                         } else {
                             None
                         };
-                        let selection_rects = is.display_selection_geometry(self.text_renderer);
+
+                        let selection_rects = if is.secure {
+                            secure_selection_geometry(&is.editor, &text_style, self.text_renderer)
+                        } else {
+                            is.editor
+                                .selection_geometry()
+                                .into_iter()
+                                .map(|(bb, _)| bb)
+                                .collect()
+                        };
+
                         let layout_height =
                             is.editor.try_layout().map(|l| l.height()).unwrap_or(0.0);
+
                         let preedit = preedit_state.map(|ps| {
-                            let font_size = computed_style.text.font_size;
-                            let positions =
-                                self.text_renderer.grapheme_x_positions(&ps.text, font_size);
+                            let positions = self
+                                .text_renderer
+                                .grapheme_x_positions(&ps.text, &text_style);
                             let width = *positions.last().unwrap_or(&0.0);
                             crate::element::input::PreeditRenderInfo {
                                 text: ps.text,
@@ -220,9 +243,7 @@ impl<'a> Painter<'a> {
                         Some(InputRenderInfo {
                             display_text,
                             placeholder,
-                            font_size: computed_style.text.font_size,
-                            line_height: computed_style.text.line_height,
-                            text_color: computed_style.text.color,
+                            text_style,
                             focused,
                             cursor_rect,
                             selection_rects,
@@ -469,18 +490,16 @@ impl<'a> Painter<'a> {
                 checkbox_info,
                 scale,
             );
-        } else if let Some((content, font_size, color)) = &info.text {
+        } else if let Some((content, text_style)) = &info.text {
             let sel_range = text_sel_map.get(&info.node_id).copied();
             if sel_range.is_some() {
-                // Text node with active selection: paint selection
-                // highlight between background and text glyphs.
                 let scene = &mut *self.scene;
                 let text_renderer = &mut *self.text_renderer;
                 info.style.paint(bounds, scene, scale, |scene| {
                     if let Some((sel_start, sel_end)) = sel_range {
                         let rects = text_renderer.selection_rects(
                             content,
-                            *font_size,
+                            text_style,
                             Some(bounds.width as f32),
                             sel_start,
                             sel_end,
@@ -504,11 +523,11 @@ impl<'a> Painter<'a> {
                     text_renderer.draw_text(
                         scene,
                         content,
-                        *font_size,
+                        text_style,
                         bounds.width as f32,
                         bounds.height as f32,
                         (bounds.x as f32, bounds.y as f32),
-                        color.to_vello(),
+                        text_style.color.to_vello(),
                         scale,
                     );
                 });
@@ -519,8 +538,8 @@ impl<'a> Painter<'a> {
                     bounds,
                     &info.style,
                     content,
-                    *font_size,
-                    *color,
+                    text_style,
+                    text_style.color,
                     scale,
                 );
             }
@@ -625,7 +644,7 @@ struct RenderInfo {
     w: f64,
     h: f64,
     style: Box<UzStyle>,
-    text: Option<(String, f32, Color)>,
+    text: Option<(String, TextStyle)>,
     needs_hitbox: bool,
     input: Option<InputRenderInfo>,
     checkbox: Option<CheckboxRenderInfo>,
@@ -682,15 +701,14 @@ pub(crate) fn measure(
                 .unwrap_or(200.0),
             height: known_dimensions
                 .height
-                .unwrap_or((ctx.font_size * ctx.line_height).round()),
+                .unwrap_or((ctx.text_style.font_size * ctx.text_style.line_height).round()),
         };
     }
 
     if let Some(text) = &ctx.text {
         let (measured_width, measured_height) = text_renderer.measure_text(
             &text.content,
-            ctx.font_size,
-            ctx.line_height,
+            &ctx.text_style,
             known_dimensions
                 .width
                 .or_else(|| available_as_option(available_space.width)),

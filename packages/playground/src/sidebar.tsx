@@ -23,6 +23,7 @@ export function Sidebar({
   return (
     <view
       w={w}
+      minW={'200px'}
       h="full"
       bg={C.surface}
       borderRight={1}

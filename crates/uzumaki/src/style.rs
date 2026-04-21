@@ -275,12 +275,45 @@ pub struct GapSize {
     pub height: DefiniteLength,
 }
 
+#[derive(Clone, Copy, Debug, Default, PartialEq)]
+pub enum FontWeight {
+    Thin,
+    ExtraLight,
+    Light,
+    #[default]
+    Regular,
+    Medium,
+    SemiBold,
+    Bold,
+    ExtraBold,
+    Black,
+}
+
+impl FontWeight {
+    pub fn to_parley(self) -> parley::FontWeight {
+        match self {
+            Self::Thin => parley::FontWeight::THIN,
+            Self::ExtraLight => parley::FontWeight::EXTRA_LIGHT,
+            Self::Light => parley::FontWeight::LIGHT,
+            Self::Regular => parley::FontWeight::NORMAL,
+            Self::Medium => parley::FontWeight::MEDIUM,
+            Self::SemiBold => parley::FontWeight::SEMI_BOLD,
+            Self::Bold => parley::FontWeight::BOLD,
+            Self::ExtraBold => parley::FontWeight::EXTRA_BOLD,
+            Self::Black => parley::FontWeight::BLACK,
+        }
+    }
+}
+
 #[derive(Clone, Debug, PartialEq, Refineable)]
 #[refineable(Debug)]
 pub struct TextStyle {
     pub font_size: f32,
     pub color: Color,
     pub line_height: f32,
+    pub font_weight: FontWeight,
+    pub letter_spacing: f32,
+    pub word_spacing: f32,
 }
 
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
@@ -313,6 +346,9 @@ impl Default for TextStyle {
             font_size: 16.0,
             color: Color::WHITE,
             line_height: 1.2,
+            font_weight: FontWeight::default(),
+            letter_spacing: 0.0,
+            word_spacing: 0.0,
         }
     }
 }

@@ -3,7 +3,7 @@ use vello::Scene;
 use vello::kurbo::{Affine, Rect};
 use vello::peniko::{Color as VelloColor, Fill};
 
-use crate::style::{Bounds, Color, Corners, Edges, UzStyle};
+use crate::style::{Bounds, Color, Corners, Edges, TextStyle, UzStyle};
 use crate::text::TextRenderer;
 
 pub struct InputContentInfo {
@@ -15,9 +15,7 @@ pub struct InputContentInfo {
 pub struct InputRenderInfo {
     pub display_text: String,
     pub placeholder: String,
-    pub font_size: f32,
-    pub line_height: f32,
-    pub text_color: Color,
+    pub text_style: TextStyle,
     pub focused: bool,
     pub cursor_rect: Option<BoundingBox>,
     pub selection_rects: Vec<BoundingBox>,
@@ -81,7 +79,7 @@ pub fn paint_input(
     scene.push_clip_layer(Fill::NonZero, Affine::scale(scale), &clip_rect);
 
     let is_empty = input.display_text.is_empty();
-    let line_height = (input.font_size * input.line_height).round();
+    let line_height = (input.text_style.font_size * input.text_style.line_height).round();
     let scroll_y = input.scroll_offset_y as f64;
 
     let top_pad = pad_t;
@@ -96,7 +94,7 @@ pub fn paint_input(
         text_renderer.draw_text(
             scene,
             &input.placeholder,
-            input.font_size,
+            &input.text_style,
             text_w as f32,
             text_h as f32,
             (text_x as f32, py),
@@ -158,7 +156,7 @@ pub fn paint_input(
         text_renderer.draw_text(
             scene,
             &input.display_text,
-            input.font_size,
+            &input.text_style,
             tw,
             text_h as f32
                 + if input.multiline {
@@ -167,7 +165,7 @@ pub fn paint_input(
                     0.0
                 },
             (tx, ty),
-            input.text_color.to_vello(),
+            input.text_style.color.to_vello(),
             scale,
         );
     }
@@ -205,11 +203,11 @@ pub fn paint_input(
         text_renderer.draw_text(
             scene,
             &preedit.text,
-            input.font_size,
+            &input.text_style,
             preedit.width + 100.0,
             text_h as f32,
             (px as f32, py as f32),
-            input.text_color.to_vello(),
+            input.text_style.color.to_vello(),
             scale,
         );
 

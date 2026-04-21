@@ -1,7 +1,7 @@
 use crate::cursor::UzCursorIcon;
 use crate::input::InputState;
 use crate::interactivity::Interactivity;
-use crate::style::{Bounds, TextSelectable, UzStyle};
+use crate::style::{Bounds, TextSelectable, TextStyle, UzStyle};
 
 pub mod checkbox;
 pub mod input;
@@ -93,8 +93,7 @@ pub struct TextSelectRun {
 pub struct NodeContext {
     pub dom_id: UzNodeId,
     pub text: Option<TextNode>,
-    pub font_size: f32,
-    pub line_height: f32,
+    pub text_style: TextStyle,
     pub is_input: bool,
 }
 
