@@ -124,10 +124,9 @@ pub struct FocusedInputLayoutMeta {
 pub fn input_layout_meta(dom: &UIState, focused_id: UzNodeId) -> Option<FocusedInputLayoutMeta> {
     let node = dom.nodes.get(focused_id)?;
     let is = node.as_text_input()?;
-    let padding = node.style.padding.left;
-    let input_padding = if padding > 0.0 { padding } else { 8.0 };
-    let pt = node.style.padding.top;
-    let top_pad = if pt > 0.0 { pt } else { 4.0 };
+    let input_padding = node.style.padding.left;
+    let top_pad = node.style.padding.top;
+    let pad_h = node.style.padding.left + node.style.padding.right;
     let text_style = node.style.text.clone();
     let hb = node
         .interactivity
@@ -141,7 +140,7 @@ pub fn input_layout_meta(dom: &UIState, focused_id: UzNodeId) -> Option<FocusedI
         top_pad,
         multiline: is.multiline,
         text_style,
-        input_width: (layout.size.width - input_padding * 2.0).max(0.0),
+        input_width: (layout.size.width - pad_h).max(0.0),
         input_height: layout.size.height,
     })
 }
@@ -313,10 +312,8 @@ pub fn handle_cursor_moved(
         if let Some(drag_nid) = dom.dragging_input {
             let hit_info = dom.nodes.get(drag_nid).and_then(|node| {
                 let is = node.as_text_input()?;
-                let padding = node.style.padding.left as f64;
-                let input_padding = if padding > 0.0 { padding } else { 8.0 };
-                let pad_top = node.style.padding.top;
-                let top_pad = if pad_top > 0.0 { pad_top } else { 4.0 };
+                let input_padding = node.style.padding.left as f64;
+                let top_pad = node.style.padding.top;
                 let hb = node
                     .interactivity
                     .hitbox_id
@@ -661,10 +658,8 @@ pub fn handle_mouse_input(
                     let click_info = {
                         let node = &dom.nodes[nid];
                         let is = node.as_text_input().unwrap();
-                        let padding = node.style.padding.left as f64;
-                        let input_padding = if padding > 0.0 { padding } else { 8.0 };
-                        let pad_top = node.style.padding.top;
-                        let top_pad = if pad_top > 0.0 { pad_top } else { 4.0 };
+                        let input_padding = node.style.padding.left as f64;
+                        let top_pad = node.style.padding.top;
                         let hb = node
                             .interactivity
                             .hitbox_id
