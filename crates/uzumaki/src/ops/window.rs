@@ -40,6 +40,7 @@ pub fn op_create_window(
                 dom,
                 handle: None,
                 rem_base: 16.0,
+                cursor_blink_generation: 0,
             },
         );
     });

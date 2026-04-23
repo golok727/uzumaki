@@ -5,6 +5,7 @@ use std::rc::Rc;
 use std::sync::Arc;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::task::{Context, Poll};
+use std::time::Duration;
 
 use anyhow::Result;
 use deno_core::futures::task::{ArcWake, waker};
@@ -38,6 +39,7 @@ pub struct WindowEntry {
     pub dom: UIState,
     pub handle: Option<window::Window>,
     pub rem_base: f32,
+    pub cursor_blink_generation: u64,
 }
 
 pub(crate) type WindowEntryId = u32;
@@ -105,6 +107,10 @@ pub(crate) enum UserEvent {
     },
     RequestRedraw {
         id: u32,
+    },
+    CursorBlink {
+        id: u32,
+        generation: u64,
     },
     WakeJs,
     Quit,
@@ -413,6 +419,39 @@ impl Application {
         // JS returns true if defaultPrevented
         result.map(|v| v.is_true()).unwrap_or(false)
     }
+
+    fn spawn_cursor_blink_timer(&self, id: WindowEntryId, generation: u64, delay: Duration) {
+        let proxy = self.js_wake_handle.proxy.clone();
+        let handle = self.tokio_runtime.as_ref().unwrap().handle().clone();
+        handle.spawn(async move {
+            tokio::time::sleep(delay).await;
+            let _ = proxy.send_event(UserEvent::CursorBlink { id, generation });
+        });
+    }
+
+    fn refresh_cursor_blink_timer(&mut self, id: WindowEntryId) {
+        let next_timer = {
+            let mut state = self.app_state.borrow_mut();
+            let Some(entry) = state.windows.get_mut(&id) else {
+                return;
+            };
+
+            entry.cursor_blink_generation = entry.cursor_blink_generation.wrapping_add(1);
+            let generation = entry.cursor_blink_generation;
+            let next_delay = entry
+                .dom
+                .focused_node
+                .and_then(|focused_id| entry.dom.nodes.get(focused_id))
+                .and_then(|node| node.as_text_input())
+                .and_then(|input| input.next_blink_toggle_in(entry.dom.window_focused));
+
+            next_delay.map(|delay| (generation, delay))
+        };
+
+        if let Some((generation, delay)) = next_timer {
+            self.spawn_cursor_blink_timer(id, generation, delay);
+        }
+    }
 }
 
 impl ApplicationHandler<UserEvent> for Application {
@@ -479,6 +518,7 @@ impl ApplicationHandler<UserEvent> for Application {
                 }
                 state.paint_window(&id);
                 drop(state);
+                self.refresh_cursor_blink_timer(id);
 
                 // Emit window load event after handle is ready
                 self.dispatch_event_to_js(&event_dispatch::AppEvent::WindowLoad(
@@ -491,6 +531,38 @@ impl ApplicationHandler<UserEvent> for Application {
                     && let Some(ref handle) = entry.handle
                 {
                     handle.winit_window.request_redraw();
+                }
+            }
+            UserEvent::CursorBlink { id, generation } => {
+                let should_redraw = {
+                    let state = self.app_state.borrow();
+                    state
+                        .windows
+                        .get(&id)
+                        .filter(|entry| entry.cursor_blink_generation == generation)
+                        .and_then(|entry| {
+                            entry
+                                .dom
+                                .focused_node
+                                .and_then(|focused_id| entry.dom.nodes.get(focused_id))
+                                .and_then(|node| node.as_text_input())
+                                .and_then(|input| {
+                                    input.next_blink_toggle_in(entry.dom.window_focused)
+                                })
+                                .map(|_| ())
+                        })
+                        .is_some()
+                };
+
+                if should_redraw {
+                    let state = self.app_state.borrow();
+                    if let Some(entry) = state.windows.get(&id)
+                        && let Some(ref handle) = entry.handle
+                    {
+                        handle.winit_window.request_redraw();
+                    }
+                    drop(state);
+                    self.refresh_cursor_blink_timer(id);
                 }
             }
             UserEvent::WakeJs => {
@@ -522,6 +594,7 @@ impl ApplicationHandler<UserEvent> for Application {
         };
 
         let mut needs_redraw = false;
+        let mut refresh_blink_timer = false;
 
         match event {
             WindowEvent::Resized(size) => {
@@ -560,6 +633,7 @@ impl ApplicationHandler<UserEvent> for Application {
                 button,
                 ..
             } => {
+                refresh_blink_timer = true;
                 let events = {
                     let mut state = self.app_state.borrow_mut();
                     use winit::event::{ElementState, MouseButton};
@@ -756,6 +830,7 @@ impl ApplicationHandler<UserEvent> for Application {
                         }
                     }
                 }
+                refresh_blink_timer = true;
             }
             WindowEvent::ModifiersChanged(mods) => {
                 let mut state = self.app_state.borrow_mut();
@@ -792,6 +867,7 @@ impl ApplicationHandler<UserEvent> for Application {
                     }
                     needs_redraw = true;
                 }
+                refresh_blink_timer = true;
             }
             WindowEvent::Ime(ime) => {
                 use winit::event::Ime;
@@ -842,6 +918,7 @@ impl ApplicationHandler<UserEvent> for Application {
                                 self.dispatch_event_to_js(&event);
                             }
                         }
+                        refresh_blink_timer = true;
                     }
                     Ime::Preedit(text, cursor) => {
                         let mut state = self.app_state.borrow_mut();
@@ -856,6 +933,7 @@ impl ApplicationHandler<UserEvent> for Application {
                             }
                             needs_redraw = true;
                         }
+                        refresh_blink_timer = true;
                     }
                     Ime::Enabled => {}
                     Ime::Disabled => {
@@ -871,6 +949,7 @@ impl ApplicationHandler<UserEvent> for Application {
                             }
                             needs_redraw = true;
                         }
+                        refresh_blink_timer = true;
                     }
                 }
             }
@@ -919,6 +998,10 @@ impl ApplicationHandler<UserEvent> for Application {
             {
                 handle.winit_window.request_redraw();
             }
+        }
+
+        if refresh_blink_timer {
+            self.refresh_cursor_blink_timer(wid);
         }
     }
 }
