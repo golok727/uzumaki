@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import { C } from './theme';
-import { Tab } from './types';
+import type { Tab } from './types';
 import { Sidebar } from './sidebar';
 import { DashboardPage } from './pages/dashboardPage';
 import { InputsPage } from './pages/inputsPage';

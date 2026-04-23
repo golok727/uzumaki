@@ -1,5 +1,5 @@
 import { C } from './theme';
-import { Tab } from './types';
+import type { Tab } from './types';
 
 const TABS: { id: Tab; label: string; icon: string }[] = [
   { id: 'dashboard', label: 'Dashboard', icon: '⬡' },

@@ -396,21 +396,22 @@ impl Default for TextStyle {
 }
 
 impl TextStyle {
-    pub fn to_parley_styles(&self) -> Vec<StyleProperty<'static, TextBrush>> {
-        let mut styles = vec![
+    pub fn to_parley_styles(&self) -> impl Iterator<Item = StyleProperty<'static, TextBrush>> {
+        let letter_spacing = (self.letter_spacing != 0.0)
+            .then_some(StyleProperty::LetterSpacing(self.letter_spacing));
+        let word_spacing =
+            (self.word_spacing != 0.0).then_some(StyleProperty::WordSpacing(self.word_spacing));
+
+        [
             StyleProperty::FontSize(self.font_size),
             StyleProperty::LineHeight(LineHeight::FontSizeRelative(self.line_height)),
             StyleProperty::FontWeight(self.font_weight.to_parley()),
             StyleProperty::OverflowWrap(self.overflow_wrap.to_parley()),
             StyleProperty::WordBreak(self.word_break.to_parley()),
-        ];
-        if self.letter_spacing != 0.0 {
-            styles.push(StyleProperty::LetterSpacing(self.letter_spacing));
-        }
-        if self.word_spacing != 0.0 {
-            styles.push(StyleProperty::WordSpacing(self.word_spacing));
-        }
-        styles
+        ]
+        .into_iter()
+        .chain(letter_spacing)
+        .chain(word_spacing)
     }
 }
 
