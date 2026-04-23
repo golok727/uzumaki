@@ -64,6 +64,8 @@ const PROP_KEYS: &[(&str, u32)] = &[
     ("MinW", 52),
     ("MinH", 53),
     ("TextSelect", 54),
+    ("OverflowWrap", 55),
+    ("WordBreak", 56),
 ];
 
 fn generate_prop_key_bindings(out_dir: &Path) {

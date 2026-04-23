@@ -37,6 +37,8 @@ interface ElementStyles {
   color?: string;
   fontSize?: number | string;
   fontWeight?: string;
+  overflowWrap?: 'normal' | 'anywhere' | 'break-word';
+  wordBreak?: 'normal' | 'break-all' | 'keep-all';
   rounded?: number | string;
   roundedTL?: number | string;
   roundedTR?: number | string;

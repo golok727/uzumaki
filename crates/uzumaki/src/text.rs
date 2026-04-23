@@ -1,7 +1,4 @@
-use parley::{
-    Affinity, BoundingBox, Cursor, FontContext, Layout, LayoutContext, LineHeight, OverflowWrap,
-    Selection, StyleProperty,
-};
+use parley::{Affinity, BoundingBox, Cursor, FontContext, Layout, LayoutContext, Selection};
 use unicode_segmentation::UnicodeSegmentation;
 use vello::Scene;
 use vello::kurbo::Affine;
@@ -47,17 +44,8 @@ impl TextRenderer {
         let mut builder = self
             .layout_ctx
             .ranged_builder(&mut self.font_ctx, text, 1.0, true);
-        builder.push_default(StyleProperty::FontSize(style.font_size));
-        builder.push_default(StyleProperty::LineHeight(LineHeight::FontSizeRelative(
-            style.line_height,
-        )));
-        builder.push_default(StyleProperty::FontWeight(style.font_weight.to_parley()));
-        builder.push_default(StyleProperty::OverflowWrap(OverflowWrap::BreakWord));
-        if style.letter_spacing != 0.0 {
-            builder.push_default(StyleProperty::LetterSpacing(style.letter_spacing));
-        }
-        if style.word_spacing != 0.0 {
-            builder.push_default(StyleProperty::WordSpacing(style.word_spacing));
+        for prop in style.to_parley_styles() {
+            builder.push_default(prop);
         }
         let mut layout = builder.build(text);
         layout.break_all_lines(max_width);
@@ -293,17 +281,8 @@ impl TextRenderer {
 
 pub fn apply_text_style_to_editor(editor: &mut parley::PlainEditor<TextBrush>, style: &TextStyle) {
     let styles = editor.edit_styles();
-    styles.insert(StyleProperty::FontSize(style.font_size));
-    styles.insert(StyleProperty::LineHeight(LineHeight::FontSizeRelative(
-        style.line_height,
-    )));
-    styles.insert(StyleProperty::FontWeight(style.font_weight.to_parley()));
-    styles.insert(StyleProperty::OverflowWrap(OverflowWrap::BreakWord));
-    if style.letter_spacing != 0.0 {
-        styles.insert(StyleProperty::LetterSpacing(style.letter_spacing));
-    }
-    if style.word_spacing != 0.0 {
-        styles.insert(StyleProperty::WordSpacing(style.word_spacing));
+    for prop in style.to_parley_styles() {
+        styles.insert(prop);
     }
 }
 

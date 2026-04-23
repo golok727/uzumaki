@@ -1,9 +1,11 @@
+use parley::{LineHeight, StyleProperty};
 use refineable::Refineable;
 use vello::Scene;
 use vello::kurbo::{Affine, Rect, RoundedRect, RoundedRectRadii, Stroke};
 use vello::peniko::Color as VelloColor;
 
 use crate::cursor::UzCursorIcon;
+use crate::text::TextBrush;
 
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub struct Color {
@@ -305,6 +307,42 @@ impl FontWeight {
     }
 }
 
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+pub enum OverflowWrap {
+    Normal,
+    Anywhere,
+    #[default]
+    BreakWord,
+}
+
+impl OverflowWrap {
+    pub fn to_parley(self) -> parley::OverflowWrap {
+        match self {
+            Self::Normal => parley::OverflowWrap::Normal,
+            Self::Anywhere => parley::OverflowWrap::Anywhere,
+            Self::BreakWord => parley::OverflowWrap::BreakWord,
+        }
+    }
+}
+
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+pub enum WordBreak {
+    #[default]
+    Normal,
+    BreakAll,
+    KeepAll,
+}
+
+impl WordBreak {
+    pub fn to_parley(self) -> parley::WordBreak {
+        match self {
+            Self::Normal => parley::WordBreak::Normal,
+            Self::BreakAll => parley::WordBreak::BreakAll,
+            Self::KeepAll => parley::WordBreak::KeepAll,
+        }
+    }
+}
+
 #[derive(Clone, Debug, PartialEq, Refineable)]
 #[refineable(Debug)]
 pub struct TextStyle {
@@ -314,6 +352,8 @@ pub struct TextStyle {
     pub font_weight: FontWeight,
     pub letter_spacing: f32,
     pub word_spacing: f32,
+    pub overflow_wrap: OverflowWrap,
+    pub word_break: WordBreak,
 }
 
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
@@ -349,7 +389,28 @@ impl Default for TextStyle {
             font_weight: FontWeight::default(),
             letter_spacing: 0.0,
             word_spacing: 0.0,
+            overflow_wrap: OverflowWrap::default(),
+            word_break: WordBreak::default(),
         }
+    }
+}
+
+impl TextStyle {
+    pub fn to_parley_styles(&self) -> Vec<StyleProperty<'static, TextBrush>> {
+        let mut styles = vec![
+            StyleProperty::FontSize(self.font_size),
+            StyleProperty::LineHeight(LineHeight::FontSizeRelative(self.line_height)),
+            StyleProperty::FontWeight(self.font_weight.to_parley()),
+            StyleProperty::OverflowWrap(self.overflow_wrap.to_parley()),
+            StyleProperty::WordBreak(self.word_break.to_parley()),
+        ];
+        if self.letter_spacing != 0.0 {
+            styles.push(StyleProperty::LetterSpacing(self.letter_spacing));
+        }
+        if self.word_spacing != 0.0 {
+            styles.push(StyleProperty::WordSpacing(self.word_spacing));
+        }
+        styles
     }
 }
 
