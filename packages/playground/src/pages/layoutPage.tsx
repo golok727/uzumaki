@@ -2,6 +2,127 @@ import { useState } from 'react';
 import { C } from '../theme';
 import { Divider } from '../components';
 
+function AbsClickCounter({ color }: { color: string }) {
+  const [count, setCount] = useState(0);
+  return (
+    <button
+      onClick={() => setCount((c) => c + 1)}
+      p={7}
+      bg={color}
+      hover:bg={C.surface4}
+      rounded={4}
+      cursor="pointer"
+      display="flex"
+      items="center"
+      gap={6}
+    >
+      <text fontSize={11} fontWeight={600} color={C.text}>
+        {count}
+      </text>
+    </button>
+  );
+}
+
+function AbsolutePositioningDemo() {
+  return (
+    <view display="flex" flexDir="col" gap={12}>
+      <view display="flex" flexDir="col" gap={4}>
+        <text fontSize={14} fontWeight={700} color={C.text}>
+          Absolute positioning
+        </text>
+        <text fontSize={12} color={C.textMuted}>
+          position="absolute" with top / right / bottom / left insets
+        </text>
+      </view>
+
+      <view display="flex" flexDir="row" gap={12}>
+        {(
+          [
+            { label: 'top + left', pos: { top: 8, left: 8 }, c: C.accentDim },
+            {
+              label: 'top + right',
+              pos: { top: 8, right: 8 },
+              c: C.primaryDim,
+            },
+            {
+              label: 'bottom + right',
+              pos: { bottom: 8, right: 8 },
+              c: C.successDim,
+            },
+            {
+              label: 'bottom + left',
+              pos: { bottom: 8, left: 8 },
+              c: C.warningDim,
+            },
+          ] as const
+        ).map(({ label, pos, c }) => (
+          <view
+            key={label}
+            flex={1}
+            minW={0}
+            h={120}
+            position="relative"
+            bg={C.surface2}
+            rounded={8}
+            border={1}
+            borderColor={C.border}
+            display="flex"
+            items="center"
+            justify="center"
+          >
+            <text fontSize={10} color={C.textDim}>
+              {label}
+            </text>
+            <view
+              position="absolute"
+              {...pos}
+              bg={c}
+              hover:bg={'#ff0000'}
+              rounded={6}
+              w={10}
+              h={10}
+              p={6}
+              display="flex"
+              flexDir="col"
+              gap={4}
+            ></view>
+          </view>
+        ))}
+      </view>
+
+      <view
+        h={140}
+        position="relative"
+        bg={C.surface2}
+        rounded={8}
+        border={1}
+        borderColor={C.border}
+        display="flex"
+        items="center"
+        justify="center"
+      >
+        <text fontSize={12} color={C.textDim}>
+          relative container bg
+        </text>
+        <view
+          position="absolute"
+          top={10}
+          left={10}
+          right={10}
+          bottom={10}
+          bg="#e2a52e10"
+          rounded={8}
+          display="flex"
+          items="center"
+          justify="center"
+        >
+          <AbsClickCounter color={C.accentDim} />
+        </view>
+      </view>
+    </view>
+  );
+}
+
 export function LayoutPage() {
   const [showVisibility, setShowVisibility] = useState(false);
   const [showDisplay, setShowDisplay] = useState(false);
@@ -715,7 +836,7 @@ export function LayoutPage() {
         <view display="flex" flexDir="col" gap={10}>
           <view display="flex" flexDir="row" items="center" gap={12}>
             <text fontSize={14} fontWeight={700} color={C.text}>
-              display prop (fallback)
+              display prop
             </text>
             <button
               onClick={() => setShowDisplay((s) => !s)}
@@ -814,6 +935,10 @@ export function LayoutPage() {
             </text>
           </view>
         </view>
+
+        <Divider />
+
+        <AbsolutePositioningDemo />
       </view>
     </view>
   );

@@ -1,0 +1,199 @@
+import { useState } from 'react';
+import { C } from './theme';
+
+function ModalCounter() {
+  const [count, setCount] = useState(0);
+  return (
+    <view display="flex" flexDir="row" items="center" gap={10}>
+      <button
+        onClick={() => setCount((c) => c - 1)}
+        w={32}
+        h={32}
+        bg={C.surface4}
+        hover:bg={C.borderHi}
+        rounded={6}
+        display="flex"
+        items="center"
+        justify="center"
+        cursor="pointer"
+      >
+        <text fontSize={16} fontWeight={700} color={C.text}>
+          -
+        </text>
+      </button>
+      <text fontSize={20} fontWeight={700} color={C.accentHi}>
+        {count}
+      </text>
+      <button
+        onClick={() => setCount((c) => c + 1)}
+        w={32}
+        h={32}
+        bg={C.surface4}
+        hover:bg={C.borderHi}
+        rounded={6}
+        display="flex"
+        items="center"
+        justify="center"
+        cursor="pointer"
+      >
+        <text fontSize={16} fontWeight={700} color={C.text}>
+          +
+        </text>
+      </button>
+    </view>
+  );
+}
+
+export function Modal({ onClose }: { onClose: () => void }) {
+  return (
+    <view
+      position="absolute"
+      top={0}
+      left={0}
+      right={0}
+      bottom={0}
+      bg="#00000088"
+      display="flex"
+      items="center"
+      justify="center"
+    >
+      <view
+        w={420}
+        bg={C.surface}
+        rounded={16}
+        border={1}
+        borderColor={C.borderHi}
+        display="flex"
+        flexDir="col"
+        overflow="hidden"
+      >
+        <view
+          px={24}
+          py={16}
+          borderBottom={1}
+          borderColor={C.border}
+          display="flex"
+          flexDir="row"
+          items="center"
+          justify="between"
+        >
+          <text fontSize={16} fontWeight={800} color={C.text}>
+            Settings
+          </text>
+          <button
+            onClick={onClose}
+            w={28}
+            h={28}
+            bg={C.surface3}
+            hover:bg={C.surface4}
+            rounded={6}
+            display="flex"
+            items="center"
+            justify="center"
+            cursor="pointer"
+          >
+            <text fontSize={14} color={C.textMuted}>
+              x
+            </text>
+          </button>
+        </view>
+
+        <view px={24} py={20} display="flex" flexDir="col" gap={18}>
+          <view display="flex" flexDir="col" gap={6}>
+            <text fontSize={13} fontWeight={600} color={C.text}>
+              Theme
+            </text>
+            <view display="flex" flexDir="row" gap={8}>
+              {['Dark', 'Light', 'System'].map((t) => (
+                <view
+                  key={t}
+                  px={14}
+                  py={7}
+                  bg={t === 'Dark' ? C.accentDim : C.surface3}
+                  hover:bg={t === 'Dark' ? C.accent : C.surface4}
+                  rounded={6}
+                  cursor="pointer"
+                  border={1}
+                  borderColor={t === 'Dark' ? C.accent : C.border}
+                >
+                  <text
+                    fontSize={12}
+                    fontWeight={t === 'Dark' ? '700' : '400'}
+                    color={t === 'Dark' ? C.accentHi : C.textSub}
+                  >
+                    {t}
+                  </text>
+                </view>
+              ))}
+            </view>
+          </view>
+
+          <view display="flex" flexDir="col" gap={6}>
+            <text fontSize={13} fontWeight={600} color={C.text}>
+              Counter
+            </text>
+            <ModalCounter />
+          </view>
+
+          <view display="flex" flexDir="col" gap={6}>
+            <text fontSize={13} fontWeight={600} color={C.text}>
+              Info
+            </text>
+            <view
+              p={12}
+              bg={C.surface2}
+              rounded={8}
+              border={1}
+              borderColor={C.border}
+            >
+              <text fontSize={12} color={C.textMuted}>
+                This modal uses position="absolute" with all insets set to 0 on
+                the backdrop, and flexbox centering for the card. The modal
+                renders at the App root so it covers the entire window including
+                the sidebar.
+              </text>
+            </view>
+          </view>
+        </view>
+
+        <view
+          px={24}
+          py={14}
+          borderTop={1}
+          borderColor={C.border}
+          display="flex"
+          flexDir="row"
+          justify="end"
+          gap={8}
+        >
+          <button
+            onClick={onClose}
+            px={16}
+            py={8}
+            bg={C.surface3}
+            hover:bg={C.surface4}
+            rounded={8}
+            cursor="pointer"
+          >
+            <text fontSize={13} fontWeight={600} color={C.textSub}>
+              Close
+            </text>
+          </button>
+          <button
+            onClick={onClose}
+            px={16}
+            py={8}
+            bg={C.accent}
+            hover:bg={C.accentDim}
+            rounded={8}
+            cursor="pointer"
+          >
+            <text fontSize={13} fontWeight={600} color="#000">
+              Save
+            </text>
+          </button>
+        </view>
+      </view>
+    </view>
+  );
+}

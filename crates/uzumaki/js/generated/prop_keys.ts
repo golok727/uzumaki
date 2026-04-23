@@ -57,4 +57,9 @@ export const enum PropKey {
   TextSelect = 54,
   OverflowWrap = 55,
   WordBreak = 56,
+  Position = 57,
+  Top = 58,
+  Right = 59,
+  Bottom = 60,
+  Left = 61,
 }

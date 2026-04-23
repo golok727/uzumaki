@@ -120,6 +120,15 @@ impl Edges {
 
 #[derive(Clone, Copy, Debug, Default, PartialEq, Refineable)]
 #[refineable(Debug)]
+pub struct Inset {
+    pub top: Length,
+    pub right: Length,
+    pub bottom: Length,
+    pub left: Length,
+}
+
+#[derive(Clone, Copy, Debug, Default, PartialEq, Refineable)]
+#[refineable(Debug)]
 pub struct Corners {
     pub top_left: f32,
     pub top_right: f32,
@@ -440,7 +449,7 @@ pub struct UzStyle {
     #[refineable]
     pub padding: Edges,
     #[refineable]
-    pub inset: Edges,
+    pub inset: Inset,
 
     // Flex layout
     pub flex_direction: FlexDirection,
@@ -492,7 +501,7 @@ impl Default for UzStyle {
 
             margin: Edges::default(),
             padding: Edges::default(),
-            inset: Edges::default(),
+            inset: Inset::default(),
 
             flex_direction: FlexDirection::default(),
             flex_wrap: FlexWrap::default(),
@@ -551,7 +560,7 @@ impl UzStyle {
             margin: edges_to_taffy_lp_auto(&self.margin),
             padding: edges_to_taffy_lp(&self.padding),
             border: edges_to_taffy_lp(&self.border_widths),
-            inset: edges_to_taffy_lp_auto(&self.inset),
+            inset: inset_to_taffy(&self.inset),
             flex_direction: match self.flex_direction {
                 FlexDirection::Row => taffy::FlexDirection::Row,
                 FlexDirection::Column => taffy::FlexDirection::Column,
@@ -838,6 +847,23 @@ fn definite_to_taffy(l: DefiniteLength) -> taffy::LengthPercentage {
     match l {
         DefiniteLength::Px(v) => taffy::LengthPercentage::length(v),
         DefiniteLength::Percent(v) => taffy::LengthPercentage::percent(v),
+    }
+}
+
+fn length_to_lp_auto(l: Length) -> taffy::LengthPercentageAuto {
+    match l {
+        Length::Auto => taffy::LengthPercentageAuto::auto(),
+        Length::Px(v) => taffy::LengthPercentageAuto::length(v),
+        Length::Percent(v) => taffy::LengthPercentageAuto::percent(v),
+    }
+}
+
+fn inset_to_taffy(e: &Inset) -> taffy::Rect<taffy::LengthPercentageAuto> {
+    taffy::Rect {
+        left: length_to_lp_auto(e.left),
+        right: length_to_lp_auto(e.right),
+        top: length_to_lp_auto(e.top),
+        bottom: length_to_lp_auto(e.bottom),
     }
 }
 

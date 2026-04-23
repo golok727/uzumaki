@@ -15,7 +15,7 @@ export function Badge({
 }) {
   return (
     <view px={8} py={3} bg={bg} rounded={8}>
-      <text fontSize={11} fontWeight={600} color={color}>
+      <text overflowWrap="normal" fontSize={11} fontWeight={600} color={color}>
         {label}
       </text>
     </view>

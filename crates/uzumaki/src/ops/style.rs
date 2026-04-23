@@ -335,6 +335,10 @@ fn set_f32_style_prop(node: &mut Node, prop: PropKey, v: f32) -> StyleEffect {
                 Visibility::Hidden
             };
         }
+        PropKey::Top => style.inset.top = Length::Px(v),
+        PropKey::Right => style.inset.right = Length::Px(v),
+        PropKey::Bottom => style.inset.bottom = Length::Px(v),
+        PropKey::Left => style.inset.left = Length::Px(v),
         _ => return StyleEffect::Ignored,
     }
     StyleEffect::AppliedNeedsSync
@@ -394,6 +398,13 @@ fn set_enum_style_prop(style: &mut UzStyle, prop: PropKey, value: i32) -> bool {
                 1 => WordBreak::BreakAll,
                 2 => WordBreak::KeepAll,
                 _ => WordBreak::Normal,
+            };
+        }
+        PropKey::Position => {
+            style.position = match value {
+                0 => Position::Relative,
+                1 => Position::Absolute,
+                _ => Position::Relative,
             };
         }
         _ => return false,

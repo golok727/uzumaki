@@ -74,6 +74,11 @@ interface ElementStyles {
     | 'zoom-in'
     | 'zoom-out';
   display?: 'flex' | 'none' | 'block';
+  position?: 'relative' | 'absolute';
+  top?: number | string;
+  right?: number | string;
+  bottom?: number | string;
+  left?: number | string;
   scrollable?: boolean;
   // if true text inside this view can be selected
   selectable?: boolean;

@@ -66,6 +66,11 @@ const PROP_NAME_TO_KEY: Record<string, number> = {
   visibility: PropKey.Visibility,
   overflowWrap: PropKey.OverflowWrap,
   wordBreak: PropKey.WordBreak,
+  position: PropKey.Position,
+  top: PropKey.Top,
+  right: PropKey.Right,
+  bottom: PropKey.Bottom,
+  left: PropKey.Left,
 };
 
 const INTRINSIC_ELEMENTS = new Set([
@@ -96,6 +101,7 @@ const ENUM_KEYS = new Set([
   PropKey.Display,
   PropKey.OverflowWrap,
   PropKey.WordBreak,
+  PropKey.Position,
 ]);
 const STRING_KEYS = new Set([PropKey.Cursor]);
 
@@ -193,6 +199,9 @@ function toEnumValue(key: number, value: any): number {
     }
     case PropKey.WordBreak: {
       return ({ normal: 0, 'break-all': 1, 'keep-all': 2 } as any)[s] ?? 0;
+    }
+    case PropKey.Position: {
+      return ({ relative: 0, absolute: 1 } as any)[s] ?? 0;
     }
     default: {
       return 0;

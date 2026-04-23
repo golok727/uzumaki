@@ -2,23 +2,25 @@ import { C } from './theme';
 import type { Tab } from './types';
 
 const TABS: { id: Tab; label: string; icon: string }[] = [
-  { id: 'dashboard', label: 'Dashboard', icon: '⬡' },
+  { id: 'dashboard', label: 'Dashboard', icon: '🛖' },
   { id: 'inputs', label: 'Input Lab', icon: '⌨' },
-  { id: 'layout', label: 'Layout Lab', icon: '⊞' },
+  { id: 'layout', label: 'Layout Lab', icon: '⏹️' },
   { id: 'stress', label: 'Stress Test', icon: '⚡' },
-  { id: 'events', label: 'Mouse Events', icon: '◎' },
+  { id: 'events', label: 'Mouse Events', icon: '🐭' },
   { id: 'timer', label: 'Timers', icon: '⏱' },
-  { id: 'issues', label: 'GitHub Issues', icon: '☰' },
+  { id: 'issues', label: 'GitHub Issues', icon: '😉' },
 ];
 
 export function Sidebar({
   active,
   setActive,
   w,
+  onOpenModal,
 }: {
   active: Tab;
   setActive: (t: Tab) => void;
   w: string;
+  onOpenModal: () => void;
 }) {
   return (
     <view
@@ -81,6 +83,29 @@ export function Sidebar({
             </view>
           );
         })}
+        <button
+          onClick={onOpenModal}
+          display="flex"
+          flexDir="row"
+          items="center"
+          gap={10}
+          px={12}
+          py={10}
+          rounded={8}
+          bg={C.accentDark}
+          hover:bg={C.accentDim}
+          border={1}
+          borderColor={C.accent}
+          cursor="pointer"
+          mb={8}
+        >
+          <text fontSize={16} color={C.accentHi}>
+            🍫
+          </text>
+          <text fontSize={13} fontWeight={700} color={C.accentHi}>
+            Open Modal
+          </text>
+        </button>
       </view>
     </view>
   );
