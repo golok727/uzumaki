@@ -346,23 +346,24 @@ pub fn handle_cursor_moved(
                 let relative_y = (logical_y - hb.y) as f32 + scroll_offset_y - top_pad;
 
                 // Apply styles/width so the driver's layout accounts for wrapping
-                if let Some(meta) = input_layout_meta(dom, drag_nid) {
-                    if let Some(node) = dom.nodes.get_mut(drag_nid)
-                        && let Some(is) = node.as_text_input_mut()
-                    {
-                        apply_text_style_to_editor(&mut is.editor, &meta.text_style);
-                        is.editor.set_width(if meta.multiline {
-                            Some(meta.input_width)
-                        } else {
-                            None
-                        });
-                    }
+                if let Some(meta) = input_layout_meta(dom, drag_nid)
+                    && let Some(node) = dom.nodes.get_mut(drag_nid)
+                    && let Some(is) = node.as_text_input_mut()
+                {
+                    apply_text_style_to_editor(&mut is.editor, &meta.text_style);
+                    is.editor.set_width(if meta.multiline {
+                        Some(meta.input_width)
+                    } else {
+                        None
+                    });
                 }
+
                 if let Some(node) = dom.nodes.get_mut(drag_nid)
                     && let Some(is) = node.as_text_input_mut()
                 {
                     is.extend_selection_to_point(relative_x, relative_y, &mut handle.text_renderer);
                 }
+
                 scroll_input_to_cursor(dom, handle);
                 needs_redraw = true;
             }
@@ -694,18 +695,18 @@ pub fn handle_mouse_input(
                         dom.focus_input(nid);
 
                         // Apply styles/width so hit-testing accounts for wrapping
-                        if let Some(meta) = input_layout_meta(dom, nid) {
-                            if let Some(node) = dom.nodes.get_mut(nid)
-                                && let Some(is) = node.as_text_input_mut()
-                            {
-                                apply_text_style_to_editor(&mut is.editor, &meta.text_style);
-                                is.editor.set_width(if meta.multiline {
-                                    Some(meta.input_width)
-                                } else {
-                                    None
-                                });
-                            }
+                        if let Some(meta) = input_layout_meta(dom, nid)
+                            && let Some(node) = dom.nodes.get_mut(nid)
+                            && let Some(is) = node.as_text_input_mut()
+                        {
+                            apply_text_style_to_editor(&mut is.editor, &meta.text_style);
+                            is.editor.set_width(if meta.multiline {
+                                Some(meta.input_width)
+                            } else {
+                                None
+                            });
                         }
+
                         if let Some(node) = dom.nodes.get_mut(nid)
                             && let Some(is) = node.as_text_input_mut()
                         {
@@ -982,17 +983,16 @@ pub fn handle_key_for_input(
 
     // Apply text styles and width to the editor BEFORE handling the key,
     // so parley's driver has the correct layout for cursor movement in wrapped text.
-    if let Some(meta) = dom.focused_node.and_then(|id| input_layout_meta(dom, id)) {
-        if let Some(node) = dom.focused_node.and_then(|id| dom.nodes.get_mut(id)) {
-            if let Some(is) = node.as_text_input_mut() {
-                apply_text_style_to_editor(&mut is.editor, &meta.text_style);
-                is.editor.set_width(if meta.multiline {
-                    Some(meta.input_width)
-                } else {
-                    None
-                });
-            }
-        }
+    if let Some(meta) = dom.focused_node.and_then(|id| input_layout_meta(dom, id))
+        && let Some(node) = dom.focused_node.and_then(|id| dom.nodes.get_mut(id))
+        && let Some(is) = node.as_text_input_mut()
+    {
+        apply_text_style_to_editor(&mut is.editor, &meta.text_style);
+        is.editor.set_width(if meta.multiline {
+            Some(meta.input_width)
+        } else {
+            None
+        });
     }
 
     let new_focus = dom

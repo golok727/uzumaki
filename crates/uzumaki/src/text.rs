@@ -76,6 +76,7 @@ impl TextRenderer {
             .saturating_sub(1)
     }
 
+    #[allow(clippy::too_many_arguments)]
     pub fn draw_text(
         &mut self,
         scene: &mut Scene,
@@ -174,8 +175,7 @@ impl TextRenderer {
         let boundaries = Self::grapheme_boundaries(text);
         let byte_index = Self::grapheme_to_byte(&boundaries, grapheme_index);
         let cursor = Cursor::from_byte_index(&layout, byte_index, Affinity::Downstream);
-        let geom = cursor.geometry(&layout, layout.width());
-        geom
+        cursor.geometry(&layout, layout.width())
     }
 
     pub fn word_range_at_point(

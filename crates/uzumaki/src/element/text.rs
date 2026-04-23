@@ -3,6 +3,7 @@ use vello::Scene;
 use crate::style::{Bounds, Color, TextStyle, UzStyle};
 use crate::text::TextRenderer;
 
+#[allow(clippy::too_many_arguments)]
 pub fn paint_text(
     scene: &mut Scene,
     text_renderer: &mut TextRenderer,

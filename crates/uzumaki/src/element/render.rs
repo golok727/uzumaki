@@ -355,7 +355,7 @@ impl<'a> Painter<'a> {
                     }
 
                     // 1. PaintNode (always first — the node's own bg/borders)
-                    render_list.push(RenderCommand::PaintNode(RenderInfo {
+                    render_list.push(RenderCommand::PaintNode(Box::new(RenderInfo {
                         node_id,
                         x,
                         y,
@@ -366,7 +366,7 @@ impl<'a> Painter<'a> {
                         needs_hitbox,
                         input,
                         checkbox: checkbox_snapshot,
-                    }));
+                    })));
                 }
             }
         }
@@ -665,7 +665,7 @@ struct ThumbInfo {
 }
 
 enum RenderCommand {
-    PaintNode(RenderInfo),
+    PaintNode(Box<RenderInfo>),
     PushClip(Rect, f64),
     PopClip,
     PaintThumb(ThumbInfo),
