@@ -20,6 +20,7 @@ use deno_core::*;
 
 pub use crate::app::Application;
 
+pub(crate) mod parse;
 pub(crate) mod prop_keys;
 
 pub use deno_core;
