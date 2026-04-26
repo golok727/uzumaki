@@ -1,5 +1,4 @@
 import { NodeId } from './types';
-export { PropKey } from './generated/prop_keys';
 
 interface Core {
   createWindow(options: {
@@ -22,52 +21,26 @@ interface Core {
   removeChild(windowId: number, parentId: NodeId, childId: NodeId): void;
   setText(windowId: number, nodeId: NodeId, text: string): void;
   resetDom(windowId: number): void;
-  setLengthProp(
+  setStrAttribute(
     windowId: number,
     nodeId: NodeId,
-    prop: number,
-    value: number,
-    unit: number,
-  ): void;
-  setColorProp(
-    windowId: number,
-    nodeId: NodeId,
-    prop: number,
-    r: number,
-    g: number,
-    b: number,
-    a: number,
-  ): void;
-  setF32Prop(
-    windowId: number,
-    nodeId: NodeId,
-    prop: number,
-    value: number,
-  ): void;
-  setEnumProp(
-    windowId: number,
-    nodeId: NodeId,
-    prop: number,
-    value: number,
-  ): void;
-  setStringProp(
-    windowId: number,
-    nodeId: NodeId,
-    prop: number,
+    name: string,
     value: string,
   ): void;
-  setInputValue(windowId: number, nodeId: NodeId, value: string): void;
-  getInputValue(windowId: number, nodeId: NodeId): string;
-  setInputPlaceholder(
+  setNumberAttribute(
     windowId: number,
     nodeId: NodeId,
-    placeholder: string,
+    name: string,
+    value: number,
   ): void;
-  setInputDisabled(windowId: number, nodeId: NodeId, disabled: boolean): void;
-  setInputMaxLength(windowId: number, nodeId: NodeId, maxLength: number): void;
-  setInputMultiline(windowId: number, nodeId: NodeId, multiline: boolean): void;
-  setInputSecure(windowId: number, nodeId: NodeId, secure: boolean): void;
-  setCheckboxChecked(windowId: number, nodeId: NodeId, checked: boolean): void;
+  setBoolAttribute(
+    windowId: number,
+    nodeId: NodeId,
+    name: string,
+    value: boolean,
+  ): void;
+  clearAttribute(windowId: number, nodeId: NodeId, name: string): void;
+  getAttribute(windowId: number, nodeId: NodeId, name: string): unknown;
   focusInput(windowId: number, nodeId: NodeId): void;
   setRemBase(windowId: number, value: number): void;
   getWindowWidth(windowId: number): number | null;

@@ -13,9 +13,8 @@ impl GpuContext {
         let backends = if cfg!(target_os = "windows") {
             wgpu::Backends::from_env().unwrap_or_default()
         } else if cfg!(target_os = "macos") {
-            wgpu::Backends::METAL
+            wgpu::Backends::from_env().unwrap_or(wgpu::Backends::METAL | wgpu::Backends::VULKAN)
         } else {
-            // GLES teardown segfaults on Wayland shutdown.
             wgpu::Backends::from_env().unwrap_or(wgpu::Backends::VULKAN)
         };
 

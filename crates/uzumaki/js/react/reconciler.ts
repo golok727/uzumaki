@@ -4,74 +4,74 @@ import { DefaultEventPriority } from 'react-reconciler/constants.js'; // fixme o
 
 import type { JSX } from './jsx/runtime';
 
-import core, { PropKey } from '../core';
+import core from '../core';
 import { eventManager } from '../events';
 import type { NodeId } from '../types';
 import { Window } from '../window';
 
-const PROP_NAME_TO_KEY: Record<string, number> = {
-  w: PropKey.W,
-  h: PropKey.H,
-  minW: PropKey.MinW,
-  minH: PropKey.MinH,
-  p: PropKey.P,
-  px: PropKey.Px,
-  py: PropKey.Py,
-  pt: PropKey.Pt,
-  pb: PropKey.Pb,
-  pl: PropKey.Pl,
-  pr: PropKey.Pr,
-  m: PropKey.M,
-  mx: PropKey.Mx,
-  my: PropKey.My,
-  mt: PropKey.Mt,
-  mb: PropKey.Mb,
-  ml: PropKey.Ml,
-  mr: PropKey.Mr,
-  flex: PropKey.Flex,
-  flexDir: PropKey.FlexDir,
-  flexGrow: PropKey.FlexGrow,
-  flexShrink: PropKey.FlexShrink,
-  items: PropKey.Items,
-  justify: PropKey.Justify,
-  gap: PropKey.Gap,
-  bg: PropKey.Bg,
-  color: PropKey.Color,
-  fontSize: PropKey.FontSize,
-  fontWeight: PropKey.FontWeight,
-  rounded: PropKey.Rounded,
-  roundedTL: PropKey.RoundedTL,
-  roundedTR: PropKey.RoundedTR,
-  roundedBR: PropKey.RoundedBR,
-  roundedBL: PropKey.RoundedBL,
-  border: PropKey.Border,
-  borderTop: PropKey.BorderTop,
-  borderRight: PropKey.BorderRight,
-  borderBottom: PropKey.BorderBottom,
-  borderLeft: PropKey.BorderLeft,
-  borderColor: PropKey.BorderColor,
-  opacity: PropKey.Opacity,
-  display: PropKey.Display,
-  cursor: PropKey.Cursor,
-  'hover:bg': PropKey.HoverBg,
-  'hover:color': PropKey.HoverColor,
-  'hover:opacity': PropKey.HoverOpacity,
-  'hover:borderColor': PropKey.HoverBorderColor,
-  'active:bg': PropKey.ActiveBg,
-  'active:color': PropKey.ActiveColor,
-  'active:opacity': PropKey.ActiveOpacity,
-  'active:borderColor': PropKey.ActiveBorderColor,
-  scrollable: PropKey.Scrollable,
-  selectable: PropKey.TextSelect,
-  visibility: PropKey.Visibility,
-  overflowWrap: PropKey.OverflowWrap,
-  wordBreak: PropKey.WordBreak,
-  position: PropKey.Position,
-  top: PropKey.Top,
-  right: PropKey.Right,
-  bottom: PropKey.Bottom,
-  left: PropKey.Left,
-};
+const STYLE_ATTRIBUTE_NAMES = new Set([
+  'w',
+  'h',
+  'minW',
+  'minH',
+  'p',
+  'px',
+  'py',
+  'pt',
+  'pb',
+  'pl',
+  'pr',
+  'm',
+  'mx',
+  'my',
+  'mt',
+  'mb',
+  'ml',
+  'mr',
+  'flex',
+  'flexDir',
+  'flexGrow',
+  'flexShrink',
+  'items',
+  'justify',
+  'gap',
+  'bg',
+  'color',
+  'fontSize',
+  'fontWeight',
+  'rounded',
+  'roundedTL',
+  'roundedTR',
+  'roundedBR',
+  'roundedBL',
+  'border',
+  'borderTop',
+  'borderRight',
+  'borderBottom',
+  'borderLeft',
+  'borderColor',
+  'opacity',
+  'display',
+  'cursor',
+  'hover:bg',
+  'hover:color',
+  'hover:opacity',
+  'hover:borderColor',
+  'active:bg',
+  'active:color',
+  'active:opacity',
+  'active:borderColor',
+  'scrollable',
+  'selectable',
+  'visibility',
+  'overflowWrap',
+  'wordBreak',
+  'position',
+  'top',
+  'right',
+  'bottom',
+  'left',
+]);
 
 const INTRINSIC_ELEMENTS = new Set([
   'view',
@@ -82,177 +82,18 @@ const INTRINSIC_ELEMENTS = new Set([
   /* 'canvas' */ // todo
 ]);
 
-const LENGTH_KEYS = new Set([PropKey.W, PropKey.H, PropKey.MinW, PropKey.MinH]);
-const COLOR_KEYS = new Set([
-  PropKey.Bg,
-  PropKey.Color,
-  PropKey.BorderColor,
-  PropKey.HoverBg,
-  PropKey.HoverColor,
-  PropKey.HoverBorderColor,
-  PropKey.ActiveBg,
-  PropKey.ActiveColor,
-  PropKey.ActiveBorderColor,
-]);
-const ENUM_KEYS = new Set([
-  PropKey.FlexDir,
-  PropKey.Items,
-  PropKey.Justify,
-  PropKey.Display,
-  PropKey.OverflowWrap,
-  PropKey.WordBreak,
-  PropKey.Position,
-]);
-const STRING_KEYS = new Set([PropKey.Cursor]);
-
-function toLength(value: any): { value: number; unit: number } {
-  if (typeof value === 'number') return { value, unit: 0 };
-  const s = String(value);
-  if (s === 'auto') return { value: 0, unit: 3 };
-  if (s === 'full') return { value: 1, unit: 1 };
-  if (s.endsWith('rem')) return { value: Number.parseFloat(s), unit: 2 };
-  if (s.endsWith('%')) return { value: Number.parseFloat(s) / 100, unit: 1 };
-  return { value: Number.parseFloat(s) || 0, unit: 0 };
-}
-
-function toColor(value: any): { r: number; g: number; b: number; a: number } {
-  if (typeof value === 'string') {
-    if (value.startsWith('#')) {
-      const hex = value.slice(1);
-      if (hex.length === 6) {
-        return {
-          r: Number.parseInt(hex.slice(0, 2), 16),
-          g: Number.parseInt(hex.slice(2, 4), 16),
-          b: Number.parseInt(hex.slice(4, 6), 16),
-          a: 255,
-        };
-      }
-      if (hex.length === 8) {
-        return {
-          r: Number.parseInt(hex.slice(0, 2), 16),
-          g: Number.parseInt(hex.slice(2, 4), 16),
-          b: Number.parseInt(hex.slice(4, 6), 16),
-          a: Number.parseInt(hex.slice(6, 8), 16),
-        };
-      }
-    }
-    if (value === 'transparent') return { r: 0, g: 0, b: 0, a: 0 };
-  }
-  return { r: 255, g: 255, b: 255, a: 255 };
-}
-
-const FLEX_DIR_MAP: Record<string, number> = {
-  row: 0,
-  col: 1,
-  column: 1,
-  'row-reverse': 2,
-  'col-reverse': 3,
-  'column-reverse': 3,
-};
-
-function toEnumValue(key: number, value: any): number {
-  if (typeof value === 'number') return value;
-  const s = String(value);
-  switch (key) {
-    case PropKey.FlexDir: {
-      return FLEX_DIR_MAP[s] ?? 0;
-    }
-    case PropKey.Items: {
-      return (
-        (
-          {
-            'flex-start': 0,
-            start: 0,
-            'flex-end': 1,
-            end: 1,
-            center: 2,
-            stretch: 3,
-            baseline: 4,
-          } as any
-        )[s] ?? 3
-      );
-    }
-    case PropKey.Justify: {
-      return (
-        (
-          {
-            'flex-start': 0,
-            start: 0,
-            'flex-end': 1,
-            end: 1,
-            center: 2,
-            'space-between': 3,
-            between: 3,
-            'space-around': 4,
-            around: 4,
-            'space-evenly': 5,
-            evenly: 5,
-          } as any
-        )[s] ?? 0
-      );
-    }
-    case PropKey.Display: {
-      return ({ none: 0, flex: 1, block: 2 } as any)[s] ?? 1;
-    }
-    case PropKey.OverflowWrap: {
-      return ({ normal: 0, anywhere: 1, 'break-word': 2 } as any)[s] ?? 0;
-    }
-    case PropKey.WordBreak: {
-      return ({ normal: 0, 'break-all': 1, 'keep-all': 2 } as any)[s] ?? 0;
-    }
-    case PropKey.Position: {
-      return ({ relative: 0, absolute: 1 } as any)[s] ?? 0;
-    }
-    default: {
-      return 0;
-    }
-  }
-}
-
 function setNativeProp(
   windowId: number,
   nodeId: any,
   propName: string,
   value: any,
 ): void {
-  if (propName === 'flex' && typeof value === 'string') {
-    const dir = FLEX_DIR_MAP[value];
-    if (dir !== undefined) {
-      core.setEnumProp(windowId, nodeId, PropKey.Display, 1);
-      core.setEnumProp(windowId, nodeId, PropKey.FlexDir, dir);
-      return;
-    }
-  }
-
-  const key = PROP_NAME_TO_KEY[propName];
-  if (key === undefined) return;
-
-  if (LENGTH_KEYS.has(key)) {
-    const l = toLength(value);
-    core.setLengthProp(windowId, nodeId, key, l.value, l.unit);
-  } else if (COLOR_KEYS.has(key)) {
-    const c = toColor(value);
-    core.setColorProp(windowId, nodeId, key, c.r, c.g, c.b, c.a);
-  } else if (ENUM_KEYS.has(key)) {
-    core.setEnumProp(windowId, nodeId, key, toEnumValue(key, value));
-  } else if (STRING_KEYS.has(key)) {
-    core.setStringProp(windowId, nodeId, key, String(value));
-  } else if (key === PropKey.Visibility) {
-    if (typeof value === 'string') {
-      core.setF32Prop(windowId, nodeId, key, value === 'visible' ? 1 : 0);
-    } else {
-      core.setF32Prop(windowId, nodeId, key, value ? 1 : 0);
-    }
+  if (typeof value === 'boolean') {
+    core.setBoolAttribute(windowId, nodeId, propName, value);
+  } else if (typeof value === 'number') {
+    core.setNumberAttribute(windowId, nodeId, propName, value);
   } else {
-    let numValue: number;
-    if (typeof value === 'boolean') {
-      numValue = value ? 1 : 0;
-    } else if (typeof value === 'number') {
-      numValue = value;
-    } else {
-      numValue = Number.parseFloat(String(value)) || 0;
-    }
-    core.setF32Prop(windowId, nodeId, key, numValue);
+    core.setStrAttribute(windowId, nodeId, propName, String(value));
   }
 }
 
@@ -261,20 +102,7 @@ function clearNativeProp(
   nodeId: any,
   propName: string,
 ): void {
-  const key = PROP_NAME_TO_KEY[propName];
-  if (key === undefined) return;
-
-  if (LENGTH_KEYS.has(key)) {
-    core.setLengthProp(windowId, nodeId, key, 0, 3);
-  } else if (COLOR_KEYS.has(key)) {
-    core.setColorProp(windowId, nodeId, key, 255, 255, 255, 255);
-  } else if (ENUM_KEYS.has(key)) {
-    core.setEnumProp(windowId, nodeId, key, 0);
-  } else if (STRING_KEYS.has(key)) {
-    core.setStringProp(windowId, nodeId, key, '');
-  } else {
-    core.setF32Prop(windowId, nodeId, key, 0);
-  }
+  core.clearAttribute(windowId, nodeId, propName);
 }
 
 function isEventProp(key: string): boolean {
@@ -337,7 +165,7 @@ abstract class BaseElement<
 
   applyEvents(): void {
     if (this.eventListeners.size > 0) {
-      core.setF32Prop(this.windowId, this.id, PropKey.Interactive, 1);
+      core.setBoolAttribute(this.windowId, this.id, 'interactive', true);
       for (const entry of this.eventListeners.values()) {
         eventManager.addHandlerByName(
           this.id,
@@ -398,9 +226,9 @@ abstract class BaseElement<
     }
 
     if (newListeners.size > 0 && this.eventListeners.size === 0) {
-      core.setF32Prop(this.windowId, this.id, PropKey.Interactive, 1);
+      core.setBoolAttribute(this.windowId, this.id, 'interactive', true);
     } else if (newListeners.size === 0 && this.eventListeners.size > 0) {
-      core.setF32Prop(this.windowId, this.id, PropKey.Interactive, 0);
+      core.setBoolAttribute(this.windowId, this.id, 'interactive', false);
     }
     this.eventListeners = newListeners;
   }
@@ -436,7 +264,7 @@ class ViewElement extends BaseElement<Record<string, any>> {
           handler: value,
           capture,
         });
-      } else if (PROP_NAME_TO_KEY[key] !== undefined) {
+      } else if (isNativeAttribute(key)) {
         this.styles[key] = value;
       }
     }
@@ -460,7 +288,7 @@ class ViewElement extends BaseElement<Record<string, any>> {
           handler: value,
           capture,
         });
-      } else if (PROP_NAME_TO_KEY[key] !== undefined) {
+      } else if (isNativeAttribute(key)) {
         newStyles[key] = value;
       }
     }
@@ -481,6 +309,14 @@ const INPUT_ATTR_NAMES = new Set([
   'secure',
 ]);
 const CHECKBOX_ATTR_NAMES = new Set(['checked']);
+
+function isNativeAttribute(key: string): boolean {
+  return (
+    STYLE_ATTRIBUTE_NAMES.has(key) ||
+    INPUT_ATTR_NAMES.has(key) ||
+    CHECKBOX_ATTR_NAMES.has(key)
+  );
+}
 
 class InputElement extends BaseElement<Record<string, any>> {
   inputAttrs: Record<string, any> = {};
@@ -517,7 +353,7 @@ class InputElement extends BaseElement<Record<string, any>> {
         });
       } else if (INPUT_ATTR_NAMES.has(key)) {
         this.inputAttrs[key] = value;
-      } else if (PROP_NAME_TO_KEY[key] !== undefined) {
+      } else if (isNativeAttribute(key)) {
         this.styles[key] = value;
       }
     }
@@ -525,7 +361,7 @@ class InputElement extends BaseElement<Record<string, any>> {
 
   private applyInputAttrs(): void {
     for (const [key, val] of Object.entries(this.inputAttrs)) {
-      InputElement.setInputAttr(this.windowId, this.id, key, val);
+      setNativeProp(this.windowId, this.id, key, val);
     }
   }
 
@@ -538,7 +374,7 @@ class InputElement extends BaseElement<Record<string, any>> {
       this.onChangeText?.(ev.value);
     };
     eventManager.addHandlerByName(this.id, 'input', this.onChangeTextListener);
-    core.setF32Prop(this.windowId, this.id, PropKey.Interactive, 1);
+    core.setBoolAttribute(this.windowId, this.id, 'interactive', true);
   }
 
   private unbindOnChangeText(): void {
@@ -580,7 +416,7 @@ class InputElement extends BaseElement<Record<string, any>> {
         });
       } else if (INPUT_ATTR_NAMES.has(key)) {
         newInputAttrs[key] = value;
-      } else if (PROP_NAME_TO_KEY[key] !== undefined) {
+      } else if (isNativeAttribute(key)) {
         newStyles[key] = value;
       }
     }
@@ -596,7 +432,12 @@ class InputElement extends BaseElement<Record<string, any>> {
 
     for (const [key, val] of Object.entries(newInputAttrs)) {
       if (this.inputAttrs[key] !== val) {
-        InputElement.setInputAttr(this.windowId, this.id, key, val);
+        setNativeProp(this.windowId, this.id, key, val);
+      }
+    }
+    for (const key of Object.keys(this.inputAttrs)) {
+      if (!(key in newInputAttrs)) {
+        clearNativeProp(this.windowId, this.id, key);
       }
     }
     this.inputAttrs = newInputAttrs;
@@ -605,44 +446,6 @@ class InputElement extends BaseElement<Record<string, any>> {
   override destroy(): void {
     this.unbindOnChangeText();
     super.destroy();
-  }
-
-  static setInputAttr(
-    windowId: number,
-    nodeId: any,
-    key: string,
-    value: any,
-  ): void {
-    switch (key) {
-      case 'value': {
-        core.setInputValue(windowId, nodeId, String(value ?? ''));
-        break;
-      }
-      case 'placeholder': {
-        core.setInputPlaceholder(windowId, nodeId, String(value ?? ''));
-        break;
-      }
-      case 'disabled': {
-        core.setInputDisabled(windowId, nodeId, !!value);
-        break;
-      }
-      case 'maxLength': {
-        core.setInputMaxLength(
-          windowId,
-          nodeId,
-          typeof value === 'number' ? value : -1,
-        );
-        break;
-      }
-      case 'multiline': {
-        core.setInputMultiline(windowId, nodeId, !!value);
-        break;
-      }
-      case 'secure': {
-        core.setInputSecure(windowId, nodeId, !!value);
-        break;
-      }
-    }
   }
 }
 
@@ -681,7 +484,7 @@ class CheckboxElement extends BaseElement<Record<string, any>> {
         });
       } else if (CHECKBOX_ATTR_NAMES.has(key)) {
         this.checkboxAttrs[key] = value;
-      } else if (PROP_NAME_TO_KEY[key] !== undefined) {
+      } else if (isNativeAttribute(key)) {
         this.styles[key] = value;
       }
     }
@@ -689,7 +492,7 @@ class CheckboxElement extends BaseElement<Record<string, any>> {
 
   private applyCheckboxAttrs(): void {
     for (const [key, val] of Object.entries(this.checkboxAttrs)) {
-      CheckboxElement.setCheckboxAttr(this.windowId, this.id, key, val);
+      setNativeProp(this.windowId, this.id, key, val);
     }
   }
 
@@ -702,7 +505,7 @@ class CheckboxElement extends BaseElement<Record<string, any>> {
       this.onChange?.(ev.value === 'true');
     };
     eventManager.addHandlerByName(this.id, 'input', this.onChangeListener);
-    core.setF32Prop(this.windowId, this.id, PropKey.Interactive, 1);
+    core.setBoolAttribute(this.windowId, this.id, 'interactive', true);
   }
 
   private unbindOnChange(): void {
@@ -740,7 +543,7 @@ class CheckboxElement extends BaseElement<Record<string, any>> {
         });
       } else if (CHECKBOX_ATTR_NAMES.has(key)) {
         newCheckboxAttrs[key] = value;
-      } else if (PROP_NAME_TO_KEY[key] !== undefined) {
+      } else if (isNativeAttribute(key)) {
         newStyles[key] = value;
       }
     }
@@ -756,7 +559,12 @@ class CheckboxElement extends BaseElement<Record<string, any>> {
 
     for (const [key, val] of Object.entries(newCheckboxAttrs)) {
       if (this.checkboxAttrs[key] !== val) {
-        CheckboxElement.setCheckboxAttr(this.windowId, this.id, key, val);
+        setNativeProp(this.windowId, this.id, key, val);
+      }
+    }
+    for (const key of Object.keys(this.checkboxAttrs)) {
+      if (!(key in newCheckboxAttrs)) {
+        clearNativeProp(this.windowId, this.id, key);
       }
     }
     this.checkboxAttrs = newCheckboxAttrs;
@@ -765,17 +573,6 @@ class CheckboxElement extends BaseElement<Record<string, any>> {
   override destroy(): void {
     this.unbindOnChange();
     super.destroy();
-  }
-
-  static setCheckboxAttr(
-    windowId: number,
-    nodeId: any,
-    key: string,
-    value: any,
-  ): void {
-    if (key === 'checked') {
-      core.setCheckboxChecked(windowId, nodeId, !!value);
-    }
   }
 }
 
@@ -808,7 +605,7 @@ class TextElement extends BaseElement<Record<string, any>> {
           handler: value,
           capture,
         });
-      } else if (PROP_NAME_TO_KEY[key] !== undefined) {
+      } else if (isNativeAttribute(key)) {
         this.styles[key] = value;
       }
     }
@@ -839,7 +636,7 @@ class TextElement extends BaseElement<Record<string, any>> {
           handler: value,
           capture,
         });
-      } else if (PROP_NAME_TO_KEY[key] !== undefined) {
+      } else if (isNativeAttribute(key)) {
         newStyles[key] = value;
       }
     }
@@ -1043,19 +840,19 @@ const reconciler = ReactReconciler<
   },
 
   hideInstance(instance) {
-    core.setF32Prop(instance.windowId, instance.id, PropKey.Visibility, 0);
+    core.setBoolAttribute(instance.windowId, instance.id, 'visibility', false);
   },
 
   unhideInstance(instance) {
-    core.setF32Prop(instance.windowId, instance.id, PropKey.Visibility, 1);
+    core.setBoolAttribute(instance.windowId, instance.id, 'visibility', true);
   },
 
   hideTextInstance(instance) {
-    core.setF32Prop(instance.windowId, instance.id, PropKey.Visibility, 0);
+    core.setBoolAttribute(instance.windowId, instance.id, 'visibility', false);
   },
 
   unhideTextInstance(instance) {
-    core.setF32Prop(instance.windowId, instance.id, PropKey.Visibility, 1);
+    core.setBoolAttribute(instance.windowId, instance.id, 'visibility', true);
   },
 
   resetTextContent(instance) {

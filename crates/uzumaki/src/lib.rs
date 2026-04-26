@@ -20,9 +20,7 @@ use deno_core::*;
 
 pub use crate::app::Application;
 
-pub(crate) mod prop_keys {
-    include!(concat!(env!("OUT_DIR"), "/prop_keys.rs"));
-}
+pub(crate) mod prop_keys;
 
 pub use deno_core;
 pub use deno_runtime;
@@ -58,19 +56,11 @@ extension!(
     op_remove_child,
     op_set_text,
     op_reset_dom,
-    op_set_length_prop,
-    op_set_color_prop,
-    op_set_f32_prop,
-    op_set_enum_prop,
-    op_set_string_prop,
-    op_set_input_value,
-    op_get_input_value,
-    op_set_input_placeholder,
-    op_set_input_disabled,
-    op_set_input_max_length,
-    op_set_input_multiline,
-    op_set_input_secure,
-    op_set_checkbox_checked,
+    op_set_str_attribute,
+    op_set_number_attribute,
+    op_set_bool_attribute,
+    op_clear_attribute,
+    op_get_attribute,
     op_focus_input,
     op_set_rem_base,
     op_get_window_width,
