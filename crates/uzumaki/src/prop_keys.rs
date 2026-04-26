@@ -1,9 +1,18 @@
 use std::str::FromStr;
 
 #[derive(Copy, Clone, Debug, Eq, PartialEq)]
-pub(crate) enum PropKey {
+pub(crate) enum StyleVariant {
+    Base,
+    Hover,
+    Active,
+}
+
+#[derive(Copy, Clone, Debug, Eq, PartialEq)]
+pub(crate) enum StyleProp {
     W,
     H,
+    MinW,
+    MinH,
     P,
     Px,
     Py,
@@ -45,17 +54,7 @@ pub(crate) enum PropKey {
     Cursor,
     Interactive,
     Visibility,
-    HoverBg,
-    HoverColor,
-    HoverOpacity,
-    HoverBorderColor,
-    ActiveBg,
-    ActiveColor,
-    ActiveOpacity,
-    ActiveBorderColor,
     Scrollable,
-    MinW,
-    MinH,
     TextSelect,
     OverflowWrap,
     WordBreak,
@@ -66,7 +65,49 @@ pub(crate) enum PropKey {
     Left,
 }
 
-impl FromStr for PropKey {
+#[derive(Copy, Clone, Debug, Eq, PartialEq)]
+pub(crate) enum ElementProp {
+    Value,
+    Placeholder,
+    Disabled,
+    MaxLength,
+    Multiline,
+    Secure,
+    Checked,
+}
+
+#[derive(Copy, Clone, Debug, Eq, PartialEq)]
+pub(crate) enum AttributeKind {
+    Style(StyleProp, StyleVariant),
+    Element(ElementProp),
+}
+
+impl FromStr for AttributeKind {
+    type Err = ();
+
+    fn from_str(value: &str) -> Result<Self, Self::Err> {
+        if let Ok(ep) = value.parse::<ElementProp>() {
+            return Ok(AttributeKind::Element(ep));
+        }
+
+        if let Some(rest) = value.strip_prefix("hover:") {
+            return rest
+                .parse::<StyleProp>()
+                .map(|p| AttributeKind::Style(p, StyleVariant::Hover));
+        }
+        if let Some(rest) = value.strip_prefix("active:") {
+            return rest
+                .parse::<StyleProp>()
+                .map(|p| AttributeKind::Style(p, StyleVariant::Active));
+        }
+
+        value
+            .parse::<StyleProp>()
+            .map(|p| AttributeKind::Style(p, StyleVariant::Base))
+    }
+}
+
+impl FromStr for StyleProp {
     type Err = ();
 
     fn from_str(value: &str) -> Result<Self, Self::Err> {
@@ -116,14 +157,6 @@ impl FromStr for PropKey {
             "cursor" => Self::Cursor,
             "interactive" => Self::Interactive,
             "visibility" => Self::Visibility,
-            "hover:bg" => Self::HoverBg,
-            "hover:color" => Self::HoverColor,
-            "hover:opacity" => Self::HoverOpacity,
-            "hover:borderColor" => Self::HoverBorderColor,
-            "active:bg" => Self::ActiveBg,
-            "active:color" => Self::ActiveColor,
-            "active:opacity" => Self::ActiveOpacity,
-            "active:borderColor" => Self::ActiveBorderColor,
             "scrollable" => Self::Scrollable,
             "selectable" => Self::TextSelect,
             "overflowWrap" => Self::OverflowWrap,
@@ -133,6 +166,23 @@ impl FromStr for PropKey {
             "right" => Self::Right,
             "bottom" => Self::Bottom,
             "left" => Self::Left,
+            _ => return Err(()),
+        })
+    }
+}
+
+impl FromStr for ElementProp {
+    type Err = ();
+
+    fn from_str(value: &str) -> Result<Self, Self::Err> {
+        Ok(match value {
+            "value" => Self::Value,
+            "placeholder" => Self::Placeholder,
+            "disabled" => Self::Disabled,
+            "maxLength" => Self::MaxLength,
+            "multiline" => Self::Multiline,
+            "secure" => Self::Secure,
+            "checked" => Self::Checked,
             _ => return Err(()),
         })
     }

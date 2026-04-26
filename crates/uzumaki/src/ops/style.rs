@@ -4,10 +4,6 @@ use serde_json::Value;
 use crate::app::{SharedAppState, with_state};
 use crate::element::UzNodeId;
 
-use super::style_util::{
-    StyleEffect, clear_attribute, get_attribute, set_bool_attribute, set_number_attribute,
-    set_str_attribute, sync_taffy, update_cursor,
-};
 #[op2(fast)]
 pub fn op_set_str_attribute(
     state: &mut OpState,
@@ -19,20 +15,8 @@ pub fn op_set_str_attribute(
     let nid = node_id as UzNodeId;
     let app_state = state.borrow::<SharedAppState>().clone();
     with_state(&app_state, |s| {
-        let Some(entry) = s.windows.get_mut(&window_id) else {
-            return;
-        };
-        let effect = {
-            let Some(node) = entry.dom.nodes.get_mut(nid) else {
-                return;
-            };
-            set_str_attribute(node, name, value, entry.rem_base)
-        };
-        if matches!(effect, StyleEffect::AppliedNeedsSync) {
-            sync_taffy(&mut entry.dom, nid);
-        }
-        if name == "cursor" {
-            update_cursor(entry);
+        if let Some(entry) = s.windows.get_mut(&window_id) {
+            entry.set_str_attribute(nid, name, value);
         }
     });
 }
@@ -48,17 +32,8 @@ pub fn op_set_number_attribute(
     let nid = node_id as UzNodeId;
     let app_state = state.borrow::<SharedAppState>().clone();
     with_state(&app_state, |s| {
-        let Some(entry) = s.windows.get_mut(&window_id) else {
-            return;
-        };
-        let effect = {
-            let Some(node) = entry.dom.nodes.get_mut(nid) else {
-                return;
-            };
-            set_number_attribute(node, name, value as f32)
-        };
-        if matches!(effect, StyleEffect::AppliedNeedsSync) {
-            sync_taffy(&mut entry.dom, nid);
+        if let Some(entry) = s.windows.get_mut(&window_id) {
+            entry.set_number_attribute(nid, name, value);
         }
     });
 }
@@ -74,17 +49,8 @@ pub fn op_set_bool_attribute(
     let nid = node_id as UzNodeId;
     let app_state = state.borrow::<SharedAppState>().clone();
     with_state(&app_state, |s| {
-        let Some(entry) = s.windows.get_mut(&window_id) else {
-            return;
-        };
-        let effect = {
-            let Some(node) = entry.dom.nodes.get_mut(nid) else {
-                return;
-            };
-            set_bool_attribute(node, name, value)
-        };
-        if matches!(effect, StyleEffect::AppliedNeedsSync) {
-            sync_taffy(&mut entry.dom, nid);
+        if let Some(entry) = s.windows.get_mut(&window_id) {
+            entry.set_bool_attribute(nid, name, value);
         }
     });
 }
@@ -99,20 +65,8 @@ pub fn op_clear_attribute(
     let nid = node_id as UzNodeId;
     let app_state = state.borrow::<SharedAppState>().clone();
     with_state(&app_state, |s| {
-        let Some(entry) = s.windows.get_mut(&window_id) else {
-            return;
-        };
-        let effect = {
-            let Some(node) = entry.dom.nodes.get_mut(nid) else {
-                return;
-            };
-            clear_attribute(node, name)
-        };
-        if matches!(effect, StyleEffect::AppliedNeedsSync) {
-            sync_taffy(&mut entry.dom, nid);
-        }
-        if name == "cursor" {
-            update_cursor(entry);
+        if let Some(entry) = s.windows.get_mut(&window_id) {
+            entry.clear_attribute(nid, name);
         }
     });
 }
@@ -131,9 +85,6 @@ pub fn op_get_attribute(
         let Some(entry) = s.windows.get(&window_id) else {
             return Ok(Value::Null);
         };
-        let Some(node) = entry.dom.nodes.get(nid) else {
-            return Ok(Value::Null);
-        };
-        Ok(get_attribute(node, &name))
+        Ok(entry.get_attribute(nid, &name))
     })
 }
