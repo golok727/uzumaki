@@ -71,6 +71,27 @@ const STYLE_ATTRIBUTE_NAMES = new Set([
   'right',
   'bottom',
   'left',
+  'translate',
+  'translateX',
+  'translateY',
+  'rotate',
+  'scale',
+  'scaleX',
+  'scaleY',
+  'hover:translateX',
+  'hover:translate',
+  'hover:translateY',
+  'hover:rotate',
+  'hover:scale',
+  'hover:scaleX',
+  'hover:scaleY',
+  'active:translateX',
+  'active:translate',
+  'active:translateY',
+  'active:rotate',
+  'active:scale',
+  'active:scaleX',
+  'active:scaleY',
 ]);
 
 const INTRINSIC_ELEMENTS = new Set([
@@ -103,6 +124,48 @@ function clearNativeProp(
   propName: string,
 ): void {
   core.clearAttribute(windowId, nodeId, propName);
+}
+
+function splitVariantProp(key: string): { prefix: string; name: string } {
+  const idx = key.indexOf(':');
+  if (idx === -1) return { prefix: '', name: key };
+  return { prefix: key.slice(0, idx + 1), name: key.slice(idx + 1) };
+}
+
+function readPair(value: any): [number, number] {
+  if (Array.isArray(value)) {
+    const x = Number(value[0] ?? 0);
+    const y = Number(value[1] ?? x);
+    return [x, y];
+  }
+  if (typeof value === 'object' && value !== null) {
+    const x = Number(value.x ?? 0);
+    const y = Number(value.y ?? 0);
+    return [x, y];
+  }
+  const n = Number(value ?? 0);
+  return [n, n];
+}
+
+function assignNativeStyle(
+  styles: Record<string, any>,
+  key: string,
+  value: any,
+): void {
+  const { prefix, name } = splitVariantProp(key);
+  if (name === 'translate') {
+    const [x, y] = readPair(value);
+    styles[`${prefix}translateX`] = x;
+    styles[`${prefix}translateY`] = y;
+    return;
+  }
+  if (name === 'scale') {
+    const [x, y] = readPair(value);
+    styles[`${prefix}scaleX`] = x;
+    styles[`${prefix}scaleY`] = y;
+    return;
+  }
+  styles[key] = value;
 }
 
 function isEventProp(key: string): boolean {
@@ -265,7 +328,7 @@ class ViewElement extends BaseElement<Record<string, any>> {
           capture,
         });
       } else if (isNativeAttribute(key)) {
-        this.styles[key] = value;
+        assignNativeStyle(this.styles, key, value);
       }
     }
   }
@@ -289,7 +352,7 @@ class ViewElement extends BaseElement<Record<string, any>> {
           capture,
         });
       } else if (isNativeAttribute(key)) {
-        newStyles[key] = value;
+        assignNativeStyle(newStyles, key, value);
       }
     }
 
@@ -354,7 +417,7 @@ class InputElement extends BaseElement<Record<string, any>> {
       } else if (INPUT_ATTR_NAMES.has(key)) {
         this.inputAttrs[key] = value;
       } else if (isNativeAttribute(key)) {
-        this.styles[key] = value;
+        assignNativeStyle(this.styles, key, value);
       }
     }
   }
@@ -417,7 +480,7 @@ class InputElement extends BaseElement<Record<string, any>> {
       } else if (INPUT_ATTR_NAMES.has(key)) {
         newInputAttrs[key] = value;
       } else if (isNativeAttribute(key)) {
-        newStyles[key] = value;
+        assignNativeStyle(newStyles, key, value);
       }
     }
 
@@ -485,7 +548,7 @@ class CheckboxElement extends BaseElement<Record<string, any>> {
       } else if (CHECKBOX_ATTR_NAMES.has(key)) {
         this.checkboxAttrs[key] = value;
       } else if (isNativeAttribute(key)) {
-        this.styles[key] = value;
+        assignNativeStyle(this.styles, key, value);
       }
     }
   }
@@ -544,7 +607,7 @@ class CheckboxElement extends BaseElement<Record<string, any>> {
       } else if (CHECKBOX_ATTR_NAMES.has(key)) {
         newCheckboxAttrs[key] = value;
       } else if (isNativeAttribute(key)) {
-        newStyles[key] = value;
+        assignNativeStyle(newStyles, key, value);
       }
     }
 
@@ -606,7 +669,7 @@ class TextElement extends BaseElement<Record<string, any>> {
           capture,
         });
       } else if (isNativeAttribute(key)) {
-        this.styles[key] = value;
+        assignNativeStyle(this.styles, key, value);
       }
     }
   }
@@ -637,7 +700,7 @@ class TextElement extends BaseElement<Record<string, any>> {
           capture,
         });
       } else if (isNativeAttribute(key)) {
-        newStyles[key] = value;
+        assignNativeStyle(newStyles, key, value);
       }
     }
 

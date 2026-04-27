@@ -491,8 +491,65 @@ impl UIState {
     /// Run hit test at the given mouse position and update hit_state.
     pub fn update_hit_test(&mut self, x: f64, y: f64) {
         let active = self.hit_state.active_node;
-        self.hit_state = self.hitbox_store.hit_test(x, y);
-        self.hit_state.active_node = active;
+        let mut hit_state = self.hitbox_store.hit_test(x, y);
+        if let Some(top) = hit_state.top_node {
+            hit_state.hovered_nodes = self.hit_path(top);
+        }
+        hit_state.active_node = active;
+        self.hit_state = hit_state;
+    }
+
+    fn hit_path(&self, top: UzNodeId) -> Vec<UzNodeId> {
+        let mut path = Vec::new();
+        let mut current = Some(top);
+        while let Some(id) = current {
+            if self.nodes.get(id).is_some() {
+                path.push(id);
+                current = self.nodes[id].parent;
+            } else {
+                break;
+            }
+        }
+        path.reverse();
+        path
+    }
+
+    fn dispatch_mouse_path(
+        &self,
+        x: f64,
+        y: f64,
+        button: crate::interactivity::MouseButton,
+        listeners: impl Fn(
+            &crate::interactivity::Interactivity,
+        ) -> &[crate::interactivity::MouseEventListener],
+    ) {
+        let event = crate::interactivity::MouseEvent {
+            position: (x, y),
+            button,
+        };
+
+        let Some(target) = self.hit_state.top_node else {
+            return;
+        };
+
+        let mut path = self.hit_path(target);
+        path.reverse();
+        for node_id in path {
+            let Some(node) = self.nodes.get(node_id) else {
+                continue;
+            };
+            let Some(bounds) = node
+                .interactivity
+                .hitbox_id
+                .and_then(|hid| self.hitbox_store.get(hid))
+                .map(|hitbox| hitbox.bounds)
+            else {
+                continue;
+            };
+            for listener in listeners(&node.interactivity) {
+                listener(&event, &bounds);
+            }
+        }
     }
 
     /// Refresh hit-testing using the current pointer position after layout or
@@ -516,53 +573,17 @@ impl UIState {
 
     /// Dispatch mouse down event to listeners on hovered elements.
     pub fn dispatch_mouse_down(&self, x: f64, y: f64, button: crate::interactivity::MouseButton) {
-        let event = crate::interactivity::MouseEvent {
-            position: (x, y),
-            button,
-        };
-
-        for hitbox in self.hitbox_store.hitboxes().iter().rev() {
-            if hitbox.bounds.contains(x, y) {
-                let node = &self.nodes[hitbox.node_id];
-                for listener in &node.interactivity.mouse_down_listeners {
-                    listener(&event, &hitbox.bounds);
-                }
-            }
-        }
+        self.dispatch_mouse_path(x, y, button, |i| &i.mouse_down_listeners);
     }
 
     /// Dispatch mouse up event.
     pub fn dispatch_mouse_up(&self, x: f64, y: f64, button: crate::interactivity::MouseButton) {
-        let event = crate::interactivity::MouseEvent {
-            position: (x, y),
-            button,
-        };
-
-        for hitbox in self.hitbox_store.hitboxes().iter().rev() {
-            if hitbox.bounds.contains(x, y) {
-                let node = &self.nodes[hitbox.node_id];
-                for listener in &node.interactivity.mouse_up_listeners {
-                    listener(&event, &hitbox.bounds);
-                }
-            }
-        }
+        self.dispatch_mouse_path(x, y, button, |i| &i.mouse_up_listeners);
     }
 
     /// Dispatch click event.
     pub fn dispatch_click(&self, x: f64, y: f64, button: crate::interactivity::MouseButton) {
-        let event = crate::interactivity::MouseEvent {
-            position: (x, y),
-            button,
-        };
-
-        for hitbox in self.hitbox_store.hitboxes().iter().rev() {
-            if hitbox.bounds.contains(x, y) {
-                let node = &self.nodes[hitbox.node_id];
-                for listener in &node.interactivity.click_listeners {
-                    listener(&event, &hitbox.bounds);
-                }
-            }
-        }
+        self.dispatch_mouse_path(x, y, button, |i| &i.click_listeners);
     }
 
     /// Find the text run that contains a given text node.
@@ -599,6 +620,10 @@ impl UIState {
 mod tests {
     use super::UIState;
     use crate::{cursor::UzCursorIcon, style::Bounds};
+    use std::sync::{
+        Arc,
+        atomic::{AtomicUsize, Ordering},
+    };
 
     #[test]
     fn refresh_hit_test_retargets_stationary_pointer_after_hitboxes_change() {
@@ -644,5 +669,69 @@ mod tests {
         dom.nodes[parent].style.cursor = Some(UzCursorIcon::Pointer);
 
         assert_eq!(dom.resolve_cursor(child), UzCursorIcon::Pointer);
+    }
+
+    #[test]
+    fn hit_test_hover_and_dispatch_follow_top_node_ancestors_not_siblings() {
+        let mut dom = UIState::new();
+        let root = dom.create_view(Default::default());
+        let sibling = dom.create_view(Default::default());
+        let modal = dom.create_view(Default::default());
+        dom.append_child(root, sibling);
+        dom.append_child(root, modal);
+
+        let sibling_clicks = Arc::new(AtomicUsize::new(0));
+        let modal_clicks = Arc::new(AtomicUsize::new(0));
+
+        {
+            let clicks = Arc::clone(&sibling_clicks);
+            dom.nodes[sibling].interactivity.on_click(move |_, _| {
+                clicks.fetch_add(1, Ordering::Relaxed);
+            });
+        }
+        {
+            let clicks = Arc::clone(&modal_clicks);
+            dom.nodes[modal].interactivity.on_click(move |_, _| {
+                clicks.fetch_add(1, Ordering::Relaxed);
+            });
+        }
+
+        let sibling_hitbox = dom
+            .hitbox_store
+            .insert(sibling, Bounds::new(0.0, 0.0, 100.0, 100.0));
+        let modal_hitbox = dom
+            .hitbox_store
+            .insert(modal, Bounds::new(20.0, 20.0, 40.0, 40.0));
+        dom.nodes[sibling].interactivity.hitbox_id = Some(sibling_hitbox);
+        dom.nodes[modal].interactivity.hitbox_id = Some(modal_hitbox);
+
+        dom.update_hit_test(30.0, 30.0);
+        dom.dispatch_click(30.0, 30.0, crate::interactivity::MouseButton::Left);
+
+        assert_eq!(dom.hit_state.top_node, Some(modal));
+        assert_eq!(dom.hit_state.hovered_nodes, vec![root, modal]);
+        assert_eq!(modal_clicks.load(Ordering::Relaxed), 1);
+        assert_eq!(sibling_clicks.load(Ordering::Relaxed), 0);
+    }
+
+    #[test]
+    fn transformed_hitboxes_test_points_in_node_local_space() {
+        use vello::kurbo::Affine;
+
+        let mut dom = UIState::new();
+        let node = dom.create_view(Default::default());
+        dom.hitbox_store.insert_transformed(
+            node,
+            Bounds::new(0.0, 0.0, 10.0, 10.0),
+            Affine::translate((50.0, 50.0))
+                * Affine::rotate(std::f64::consts::FRAC_PI_4)
+                * Affine::translate((-5.0, -5.0)),
+        );
+
+        dom.update_hit_test(50.0, 50.0);
+        assert_eq!(dom.hit_state.top_node, Some(node));
+
+        dom.update_hit_test(50.0, 42.0);
+        assert_eq!(dom.hit_state.top_node, None);
     }
 }

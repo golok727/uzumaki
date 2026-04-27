@@ -47,9 +47,11 @@ impl<'a> Painter<'a> {
         }
     }
 
-    fn render_tree(&mut self, root_id: UzNodeId) {
-        let scale = self.scale;
+    fn paint_translation(&self, x: f64, y: f64) -> Affine {
+        Affine::translate((x, y))
+    }
 
+    fn render_tree(&mut self, root_id: UzNodeId) {
         // Pre-compute per-node selection ranges for text selection painting
         let text_sel_map = self.compute_text_selections_map();
 
@@ -58,13 +60,15 @@ impl<'a> Painter<'a> {
             root_id,
             0.0,
             0.0,
+            Affine::scale(self.scale),
+            Affine::IDENTITY,
             InheritedProperties::default(),
         )];
 
         while let Some(item) = stack.pop() {
             match item {
-                StackItem::PushClip(rect, s) => {
-                    render_list.push(RenderCommand::PushClip(rect, s));
+                StackItem::PushClip(rect, transform) => {
+                    render_list.push(RenderCommand::PushClip(rect, transform));
                     continue;
                 }
                 StackItem::PopClip => {
@@ -75,7 +79,14 @@ impl<'a> Painter<'a> {
                     render_list.push(RenderCommand::PaintThumb(info));
                     continue;
                 }
-                StackItem::Visit(node_id, parent_x, parent_y, parent_inherited) => {
+                StackItem::Visit(
+                    node_id,
+                    parent_x,
+                    parent_y,
+                    parent_paint_transform,
+                    parent_hit_transform,
+                    parent_inherited,
+                ) => {
                     // Extract all needed data from the node (immutable borrow scope)
                     let (
                         taffy_node,
@@ -135,9 +146,10 @@ impl<'a> Painter<'a> {
                         } else {
                             None
                         };
-                        // Text nodes inside textSelect views need hitboxes for click-to-select
-                        let selectable_text = inherited.text_selectable && node.is_text_node();
-                        let needs_hitbox = node.interactivity.needs_hitbox() || selectable_text;
+                        // Visible boxes participate in hit testing by default. This lets
+                        // non-listener overlays consume pointer targeting instead of leaking
+                        // hover/active state to lower siblings.
+                        let needs_hitbox = true;
                         let is_scrollable = node.scroll_state.is_some();
                         let first_child = node.first_child;
 
@@ -262,6 +274,14 @@ impl<'a> Painter<'a> {
                     let y = parent_y + layout.location.y as f64;
                     let w = layout.size.width as f64;
                     let h = layout.size.height as f64;
+                    let local_style_transform = computed_style.transform.to_affine(w, h);
+                    let transform = parent_paint_transform
+                        * self
+                            .paint_translation(layout.location.x as f64, layout.location.y as f64)
+                        * local_style_transform;
+                    let hit_transform = parent_hit_transform
+                        * Affine::translate((layout.location.x as f64, layout.location.y as f64))
+                        * local_style_transform;
 
                     // Compute scroll info and clamp offset (mutable borrow is safe now)
                     let scroll_info = if is_scrollable {
@@ -321,8 +341,8 @@ impl<'a> Painter<'a> {
                         if overflows {
                             stack.push(StackItem::PaintThumb(ThumbInfo {
                                 node_id,
-                                view_x: x,
-                                view_y: y,
+                                view_bounds: Bounds::new(x, y, w, h),
+                                transform,
                                 view_w: w,
                                 view_h: h,
                                 scroll_offset_y: clamped_offset,
@@ -330,27 +350,39 @@ impl<'a> Painter<'a> {
                                 visible_height,
                                 thumb_hovered,
                                 mouse_in_view,
-                                scale,
                             }));
                         }
                         // 5. PopClip
                         stack.push(StackItem::PopClip);
                         // 4-3. Children (reversed for correct order)
                         for &child_id in children.iter().rev() {
+                            let child_paint_parent =
+                                transform * Affine::translate((0.0, -clamped_offset as f64));
+                            let child_hit_parent =
+                                hit_transform * Affine::translate((0.0, -clamped_offset as f64));
                             stack.push(StackItem::Visit(
                                 child_id,
                                 x,
                                 y - clamped_offset as f64,
+                                child_paint_parent,
+                                child_hit_parent,
                                 inherited.clone(),
                             ));
                         }
                         // 2. PushClip
-                        let clip_rect = Rect::new(x, y, x + w, y + h);
-                        stack.push(StackItem::PushClip(clip_rect, scale));
+                        let clip_rect = Rect::new(0.0, 0.0, w, h);
+                        stack.push(StackItem::PushClip(clip_rect, transform));
                     } else {
                         // Normal (non-scrollable) node: push children
                         for &child_id in children.iter().rev() {
-                            stack.push(StackItem::Visit(child_id, x, y, inherited.clone()));
+                            stack.push(StackItem::Visit(
+                                child_id,
+                                x,
+                                y,
+                                transform,
+                                hit_transform,
+                                inherited.clone(),
+                            ));
                         }
                     }
 
@@ -361,6 +393,8 @@ impl<'a> Painter<'a> {
                         y,
                         w,
                         h,
+                        transform,
+                        hit_transform,
                         style: Box::new(computed_style),
                         text,
                         needs_hitbox,
@@ -375,9 +409,8 @@ impl<'a> Painter<'a> {
         for cmd in &render_list {
             match cmd {
                 RenderCommand::PaintNode(info) => self.paint_node(info, &text_sel_map),
-                RenderCommand::PushClip(rect, s) => {
-                    self.scene
-                        .push_clip_layer(Fill::NonZero, Affine::scale(*s), rect);
+                RenderCommand::PushClip(rect, transform) => {
+                    self.scene.push_clip_layer(Fill::NonZero, *transform, rect);
                 }
                 RenderCommand::PopClip => {
                     self.scene.pop_layer();
@@ -388,12 +421,16 @@ impl<'a> Painter<'a> {
     }
 
     fn paint_node(&mut self, info: &RenderInfo, text_sel_map: &HashMap<UzNodeId, (usize, usize)>) {
-        let scale = self.scale;
-        let bounds = Bounds::new(info.x, info.y, info.w, info.h);
+        let local_bounds = Bounds::new(0.0, 0.0, info.w, info.h);
+        let hit_bounds = Bounds::new(info.x, info.y, info.w, info.h);
 
         // Register hitbox if needed
         if info.needs_hitbox {
-            let hitbox_id = self.dom.hitbox_store.insert(info.node_id, bounds);
+            let hitbox_id = self.dom.hitbox_store.insert_transformed(
+                info.node_id,
+                local_bounds,
+                info.hit_transform,
+            );
             self.dom.nodes[info.node_id].interactivity.hitbox_id = Some(hitbox_id);
         }
 
@@ -401,10 +438,10 @@ impl<'a> Painter<'a> {
             let content_info = crate::element::input::paint_input(
                 self.scene,
                 self.text_renderer,
-                bounds,
+                local_bounds,
                 &info.style,
                 input_info,
-                scale,
+                info.transform,
             );
 
             // Paint scrollbar for multiline inputs with overflow
@@ -420,20 +457,22 @@ impl<'a> Painter<'a> {
                         .dom
                         .hit_state
                         .mouse_position
-                        .is_some_and(|(mx, my)| bounds.contains(mx, my));
+                        .is_some_and(|(mx, my)| hit_bounds.contains(mx, my));
 
                 let thumb_width = 4.0;
                 let thumb_margin = 4.0;
                 let ratio = ci.visible_height / ci.content_height;
-                let thumb_height = (bounds.height * ratio).max(24.0);
+                let thumb_height = (hit_bounds.height * ratio).max(24.0);
                 let max_scroll = (ci.content_height - ci.visible_height).max(0.0);
                 let scroll_ratio = if max_scroll > 0.0 {
                     ci.scroll_offset_y / max_scroll
                 } else {
                     0.0
                 };
-                let thumb_y = bounds.y + scroll_ratio * (bounds.height - thumb_height);
-                let thumb_x = bounds.x + bounds.width - thumb_width - thumb_margin;
+                let local_thumb_y = scroll_ratio * (hit_bounds.height - thumb_height);
+                let local_thumb_x = hit_bounds.width - thumb_width - thumb_margin;
+                let thumb_y = hit_bounds.y + local_thumb_y;
+                let thumb_x = hit_bounds.x + local_thumb_x;
 
                 let thumb_bounds = Bounds::new(thumb_x, thumb_y, thumb_width, thumb_height);
 
@@ -441,7 +480,7 @@ impl<'a> Painter<'a> {
                 self.dom.scroll_thumbs.push(ScrollThumbRect {
                     node_id: info.node_id,
                     thumb_bounds,
-                    view_bounds: bounds,
+                    view_bounds: hit_bounds,
                     content_height: ci.content_height as f32,
                     visible_height: ci.visible_height as f32,
                 });
@@ -461,90 +500,87 @@ impl<'a> Painter<'a> {
                     let color = VelloColor::from_rgba8(255, 255, 255, alpha);
                     let radius = thumb_width / 2.0;
                     let rect = Rect::new(
-                        thumb_x,
-                        thumb_y,
-                        thumb_x + thumb_width,
-                        thumb_y + thumb_height,
+                        local_thumb_x,
+                        local_thumb_y,
+                        local_thumb_x + thumb_width,
+                        local_thumb_y + thumb_height,
                     );
                     let rounded =
                         RoundedRect::from_rect(rect, RoundedRectRadii::from_single_radius(radius));
                     // Clip to input bounds
-                    let clip = Rect::new(
-                        bounds.x,
-                        bounds.y,
-                        bounds.x + bounds.width,
-                        bounds.y + bounds.height,
-                    );
+                    let clip = Rect::new(0.0, 0.0, hit_bounds.width, hit_bounds.height);
                     self.scene
-                        .push_clip_layer(Fill::NonZero, Affine::scale(scale), &clip);
+                        .push_clip_layer(Fill::NonZero, info.transform, &clip);
                     self.scene
-                        .fill(Fill::NonZero, Affine::scale(scale), color, None, &rounded);
+                        .fill(Fill::NonZero, info.transform, color, None, &rounded);
                     self.scene.pop_layer();
                 }
             }
         } else if let Some(checkbox_info) = &info.checkbox {
             crate::element::checkbox::paint_checkbox(
                 self.scene,
-                bounds,
+                local_bounds,
                 &info.style,
                 checkbox_info,
-                scale,
+                info.transform,
             );
         } else if let Some((content, text_style)) = &info.text {
             let sel_range = text_sel_map.get(&info.node_id).copied();
             if sel_range.is_some() {
                 let scene = &mut *self.scene;
                 let text_renderer = &mut *self.text_renderer;
-                info.style.paint(bounds, scene, scale, |scene| {
-                    if let Some((sel_start, sel_end)) = sel_range {
-                        let rects = text_renderer.selection_rects(
+                info.style
+                    .paint(local_bounds, scene, info.transform, |scene| {
+                        if let Some((sel_start, sel_end)) = sel_range {
+                            let rects = text_renderer.selection_rects(
+                                content,
+                                text_style,
+                                Some(local_bounds.width as f32),
+                                sel_start,
+                                sel_end,
+                            );
+                            let sel_color = VelloColor::from_rgba8(56, 121, 185, 128);
+                            for rect in rects {
+                                scene.fill(
+                                    Fill::NonZero,
+                                    info.transform,
+                                    sel_color,
+                                    None,
+                                    &Rect::new(rect.x0, rect.y0, rect.x1, rect.y1),
+                                );
+                            }
+                        }
+                        text_renderer.draw_text(
+                            scene,
                             content,
                             text_style,
-                            Some(bounds.width as f32),
-                            sel_start,
-                            sel_end,
+                            local_bounds.width as f32,
+                            local_bounds.height as f32,
+                            (0.0, 0.0),
+                            text_style.color.to_vello(),
+                            info.transform,
                         );
-                        let sel_color = VelloColor::from_rgba8(56, 121, 185, 128);
-                        for rect in rects {
-                            scene.fill(
-                                Fill::NonZero,
-                                Affine::scale(scale),
-                                sel_color,
-                                None,
-                                &Rect::new(
-                                    bounds.x + rect.x0,
-                                    bounds.y + rect.y0,
-                                    bounds.x + rect.x1,
-                                    bounds.y + rect.y1,
-                                ),
-                            );
-                        }
-                    }
-                    text_renderer.draw_text(
-                        scene,
-                        content,
-                        text_style,
-                        bounds.width as f32,
-                        bounds.height as f32,
-                        (bounds.x as f32, bounds.y as f32),
-                        text_style.color.to_vello(),
-                        scale,
-                    );
-                });
+                    });
             } else {
                 crate::element::text::paint_text(
                     self.scene,
                     self.text_renderer,
-                    bounds,
+                    local_bounds,
                     &info.style,
                     content,
                     text_style,
                     text_style.color,
-                    scale,
+                    info.transform,
                 );
             }
         } else {
-            crate::element::view::paint_view(self.scene, bounds, &info.style, scale, |_| {});
+            crate::element::view::paint_view(
+                self.scene,
+                local_bounds,
+                &info.style,
+                info.transform,
+                |_| {},
+            );
         }
     }
 
@@ -567,8 +603,10 @@ impl<'a> Painter<'a> {
         } else {
             0.0
         };
-        let thumb_y = thumb.view_y + scroll_ratio * (track_height - thumb_height);
-        let thumb_x = thumb.view_x + thumb.view_w - thumb_width - thumb_margin;
+        let local_thumb_y = scroll_ratio * (track_height - thumb_height);
+        let local_thumb_x = thumb.view_w - thumb_width - thumb_margin;
+        let thumb_y = thumb.view_bounds.y + local_thumb_y;
+        let thumb_x = thumb.view_bounds.x + local_thumb_x;
 
         let thumb_bounds = Bounds::new(thumb_x, thumb_y, thumb_width, thumb_height);
 
@@ -576,7 +614,7 @@ impl<'a> Painter<'a> {
         self.dom.scroll_thumbs.push(ScrollThumbRect {
             node_id: thumb.node_id,
             thumb_bounds,
-            view_bounds: Bounds::new(thumb.view_x, thumb.view_y, thumb.view_w, thumb.view_h),
+            view_bounds: thumb.view_bounds,
             content_height: thumb.content_height,
             visible_height: thumb.visible_height,
         });
@@ -586,19 +624,14 @@ impl<'a> Painter<'a> {
         let color = VelloColor::from_rgba8(255, 255, 255, alpha);
         let radius = thumb_width / 2.0;
         let rect = Rect::new(
-            thumb_x,
-            thumb_y,
-            thumb_x + thumb_width,
-            thumb_y + thumb_height,
+            local_thumb_x,
+            local_thumb_y,
+            local_thumb_x + thumb_width,
+            local_thumb_y + thumb_height,
         );
         let rounded = RoundedRect::from_rect(rect, RoundedRectRadii::from_single_radius(radius));
-        self.scene.fill(
-            Fill::NonZero,
-            Affine::scale(thumb.scale),
-            color,
-            None,
-            &rounded,
-        );
+        self.scene
+            .fill(Fill::NonZero, thumb.transform, color, None, &rounded);
     }
 
     /// Pre-compute per-text-node selection ranges for the current frame.
@@ -643,6 +676,8 @@ struct RenderInfo {
     y: f64,
     w: f64,
     h: f64,
+    transform: Affine,
+    hit_transform: Affine,
     style: Box<UzStyle>,
     text: Option<(String, TextStyle)>,
     needs_hitbox: bool,
@@ -652,8 +687,8 @@ struct RenderInfo {
 
 struct ThumbInfo {
     node_id: UzNodeId,
-    view_x: f64,
-    view_y: f64,
+    view_bounds: Bounds,
+    transform: Affine,
     view_w: f64,
     view_h: f64,
     scroll_offset_y: f32,
@@ -661,19 +696,18 @@ struct ThumbInfo {
     visible_height: f32,
     thumb_hovered: bool,
     mouse_in_view: bool,
-    scale: f64,
 }
 
 enum RenderCommand {
     PaintNode(Box<RenderInfo>),
-    PushClip(Rect, f64),
+    PushClip(Rect, Affine),
     PopClip,
     PaintThumb(ThumbInfo),
 }
 
 enum StackItem {
-    Visit(UzNodeId, f64, f64, InheritedProperties),
-    PushClip(Rect, f64),
+    Visit(UzNodeId, f64, f64, Affine, Affine, InheritedProperties),
+    PushClip(Rect, Affine),
     PopClip,
     PaintThumb(ThumbInfo),
 }

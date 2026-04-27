@@ -343,6 +343,64 @@ export function LayoutPage() {
         <Divider />
 
         <view display="flex" flexDir="col" gap={12}>
+          <view display="flex" flexDir="col" gap={4}>
+            <text fontSize={14} fontWeight={700} color={C.text}>
+              Transforms
+            </text>
+            <text fontSize={12} color={C.textMuted}>
+              translate, rotate, scale, and hover:scale without changing layout
+            </text>
+          </view>
+          <view
+            display="flex"
+            flexDir="row"
+            gap={16}
+            p={18}
+            bg={C.surface2}
+            rounded={8}
+            border={1}
+            borderColor={C.border}
+          >
+            {[
+              {
+                label: 'hover scale',
+                props: { scale: 1, 'hover:scale': 1.16 },
+                color: C.accent,
+              },
+              {
+                label: 'rotated',
+                props: { rotate: -8, 'hover:rotate': 8 },
+                color: C.primary,
+              },
+              {
+                label: 'translated',
+                props: { translate: [0, 0], 'hover:translate': [10, -8] },
+                color: C.success,
+              },
+            ].map(({ label, props, color }) => (
+              <view
+                key={label}
+                w={120}
+                h={72}
+                bg={color}
+                rounded={8}
+                cursor="pointer"
+                display="flex"
+                items="center"
+                justify="center"
+                {...props}
+              >
+                <text fontSize={12} fontWeight={800} color="#ffffff">
+                  {label}
+                </text>
+              </view>
+            ))}
+          </view>
+        </view>
+
+        <Divider />
+
+        <view display="flex" flexDir="col" gap={12}>
           <view display="flex" flexDir="row" items="center" gap={20}>
             <text fontSize={14} fontWeight={700} color={C.text}>
               Dynamic gap / padding

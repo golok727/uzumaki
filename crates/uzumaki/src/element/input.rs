@@ -41,14 +41,14 @@ pub fn paint_input(
     bounds: Bounds,
     style: &UzStyle,
     input: &InputRenderInfo,
-    scale: f64,
+    transform: Affine,
 ) -> Option<InputContentInfo> {
     let pad_l = style.padding.left as f64;
     let pad_r = style.padding.right as f64;
     let pad_t = style.padding.top as f64;
     let pad_b = style.padding.bottom as f64;
-    let content_x = bounds.x + pad_l;
-    let content_y = bounds.y + pad_t;
+    let content_x = pad_l;
+    let content_y = pad_t;
     let content_w = (bounds.width - pad_l - pad_r).max(0.0);
     let content_h = (bounds.height - pad_t - pad_b).max(0.0);
 
@@ -72,7 +72,7 @@ pub fn paint_input(
         paint_style.corner_radii = Corners::uniform(4.0);
     }
 
-    paint_style.paint(bounds, scene, scale, |_| {});
+    paint_style.paint(bounds, scene, transform, |_| {});
 
     // Clip to text area
     let clip_rect = Rect::new(
@@ -81,7 +81,7 @@ pub fn paint_input(
         content_x + content_w,
         content_y + content_h,
     );
-    scene.push_clip_layer(Fill::NonZero, Affine::scale(scale), &clip_rect);
+    scene.push_clip_layer(Fill::NonZero, transform, &clip_rect);
 
     let is_empty = input.display_text.is_empty();
     let line_height = (input.text_style.font_size * input.text_style.line_height).round();
@@ -102,7 +102,7 @@ pub fn paint_input(
             content_h as f32,
             (content_x as f32, py),
             VelloColor::from_rgba8(128, 128, 128, 255),
-            scale,
+            transform,
         );
     }
 
@@ -132,7 +132,7 @@ pub fn paint_input(
                 let y2 = oy + rect.y1;
                 scene.fill(
                     Fill::NonZero,
-                    Affine::scale(scale),
+                    transform,
                     sel_color,
                     None,
                     &Rect::new(x1, y1, x2, y2),
@@ -169,7 +169,7 @@ pub fn paint_input(
                 },
             (tx, ty),
             input.text_style.color.to_vello(),
-            scale,
+            transform,
         );
     }
 
@@ -194,13 +194,7 @@ pub fn paint_input(
         // Background highlight for preedit
         let preedit_bg = VelloColor::from_rgba8(50, 50, 60, 180);
         let preedit_rect = Rect::new(px, py, px + preedit.width as f64, py + preedit_h);
-        scene.fill(
-            Fill::NonZero,
-            Affine::scale(scale),
-            preedit_bg,
-            None,
-            &preedit_rect,
-        );
+        scene.fill(Fill::NonZero, transform, preedit_bg, None, &preedit_rect);
 
         // Preedit text
         text_renderer.draw_text(
@@ -211,7 +205,7 @@ pub fn paint_input(
             content_h as f32,
             (px as f32, py as f32),
             input.text_style.color.to_vello(),
-            scale,
+            transform,
         );
 
         // Underline
@@ -224,7 +218,7 @@ pub fn paint_input(
         );
         scene.fill(
             Fill::NonZero,
-            Affine::scale(scale),
+            transform,
             VelloColor::from_rgba8(180, 180, 180, 255),
             None,
             &underline,
@@ -252,7 +246,7 @@ pub fn paint_input(
         let cursor_rect = Rect::new(cx, cy + 2.0, cx + 1.5, cy + cr.y1 - cr.y0 - 2.0);
         scene.fill(
             Fill::NonZero,
-            Affine::scale(scale),
+            transform,
             VelloColor::from_rgba8(212, 212, 212, 255),
             None,
             &cursor_rect,

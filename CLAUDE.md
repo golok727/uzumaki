@@ -14,7 +14,9 @@ Intrinsic elements: `<view>`, `<text>`, `<p>`, `<button>`
 
 **Styling:** `bg`, `color`, `fontSize`, `fontWeight`, `rounded`, `roundedTL/TR/BR/BL`, `border`, `borderTop/Right/Bottom/Left`, `borderColor`, `opacity`, `display` (`"flex"` | `"none"` | `"block"`), `cursor`, `visible`
 
-**State variants:** `hover:bg`, `hover:color`, `hover:opacity`, `hover:borderColor`, `active:bg`, `active:color`, `active:opacity`, `active:borderColor`
+**Transforms:** `translate`, `translateX`, `translateY`, `rotate`, `scale`, `scaleX`, `scaleY`
+
+**State variants:** `hover:bg`, `hover:color`, `hover:opacity`, `hover:borderColor`, `active:bg`, `active:color`, `active:opacity`, `active:borderColor`, `hover:translate`, `hover:translateX`, `hover:translateY`, `hover:rotate`, `hover:scale`, `hover:scaleX`, `hover:scaleY`, `active:translate`, `active:translateX`, `active:translateY`, `active:rotate`, `active:scale`, `active:scaleX`, `active:scaleY`
 
 **Events:** `onClick`, `onMouseDown`, `onMouseUp`
 

@@ -36,7 +36,7 @@ interface ElementStyles {
   bg?: string;
   color?: string;
   fontSize?: number | string;
-  fontWeight?: string;
+  fontWeight?: string | number;
   overflowWrap?: 'normal' | 'anywhere' | 'break-word';
   wordBreak?: 'normal' | 'break-all' | 'keep-all';
   rounded?: number | string;
@@ -79,6 +79,13 @@ interface ElementStyles {
   right?: number | string;
   bottom?: number | string;
   left?: number | string;
+  translate?: number | [number, number] | { x?: number; y?: number };
+  translateX?: number | string;
+  translateY?: number | string;
+  rotate?: number | string;
+  scale?: number | [number, number] | { x?: number; y?: number };
+  scaleX?: number | string;
+  scaleY?: number | string;
   scrollable?: boolean;
   // if true text inside this view can be selected
   selectable?: boolean;

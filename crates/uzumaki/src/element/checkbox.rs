@@ -14,7 +14,7 @@ pub fn paint_checkbox(
     bounds: Bounds,
     style: &UzStyle,
     checkbox: &CheckboxRenderInfo,
-    scale: f64,
+    transform: Affine,
 ) {
     let mut paint_style = style.clone();
     let accent = paint_style.background.unwrap_or(Color::rgb(59, 130, 246));
@@ -40,39 +40,25 @@ pub fn paint_checkbox(
 
     if checkbox.focused {
         let halo = RoundedRect::from_rect(
-            vello::kurbo::Rect::new(
-                bounds.x - 3.0,
-                bounds.y - 3.0,
-                bounds.x + bounds.width + 3.0,
-                bounds.y + bounds.height + 3.0,
-            ),
+            vello::kurbo::Rect::new(-3.0, -3.0, bounds.width + 3.0, bounds.height + 3.0),
             RoundedRectRadii::from_single_radius((bounds.width.min(bounds.height) * 0.22) + 3.0),
         );
         scene.fill(
             Fill::NonZero,
-            Affine::scale(scale),
+            transform,
             accent.with_opacity(0.22).to_vello(),
             None,
             &halo,
         );
     }
 
-    paint_style.paint(bounds, scene, scale, |_| {});
+    paint_style.paint(bounds, scene, transform, |_| {});
 
     if checkbox.checked {
         let mut path = BezPath::new();
-        path.move_to((
-            bounds.x + bounds.width * 0.24,
-            bounds.y + bounds.height * 0.52,
-        ));
-        path.line_to((
-            bounds.x + bounds.width * 0.43,
-            bounds.y + bounds.height * 0.71,
-        ));
-        path.line_to((
-            bounds.x + bounds.width * 0.76,
-            bounds.y + bounds.height * 0.30,
-        ));
+        path.move_to((bounds.width * 0.24, bounds.height * 0.52));
+        path.line_to((bounds.width * 0.43, bounds.height * 0.71));
+        path.line_to((bounds.width * 0.76, bounds.height * 0.30));
 
         let stroke = Stroke {
             width: (bounds.width.min(bounds.height) * 0.14).max(2.0),
@@ -84,12 +70,6 @@ pub fn paint_checkbox(
             dash_offset: 0.0,
         };
 
-        scene.stroke(
-            &stroke,
-            Affine::scale(scale),
-            style.text.color.to_vello(),
-            None,
-            &path,
-        );
+        scene.stroke(&stroke, transform, style.text.color.to_vello(), None, &path);
     }
 }

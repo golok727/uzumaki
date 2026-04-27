@@ -1,4 +1,5 @@
 use refineable::Refineable;
+use vello::kurbo::{Affine, Point};
 
 use crate::element::UzNodeId;
 use crate::style::{Bounds, UzStyle, UzStyleRefinement};
@@ -10,13 +11,23 @@ pub struct HitboxId(pub u64);
 pub struct Hitbox {
     pub id: HitboxId,
     pub node_id: UzNodeId,
+    /// Axis-aligned logical bounds kept for legacy geometry consumers.
     pub bounds: Bounds,
+    /// The node-local hit region before transform.
+    pub local_bounds: Bounds,
+    /// Logical-space transform from local node coordinates to window coordinates.
+    pub transform: Affine,
 }
 
 impl Hitbox {
     /// Check if this hitbox is hovered according to the current hit test result.
     pub fn is_hovered(&self, hit_state: &HitTestState) -> bool {
         hit_state.is_hovered(self.node_id)
+    }
+
+    pub fn contains(&self, x: f64, y: f64) -> bool {
+        let local = self.transform.inverse() * Point::new(x, y);
+        self.local_bounds.contains(local.x, local.y)
     }
 }
 
@@ -64,12 +75,24 @@ impl HitboxStore {
 
     /// Register a hitbox and return its ID.
     pub fn insert(&mut self, node_id: UzNodeId, bounds: Bounds) -> HitboxId {
+        self.insert_transformed(node_id, bounds, Affine::IDENTITY)
+    }
+
+    pub fn insert_transformed(
+        &mut self,
+        node_id: UzNodeId,
+        local_bounds: Bounds,
+        transform: Affine,
+    ) -> HitboxId {
         let id = HitboxId(self.next_id);
         self.next_id += 1;
+        let bounds = transformed_axis_aligned_bounds(local_bounds, transform);
         self.hitboxes.push(Hitbox {
             id,
             node_id,
             bounds,
+            local_bounds,
+            transform,
         });
         id
     }
@@ -87,7 +110,7 @@ impl HitboxStore {
 
         // Walk back-to-front: later entries are painted on top
         for hitbox in self.hitboxes.iter().rev() {
-            if hitbox.bounds.contains(x, y) {
+            if hitbox.contains(x, y) {
                 if top_node.is_none() {
                     top_node = Some(hitbox.node_id);
                 }
@@ -111,6 +134,26 @@ impl HitboxStore {
     pub fn hitboxes(&self) -> &[Hitbox] {
         &self.hitboxes
     }
+}
+
+fn transformed_axis_aligned_bounds(bounds: Bounds, transform: Affine) -> Bounds {
+    let points = [
+        transform * Point::new(bounds.x, bounds.y),
+        transform * Point::new(bounds.x + bounds.width, bounds.y),
+        transform * Point::new(bounds.x + bounds.width, bounds.y + bounds.height),
+        transform * Point::new(bounds.x, bounds.y + bounds.height),
+    ];
+
+    let (mut min_x, mut min_y) = (points[0].x, points[0].y);
+    let (mut max_x, mut max_y) = (points[0].x, points[0].y);
+    for point in points.iter().skip(1) {
+        min_x = min_x.min(point.x);
+        min_y = min_y.min(point.y);
+        max_x = max_x.max(point.x);
+        max_y = max_y.max(point.y);
+    }
+
+    Bounds::new(min_x, min_y, max_x - min_x, max_y - min_y)
 }
 
 #[derive(Clone, Debug)]

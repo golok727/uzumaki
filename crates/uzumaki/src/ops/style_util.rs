@@ -303,10 +303,6 @@ fn get_element_prop(node: &Node, prop: ElementProp) -> Value {
     }
 }
 
-// ---------------------------------------------------------------------------
-// Style prop setters
-// ---------------------------------------------------------------------------
-
 fn set_style_str(
     node: &mut Node,
     prop: StyleProp,
@@ -400,7 +396,13 @@ fn set_variant_style_str(
                 clear_style_prop(node, prop, variant)
             }
         }
-        StyleProp::Opacity => {
+        StyleProp::Opacity
+        | StyleProp::TranslateX
+        | StyleProp::TranslateY
+        | StyleProp::Rotate
+        | StyleProp::Scale
+        | StyleProp::ScaleX
+        | StyleProp::ScaleY => {
             let v = parse_px_scalar(value, rem_base).unwrap_or_default();
             set_variant_f32(node, prop, variant, v)
         }
@@ -493,6 +495,15 @@ fn set_variant_f32(
     let r = get_or_init_variant_style(node, variant);
     match prop {
         StyleProp::Opacity => r.opacity = Some(value),
+        StyleProp::TranslateX => r.transform.translate_x = Some(value),
+        StyleProp::TranslateY => r.transform.translate_y = Some(value),
+        StyleProp::Rotate => r.transform.rotate = Some(value),
+        StyleProp::Scale => {
+            r.transform.scale_x = Some(value);
+            r.transform.scale_y = Some(value);
+        }
+        StyleProp::ScaleX => r.transform.scale_x = Some(value),
+        StyleProp::ScaleY => r.transform.scale_y = Some(value),
         _ => return StyleEffect::Ignored,
     }
     StyleEffect::Applied
@@ -510,6 +521,15 @@ fn clear_variant_prop(node: &mut Node, prop: StyleProp, variant: StyleVariant) -
             StyleProp::Color => style.text.color = None,
             StyleProp::Opacity => style.opacity = None,
             StyleProp::BorderColor => style.border_color = None,
+            StyleProp::TranslateX => style.transform.translate_x = None,
+            StyleProp::TranslateY => style.transform.translate_y = None,
+            StyleProp::Rotate => style.transform.rotate = None,
+            StyleProp::Scale => {
+                style.transform.scale_x = None;
+                style.transform.scale_y = None;
+            }
+            StyleProp::ScaleX => style.transform.scale_x = None,
+            StyleProp::ScaleY => style.transform.scale_y = None,
             _ => {}
         }
     }
@@ -581,6 +601,35 @@ fn set_f32_style_prop(node: &mut Node, prop: StyleProp, v: f32) -> StyleEffect {
         }
         StyleProp::TextSelect => {
             node.set_text_selectable((v > 0.5).into());
+            return StyleEffect::Applied;
+        }
+        _ => {}
+    }
+
+    match prop {
+        StyleProp::TranslateX => {
+            node.style.transform.translate_x = v;
+            return StyleEffect::Applied;
+        }
+        StyleProp::TranslateY => {
+            node.style.transform.translate_y = v;
+            return StyleEffect::Applied;
+        }
+        StyleProp::Rotate => {
+            node.style.transform.rotate = v;
+            return StyleEffect::Applied;
+        }
+        StyleProp::Scale => {
+            node.style.transform.scale_x = v;
+            node.style.transform.scale_y = v;
+            return StyleEffect::Applied;
+        }
+        StyleProp::ScaleX => {
+            node.style.transform.scale_x = v;
+            return StyleEffect::Applied;
+        }
+        StyleProp::ScaleY => {
+            node.style.transform.scale_y = v;
             return StyleEffect::Applied;
         }
         _ => {}
@@ -849,6 +898,15 @@ fn clear_style_prop(node: &mut Node, prop: StyleProp, variant: StyleVariant) -> 
         StyleProp::BorderLeft => node.style.border_widths.left = default.border_widths.left,
         StyleProp::BorderColor => node.style.border_color = default.border_color,
         StyleProp::Opacity => node.style.opacity = default.opacity,
+        StyleProp::TranslateX => node.style.transform.translate_x = default.transform.translate_x,
+        StyleProp::TranslateY => node.style.transform.translate_y = default.transform.translate_y,
+        StyleProp::Rotate => node.style.transform.rotate = default.transform.rotate,
+        StyleProp::Scale => {
+            node.style.transform.scale_x = default.transform.scale_x;
+            node.style.transform.scale_y = default.transform.scale_y;
+        }
+        StyleProp::ScaleX => node.style.transform.scale_x = default.transform.scale_x,
+        StyleProp::ScaleY => node.style.transform.scale_y = default.transform.scale_y,
         StyleProp::Display => node.style.display = default.display,
         StyleProp::Cursor => node.style.cursor = default.cursor,
         StyleProp::Interactive => node.interactivity.js_interactive = false,
@@ -867,7 +925,15 @@ fn clear_style_prop(node: &mut Node, prop: StyleProp, variant: StyleVariant) -> 
         StyleProp::Left => node.style.inset.left = default.inset.left,
     }
     match prop {
-        StyleProp::Interactive | StyleProp::TextSelect | StyleProp::Cursor => StyleEffect::Applied,
+        StyleProp::Interactive
+        | StyleProp::TextSelect
+        | StyleProp::Cursor
+        | StyleProp::TranslateX
+        | StyleProp::TranslateY
+        | StyleProp::Rotate
+        | StyleProp::Scale
+        | StyleProp::ScaleX
+        | StyleProp::ScaleY => StyleEffect::Applied,
         _ => StyleEffect::AppliedNeedsSync,
     }
 }
@@ -897,6 +963,12 @@ fn get_style_prop(node: &Node, prop: StyleProp) -> Value {
         StyleProp::FontSize => json!(style.text.font_size),
         StyleProp::Rounded => json!(style.corner_radii.top_left),
         StyleProp::Border => json!(style.border_widths.top),
+        StyleProp::TranslateX => json!(style.transform.translate_x),
+        StyleProp::TranslateY => json!(style.transform.translate_y),
+        StyleProp::Rotate => json!(style.transform.rotate),
+        StyleProp::Scale => json!(style.transform.scale_x),
+        StyleProp::ScaleX => json!(style.transform.scale_x),
+        StyleProp::ScaleY => json!(style.transform.scale_y),
         _ => Value::Null,
     }
 }

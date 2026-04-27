@@ -86,7 +86,7 @@ impl TextRenderer {
         height: f32,
         position: (f32, f32),
         color: Color,
-        scale: f64,
+        transform: Affine,
     ) {
         let _ = height;
         let layout = self.build_layout(text, style, Some(width));
@@ -106,7 +106,7 @@ impl TextRenderer {
                     scene
                         .draw_glyphs(&font)
                         .font_size(run_font_size)
-                        .transform(Affine::scale(scale))
+                        .transform(transform)
                         .glyph_transform(glyph_xform)
                         .brush(&Brush::Solid(color))
                         .draw(

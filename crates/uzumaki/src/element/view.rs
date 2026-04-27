@@ -1,4 +1,5 @@
 use vello::Scene;
+use vello::kurbo::Affine;
 
 use crate::style::{Bounds, UzStyle};
 
@@ -8,8 +9,8 @@ pub fn paint_view(
     scene: &mut Scene,
     bounds: Bounds,
     style: &UzStyle,
-    scale: f64,
+    transform: Affine,
     paint_children: impl FnOnce(&mut Scene),
 ) {
-    style.paint(bounds, scene, scale, paint_children);
+    style.paint(bounds, scene, transform, paint_children);
 }

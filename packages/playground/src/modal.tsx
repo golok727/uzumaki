@@ -65,7 +65,6 @@ export function Modal({ onClose }: { onClose: () => void }) {
         borderColor={C.borderHi}
         display="flex"
         flexDir="col"
-        overflow="hidden"
       >
         <view
           px={24}

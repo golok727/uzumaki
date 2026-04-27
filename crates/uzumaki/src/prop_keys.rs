@@ -63,6 +63,12 @@ pub(crate) enum StyleProp {
     Right,
     Bottom,
     Left,
+    TranslateX,
+    TranslateY,
+    Rotate,
+    Scale,
+    ScaleX,
+    ScaleY,
 }
 
 #[derive(Copy, Clone, Debug, Eq, PartialEq)]
@@ -166,6 +172,12 @@ impl FromStr for StyleProp {
             "right" => Self::Right,
             "bottom" => Self::Bottom,
             "left" => Self::Left,
+            "translateX" => Self::TranslateX,
+            "translateY" => Self::TranslateY,
+            "rotate" => Self::Rotate,
+            "scale" => Self::Scale,
+            "scaleX" => Self::ScaleX,
+            "scaleY" => Self::ScaleY,
             _ => return Err(()),
         })
     }

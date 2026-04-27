@@ -365,6 +365,16 @@ pub struct TextStyle {
     pub word_break: WordBreak,
 }
 
+#[derive(Clone, Copy, Debug, PartialEq, Refineable)]
+#[refineable(Debug)]
+pub struct TransformStyle {
+    pub translate_x: f32,
+    pub translate_y: f32,
+    pub rotate: f32,
+    pub scale_x: f32,
+    pub scale_y: f32,
+}
+
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
 pub enum TextSelectable {
     #[default]
@@ -401,6 +411,38 @@ impl Default for TextStyle {
             overflow_wrap: OverflowWrap::default(),
             word_break: WordBreak::default(),
         }
+    }
+}
+
+impl Default for TransformStyle {
+    fn default() -> Self {
+        Self {
+            translate_x: 0.0,
+            translate_y: 0.0,
+            rotate: 0.0,
+            scale_x: 1.0,
+            scale_y: 1.0,
+        }
+    }
+}
+
+impl TransformStyle {
+    pub fn is_identity(&self) -> bool {
+        self.translate_x == 0.0
+            && self.translate_y == 0.0
+            && self.rotate == 0.0
+            && self.scale_x == 1.0
+            && self.scale_y == 1.0
+    }
+
+    pub fn to_affine(self, width: f64, height: f64) -> Affine {
+        let cx = width * 0.5;
+        let cy = height * 0.5;
+        Affine::translate((self.translate_x as f64, self.translate_y as f64))
+            * Affine::translate((cx, cy))
+            * Affine::rotate((self.rotate as f64).to_radians())
+            * Affine::scale_non_uniform(self.scale_x as f64, self.scale_y as f64)
+            * Affine::translate((-cx, -cy))
     }
 }
 
@@ -479,6 +521,9 @@ pub struct UzStyle {
     #[refineable]
     pub text: TextStyle,
 
+    #[refineable]
+    pub transform: TransformStyle,
+
     /// Whether text within this element is selectable.
     /// None = inherit from parent (default). Some(true) = selectable, Some(false) = not.
     /// toro move to style
@@ -523,6 +568,7 @@ impl Default for UzStyle {
             cursor: None,
 
             text: TextStyle::default(),
+            transform: TransformStyle::default(),
             text_selectable: TextSelectable::Inherit,
         }
     }
@@ -592,7 +638,7 @@ impl UzStyle {
         &self,
         bounds: Bounds,
         scene: &mut Scene,
-        scale: f64,
+        transform: Affine,
         continuation: impl FnOnce(&mut Scene),
     ) {
         if self.visibility == Visibility::Hidden || self.opacity <= 0.0 {
@@ -603,7 +649,7 @@ impl UzStyle {
 
         // 1. Box shadow
         if let Some(shadow) = &self.box_shadow {
-            self.paint_shadow(bounds, scene, shadow, opacity, scale);
+            self.paint_shadow(bounds, scene, shadow, opacity, transform);
         }
 
         // 2. Background
@@ -613,17 +659,11 @@ impl UzStyle {
             let vbg = bg.with_opacity(opacity).to_vello();
             if self.corner_radii.any_nonzero() {
                 let shape = rounded_rect(bounds, &self.corner_radii);
-                scene.fill(
-                    vello::peniko::Fill::NonZero,
-                    Affine::scale(scale),
-                    vbg,
-                    None,
-                    &shape,
-                );
+                scene.fill(vello::peniko::Fill::NonZero, transform, vbg, None, &shape);
             } else {
                 scene.fill(
                     vello::peniko::Fill::NonZero,
-                    Affine::scale(scale),
+                    transform,
                     vbg,
                     None,
                     &bounds.to_rect(),
@@ -641,9 +681,9 @@ impl UzStyle {
         {
             let vbc = bc.with_opacity(opacity).to_vello();
             if self.corner_radii.any_nonzero() {
-                self.paint_rounded_borders(bounds, scene, vbc, scale);
+                self.paint_rounded_borders(bounds, scene, vbc, transform);
             } else {
-                self.paint_rect_borders(bounds, scene, vbc, scale);
+                self.paint_rect_borders(bounds, scene, vbc, transform);
             }
         }
     }
@@ -654,7 +694,7 @@ impl UzStyle {
         scene: &mut Scene,
         shadow: &BoxShadow,
         opacity: f32,
-        scale: f64,
+        transform: Affine,
     ) {
         let spread = shadow.spread_radius as f64;
         let ox = shadow.offset_x as f64;
@@ -672,17 +712,11 @@ impl UzStyle {
 
         if self.corner_radii.any_nonzero() {
             let shape = rounded_rect(expanded, &self.corner_radii);
-            scene.fill(
-                vello::peniko::Fill::NonZero,
-                Affine::scale(scale),
-                vc,
-                None,
-                &shape,
-            );
+            scene.fill(vello::peniko::Fill::NonZero, transform, vc, None, &shape);
         } else {
             scene.fill(
                 vello::peniko::Fill::NonZero,
-                Affine::scale(scale),
+                transform,
                 vc,
                 None,
                 &expanded.to_rect(),
@@ -695,33 +729,21 @@ impl UzStyle {
         bounds: Bounds,
         scene: &mut Scene,
         color: VelloColor,
-        scale: f64,
+        transform: Affine,
     ) {
         let bw = &self.border_widths;
 
         if let Some(width) = border_widths_equal(bw) {
             if width > 0.0 {
                 let shape = rounded_rect(bounds, &self.corner_radii);
-                scene.stroke(
-                    &Stroke::new(width as f64),
-                    Affine::scale(scale),
-                    color,
-                    None,
-                    &shape,
-                );
+                scene.stroke(&Stroke::new(width as f64), transform, color, None, &shape);
             }
             return;
         }
 
         // Fill outer, carve inner
         let outer = rounded_rect(bounds, &self.corner_radii);
-        scene.fill(
-            vello::peniko::Fill::NonZero,
-            Affine::scale(scale),
-            color,
-            None,
-            &outer,
-        );
+        scene.fill(vello::peniko::Fill::NonZero, transform, color, None, &outer);
 
         let inner_rect = Rect::new(
             bounds.x + bw.left as f64,
@@ -745,16 +767,16 @@ impl UzStyle {
         );
 
         let bg = self.background.unwrap_or(Color::TRANSPARENT).to_vello();
-        scene.fill(
-            vello::peniko::Fill::NonZero,
-            Affine::scale(scale),
-            bg,
-            None,
-            &inner,
-        );
+        scene.fill(vello::peniko::Fill::NonZero, transform, bg, None, &inner);
     }
 
-    fn paint_rect_borders(&self, bounds: Bounds, scene: &mut Scene, color: VelloColor, scale: f64) {
+    fn paint_rect_borders(
+        &self,
+        bounds: Bounds,
+        scene: &mut Scene,
+        color: VelloColor,
+        transform: Affine,
+    ) {
         let bw = &self.border_widths;
         let x = bounds.x;
         let y = bounds.y;
@@ -765,7 +787,7 @@ impl UzStyle {
             if width > 0.0 {
                 scene.stroke(
                     &Stroke::new(width as f64),
-                    Affine::scale(scale),
+                    transform,
                     color,
                     None,
                     &Rect::new(x, y, x + w, y + h),
@@ -775,13 +797,7 @@ impl UzStyle {
         }
 
         let fill = |scene: &mut Scene, rect: Rect| {
-            scene.fill(
-                vello::peniko::Fill::NonZero,
-                Affine::scale(scale),
-                color,
-                None,
-                &rect,
-            );
+            scene.fill(vello::peniko::Fill::NonZero, transform, color, None, &rect);
         };
 
         if bw.top > 0.0 {

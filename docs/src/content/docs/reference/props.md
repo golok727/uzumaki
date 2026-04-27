@@ -61,6 +61,39 @@ Props accept numbers, strings, or specific keywords:
 | `cursor`                                                 | Cursor style                |
 | `visible`                                                | Visibility                  |
 
+## Transforms
+
+| Prop         | Description                                            |
+| ------------ | ------------------------------------------------------ |
+| `translate`  | Move element (accepts number, `[x, y]`, or `{ x, y }`) |
+| `translateX` | Horizontal offset                                      |
+| `translateY` | Vertical offset                                        |
+| `rotate`     | Rotation angle in degrees                              |
+| `scale`      | Scale factor (accepts number, `[x, y]`, or `{ x, y }`) |
+| `scaleX`     | Horizontal scale                                       |
+| `scaleY`     | Vertical scale                                         |
+
+Transform props also support state variants with `hover:` and `active:` prefixes (e.g., `hover:translateX`, `active:scale`).
+
+```tsx
+<view
+  translate={[10, 5]}
+  rotate={45}
+  scale={1.2}
+  hover:scale={1.3}
+>
+  <text>Transformed</text>
+</view>
+
+<button
+  translateX={0}
+  active:translateX={2}
+  active:translateY={2}
+>
+  Press me
+</button>
+```
+
 ## State variants
 
 Style props that apply on hover or active (press) states:
