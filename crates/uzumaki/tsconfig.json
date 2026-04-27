@@ -1,7 +1,8 @@
 {
   "compilerOptions": {
-    "types": ["node"]
-  },
-  "extends": "../../tsconfig.json",
-  "include": ["js/**/*.ts", "js/**/*.tsx"]
+    "target": "ESNext",
+    "lib": ["ESNext", "DOM"],
+    "types": ["deno"],
+    "typeRoots": ["./node_modules/@types"]
+  }
 }

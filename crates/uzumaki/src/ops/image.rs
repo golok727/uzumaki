@@ -15,7 +15,7 @@ fn invalid_image_data(error: impl std::fmt::Display) -> JsErrorBox {
 }
 
 #[op2]
-pub fn op_set_image_data(
+pub fn op_set_encoded_image_data(
     state: &mut OpState,
     #[smi] window_id: u32,
     #[smi] node_id: u32,
@@ -24,7 +24,9 @@ pub fn op_set_image_data(
     let nid = node_id as UzNodeId;
     let decoded =
         image::load_from_memory(&data).map_err(|err| invalid_image_data(err.to_string()))?;
+
     let (width, height) = decoded.dimensions();
+
     let rgba = decoded.to_rgba8();
     let image = ImageData {
         data: Blob::from(rgba.into_raw()),
