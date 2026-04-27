@@ -53,6 +53,7 @@ extension!(
     op_create_element,
     op_create_text_node,
     op_set_encoded_image_data,
+    op_apply_cached_image,
     op_clear_image_data,
     op_append_child,
     op_insert_before,

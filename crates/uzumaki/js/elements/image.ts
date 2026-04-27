@@ -46,7 +46,7 @@ function isFilePath(source: string) {
   );
 }
 
-async function readImageSource(source: string) {
+async function fetchImageBytes(source: string): Promise<Uint8Array> {
   if (isFilePath(source)) {
     return Deno.readFile(source);
   }
@@ -64,6 +64,19 @@ async function readImageSource(source: string) {
   }
 
   return Deno.readFile(source);
+}
+
+const inflightBytes = new Map<string, Promise<Uint8Array>>();
+
+function loadImageBytes(source: string): Promise<Uint8Array> {
+  let p = inflightBytes.get(source);
+  if (p) return p;
+  p = fetchImageBytes(source).catch((error) => {
+    inflightBytes.delete(source);
+    throw error;
+  });
+  inflightBytes.set(source, p);
+  return p;
 }
 
 export class ImageElement extends BaseElement<Record<string, any>> {
@@ -132,10 +145,22 @@ export class ImageElement extends BaseElement<Record<string, any>> {
       console.error('[uzumaki] onLoadStart handler threw:', error);
     }
 
-    try {
-      const data = await readImageSource(src);
+    if (core.applyCachedImage(this.windowId, this.id, src)) {
       if (!this.isLoadCurrent(generation)) return;
-      core.setEncodedImageData(this.windowId, this.id, data);
+      core.requestRedraw(this.windowId);
+      this.status = 'loaded';
+      try {
+        this.onLoad?.({ src });
+      } catch (error) {
+        console.error('[uzumaki] onLoad handler threw:', error);
+      }
+      return;
+    }
+
+    try {
+      const data = await loadImageBytes(src);
+      if (!this.isLoadCurrent(generation)) return;
+      core.setEncodedImageData(this.windowId, this.id, src, data);
       core.requestRedraw(this.windowId);
       this.status = 'loaded';
       try {

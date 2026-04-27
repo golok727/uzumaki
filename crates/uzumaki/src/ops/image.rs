@@ -46,12 +46,24 @@ pub fn op_set_encoded_image_data(
     state: &mut OpState,
     #[smi] window_id: u32,
     #[smi] node_id: u32,
+    #[string] cache_key: String,
     #[buffer] data: JsBuffer,
 ) -> Result<(), JsErrorBox> {
     let nid = node_id as UzNodeId;
-    let image = decode(&data)?;
-
     let app_state = state.borrow::<SharedAppState>().clone();
+
+    let cached = with_state(&app_state, |s| s.image_cache.get(&cache_key).cloned());
+    let image = match cached {
+        Some(img) => img,
+        None => {
+            let decoded = decode(&data)?;
+            with_state(&app_state, |s| {
+                s.image_cache.insert(cache_key.clone(), decoded.clone());
+            });
+            decoded
+        }
+    };
+
     with_state(&app_state, |s| {
         let Some(entry) = s.windows.get_mut(&window_id) else {
             return Err(window_not_found());
@@ -59,6 +71,29 @@ pub fn op_set_encoded_image_data(
         entry.dom.set_image_data(nid, image);
         Ok(())
     })
+}
+
+#[op2(fast)]
+pub fn op_apply_cached_image(
+    state: &mut OpState,
+    #[smi] window_id: u32,
+    #[smi] node_id: u32,
+    #[string] cache_key: String,
+) -> bool {
+    let nid = node_id as UzNodeId;
+    let app_state = state.borrow::<SharedAppState>().clone();
+
+    let cached = with_state(&app_state, |s| s.image_cache.get(&cache_key).cloned());
+    let Some(image) = cached else {
+        return false;
+    };
+
+    with_state(&app_state, |s| {
+        if let Some(entry) = s.windows.get_mut(&window_id) {
+            entry.dom.set_image_data(nid, image);
+        }
+    });
+    true
 }
 
 #[op2(fast)]

@@ -76,7 +76,7 @@ export function StatCard({
       borderColor={C.border}
       display="flex"
       flexDir="col"
-      gap={4}
+      gap={7}
     >
       <text fontSize={10} fontWeight={700} color={C.textMuted}>
         {label.toUpperCase()}

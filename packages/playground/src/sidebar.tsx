@@ -1,15 +1,16 @@
 import { C } from './theme';
+import { Icon } from './icon';
 import type { Tab } from './types';
 
 const TABS: { id: Tab; label: string; icon: string }[] = [
-  { id: 'dashboard', label: 'Dashboard', icon: '🛖' },
-  { id: 'inputs', label: 'Input Lab', icon: '⌨' },
-  { id: 'layout', label: 'Layout Lab', icon: '⏹️' },
-  { id: 'stress', label: 'Stress Test', icon: '⚡' },
-  { id: 'events', label: 'Mouse Events', icon: '🐭' },
-  { id: 'timer', label: 'Timers', icon: '⏱' },
-  { id: 'issues', label: 'GitHub Issues', icon: '😉' },
-  { id: 'images', label: 'Images', icon: '🖼' },
+  { id: 'dashboard', label: 'Dashboard', icon: 'layout-dashboard' },
+  { id: 'inputs', label: 'Input Lab', icon: 'keyboard' },
+  { id: 'layout', label: 'Layout Lab', icon: 'layout-grid' },
+  { id: 'stress', label: 'Stress Test', icon: 'zap' },
+  { id: 'events', label: 'Mouse Events', icon: 'mouse-pointer-click' },
+  { id: 'timer', label: 'Timers', icon: 'timer' },
+  { id: 'issues', label: 'GitHub Issues', icon: 'circle-dot' },
+  { id: 'images', label: 'Images', icon: 'image' },
 ];
 
 export function Sidebar({
@@ -50,6 +51,7 @@ export function Sidebar({
       <view display="flex" flexDir="col" flex={1} gap={2}>
         {TABS.map((t) => {
           const isActive = active === t.id;
+          const iconColor = isActive ? C.accentHi : C.textMuted;
           return (
             <view
               key={t.id}
@@ -65,9 +67,7 @@ export function Sidebar({
               hover:bg={isActive ? C.accentDim : C.surface3}
               cursor="pointer"
             >
-              <text fontSize={16} color={isActive ? C.accentHi : C.textMuted}>
-                {t.icon}
-              </text>
+              <Icon name={t.icon} color={iconColor} size={16} />
               <view display="flex" flexDir="col" gap={1} flex={1}>
                 <text
                   w={'100%'}
@@ -98,11 +98,9 @@ export function Sidebar({
           border={1}
           borderColor={C.accent}
           cursor="pointer"
-          mb={8}
+          my={8}
         >
-          <text fontSize={16} color={C.accentHi}>
-            🍫
-          </text>
+          <Icon name="square-stack" color={C.accentHi} size={16} />
           <text fontSize={13} fontWeight={700} color={C.accentHi}>
             Open Modal
           </text>

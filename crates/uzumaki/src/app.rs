@@ -51,6 +51,7 @@ pub struct AppState {
     pub modifiers: u32,    // same
     pub clipboard: RefCell<clipboard::SystemClipboard>,
     pub gpu: GpuContext,
+    pub image_cache: HashMap<String, crate::element::ImageData>,
 }
 
 impl AppState {
@@ -284,6 +285,7 @@ impl Application {
             mouse_buttons: 0,
             modifiers: 0,
             clipboard: RefCell::new(system_clipboard),
+            image_cache: HashMap::new(),
         }));
 
         // Put shared state and event loop proxy into OpState

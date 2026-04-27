@@ -11,7 +11,13 @@ interface Core {
   getRootNodeId(windowId: number): NodeId;
   createElement(windowId: number, elementType: string): NodeId;
   createTextNode(windowId: number, text: string): NodeId;
-  setEncodedImageData(windowId: number, nodeId: NodeId, data: Uint8Array): void;
+  setEncodedImageData(
+    windowId: number,
+    nodeId: NodeId,
+    cacheKey: string,
+    data: Uint8Array,
+  ): void;
+  applyCachedImage(windowId: number, nodeId: NodeId, cacheKey: string): boolean;
   clearImageData(windowId: number, nodeId: NodeId): void;
   appendChild(windowId: number, parentId: NodeId, childId: NodeId): void;
   insertBefore(
