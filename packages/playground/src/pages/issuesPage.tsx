@@ -21,11 +21,11 @@ export function IssuesPage() {
   useEffect(() => {
     fetch('https://api.github.com/repos/golok727/uzumaki/issues')
       .then((res) => {
-        if (!res.ok) throw new Error(`HTTP ${res.status}`);
+        if (!res.ok) throw new Error(`Error fetching issues`);
         return res.json();
       })
       .then((data) => {
-        setIssues(data as GitHubIssue[]);
+        setIssues(data as unknown as GitHubIssue[]);
         setLoading(false);
       })
       .catch((error) => {
@@ -56,7 +56,7 @@ export function IssuesPage() {
       width: 100,
       align: 'end' as const,
       render: (row: GitHubIssue) => (
-        <text fontSize={12} color={C.primaryHi}>
+        <text textWrap="nowrap" fontSize={12} color={C.primaryHi}>
           {row.user.login}
         </text>
       ),
@@ -68,7 +68,7 @@ export function IssuesPage() {
       width: 90,
       align: 'end' as const,
       render: (row: GitHubIssue) => (
-        <text fontSize={11} color={C.textMuted}>
+        <text textWrap="nowrap" fontSize={11} color={C.textMuted}>
           {new Date(row.created_at).toLocaleDateString()}
         </text>
       ),

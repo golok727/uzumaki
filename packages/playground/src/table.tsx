@@ -44,7 +44,7 @@ export function Table<T>({
         bg={headerBg}
         borderBottom={1}
         borderColor={C.border}
-        overflowWrap="normal"
+        textWrap="nowrap"
       >
         {columns.map((col, _i) => (
           <view

@@ -347,7 +347,7 @@ fn set_style_str(
         | StyleProp::Items
         | StyleProp::Justify
         | StyleProp::Display
-        | StyleProp::OverflowWrap
+        | StyleProp::TextWrap
         | StyleProp::WordBreak
         | StyleProp::Position => {
             if set_enum_style_prop_from_str(&mut node.style, prop, value) {
@@ -422,7 +422,7 @@ fn set_variant_style_str(
         | StyleProp::Items
         | StyleProp::Justify
         | StyleProp::Display
-        | StyleProp::OverflowWrap
+        | StyleProp::TextWrap
         | StyleProp::WordBreak
         | StyleProp::Position => {
             if set_variant_enum_from_str(node, prop, variant, value) {
@@ -490,7 +490,7 @@ fn set_style_number(
         | StyleProp::Items
         | StyleProp::Justify
         | StyleProp::Display
-        | StyleProp::OverflowWrap
+        | StyleProp::TextWrap
         | StyleProp::WordBreak
         | StyleProp::Position => {
             set_enum_style_prop(&mut node.style, prop, value as i32);
@@ -571,6 +571,34 @@ fn set_variant_gap(node: &mut Node, variant: StyleVariant, length: DefiniteLengt
     StyleEffect::Applied
 }
 
+fn text_wrap_value(value: &str) -> Option<i32> {
+    match value.trim() {
+        "wrap" => Some(0),
+        "nowrap" | "none" => Some(1),
+        "anywhere" => Some(2),
+        "break-word" => Some(3),
+        _ => None,
+    }
+}
+
+fn set_text_wrap(style: &mut UzStyle, value: i32) {
+    let (overflow_wrap, word_break) = match value {
+        1 => (OverflowWrap::Normal, WordBreak::KeepAll),
+        2 => (OverflowWrap::Anywhere, WordBreak::Normal),
+        3 => (OverflowWrap::BreakWord, WordBreak::Normal),
+        _ => (OverflowWrap::BreakWord, WordBreak::Normal),
+    };
+    style.text.overflow_wrap = overflow_wrap;
+    style.text.word_break = word_break;
+}
+
+fn set_text_wrap_refinement(style: &mut UzStyleRefinement, value: i32) {
+    let mut resolved = UzStyle::default();
+    set_text_wrap(&mut resolved, value);
+    style.text.overflow_wrap = Some(resolved.text.overflow_wrap);
+    style.text.word_break = Some(resolved.text.word_break);
+}
+
 fn set_variant_number(
     node: &mut Node,
     prop: StyleProp,
@@ -593,7 +621,7 @@ fn set_variant_number(
         | StyleProp::Items
         | StyleProp::Justify
         | StyleProp::Display
-        | StyleProp::OverflowWrap
+        | StyleProp::TextWrap
         | StyleProp::WordBreak
         | StyleProp::Position => {
             if set_variant_enum(node, prop, variant, value as i32) {
@@ -752,14 +780,7 @@ fn set_variant_enum(node: &mut Node, prop: StyleProp, variant: StyleVariant, val
                 _ => Display::Flex,
             });
         }
-        StyleProp::OverflowWrap => {
-            r.text.overflow_wrap = Some(match value {
-                0 => OverflowWrap::Normal,
-                1 => OverflowWrap::Anywhere,
-                2 => OverflowWrap::BreakWord,
-                _ => OverflowWrap::Normal,
-            });
-        }
+        StyleProp::TextWrap => set_text_wrap_refinement(r, value),
         StyleProp::WordBreak => {
             r.text.word_break = Some(match value {
                 0 => WordBreak::Normal,
@@ -818,11 +839,9 @@ fn set_variant_enum_from_str(
             "block" => 2,
             _ => return false,
         },
-        StyleProp::OverflowWrap => match value {
-            "normal" => 0,
-            "anywhere" => 1,
-            "break-word" => 2,
-            _ => return false,
+        StyleProp::TextWrap => match text_wrap_value(value) {
+            Some(v) => v,
+            None => return false,
         },
         StyleProp::WordBreak => match value {
             "normal" => 0,
@@ -924,7 +943,10 @@ fn clear_variant_prop(node: &mut Node, prop: StyleProp, variant: StyleVariant) -
             StyleProp::Visibility => style.visibility = None,
             StyleProp::Scrollable => style.overflow_y = None,
             StyleProp::TextSelect => style.text_selectable = None,
-            StyleProp::OverflowWrap => style.text.overflow_wrap = None,
+            StyleProp::TextWrap => {
+                style.text.overflow_wrap = None;
+                style.text.word_break = None;
+            }
             StyleProp::WordBreak => style.text.word_break = None,
             StyleProp::Position => style.position = None,
             StyleProp::Top => style.inset.top = None,
@@ -1159,14 +1181,7 @@ fn set_enum_style_prop(style: &mut UzStyle, prop: StyleProp, value: i32) -> bool
                 _ => Display::Flex,
             };
         }
-        StyleProp::OverflowWrap => {
-            style.text.overflow_wrap = match value {
-                0 => OverflowWrap::Normal,
-                1 => OverflowWrap::Anywhere,
-                2 => OverflowWrap::BreakWord,
-                _ => OverflowWrap::Normal,
-            };
-        }
+        StyleProp::TextWrap => set_text_wrap(style, value),
         StyleProp::WordBreak => {
             style.text.word_break = match value {
                 0 => WordBreak::Normal,
@@ -1220,11 +1235,9 @@ fn set_enum_style_prop_from_str(style: &mut UzStyle, prop: StyleProp, value: &st
             "block" => 2,
             _ => return false,
         },
-        StyleProp::OverflowWrap => match value {
-            "normal" => 0,
-            "anywhere" => 1,
-            "break-word" => 2,
-            _ => return false,
+        StyleProp::TextWrap => match text_wrap_value(value) {
+            Some(v) => v,
+            None => return false,
         },
         StyleProp::WordBreak => match value {
             "normal" => 0,
@@ -1244,8 +1257,9 @@ fn set_enum_style_prop_from_str(style: &mut UzStyle, prop: StyleProp, value: &st
 
 fn remember_inherited_enum(node: &mut Node, prop: StyleProp) {
     match prop {
-        StyleProp::OverflowWrap => {
+        StyleProp::TextWrap => {
             node.interactivity.base_style.text.overflow_wrap = Some(node.style.text.overflow_wrap);
+            node.interactivity.base_style.text.word_break = Some(node.style.text.word_break);
         }
         StyleProp::WordBreak => {
             node.interactivity.base_style.text.word_break = Some(node.style.text.word_break);
@@ -1352,9 +1366,11 @@ fn clear_style_prop(node: &mut Node, prop: StyleProp, variant: StyleVariant) -> 
             node.set_text_selectable(default.text_selectable);
             node.interactivity.base_style.text_selectable = None;
         }
-        StyleProp::OverflowWrap => {
+        StyleProp::TextWrap => {
             node.style.text.overflow_wrap = default.text.overflow_wrap;
+            node.style.text.word_break = default.text.word_break;
             node.interactivity.base_style.text.overflow_wrap = None;
+            node.interactivity.base_style.text.word_break = None;
         }
         StyleProp::WordBreak => {
             node.style.text.word_break = default.text.word_break;
