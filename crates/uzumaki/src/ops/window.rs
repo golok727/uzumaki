@@ -13,11 +13,11 @@ struct CreateWindowOptions {
 }
 
 #[op2]
-#[serde]
+#[cppgc]
 pub fn op_create_window(
     state: &mut OpState,
     #[serde] options: CreateWindowOptions,
-) -> Result<WindowEntryId, deno_error::JsErrorBox> {
+) -> Result<CoreWindow, deno_error::JsErrorBox> {
     static NEXT_WINDOW_ID: std::sync::atomic::AtomicU32 = std::sync::atomic::AtomicU32::new(1);
     let id = NEXT_WINDOW_ID.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
 
@@ -60,7 +60,7 @@ pub fn op_create_window(
             )
         })?;
 
-    Ok(id)
+    Ok(CoreWindow::new(id, app_state.clone(), proxy.clone()))
 }
 
 #[op2(fast)]
@@ -84,53 +84,6 @@ pub fn op_request_redraw(
             deno_error::JsErrorBox::new("UzumakiInternalError", "error requesting redraw")
         })?;
     Ok(())
-}
-
-#[op2(fast)]
-pub fn op_set_rem_base(state: &mut OpState, #[smi] window_id: u32, value: f64) {
-    let app_state = state.borrow::<SharedAppState>().clone();
-    with_state(&app_state, |s| {
-        if let Some(entry) = s.windows.get_mut(&window_id) {
-            entry.rem_base = value as f32;
-        }
-    });
-}
-
-#[op2]
-pub fn op_get_window_width(state: &mut OpState, #[smi] window_id: u32) -> Option<u32> {
-    let app_state = state.borrow::<SharedAppState>().clone();
-    with_state(&app_state, |s| {
-        s.windows.get(&window_id).and_then(|entry| {
-            entry.handle.as_ref().map(|h| {
-                let size = h.winit_window.inner_size();
-                size.width
-            })
-        })
-    })
-}
-
-#[op2]
-pub fn op_get_window_height(state: &mut OpState, #[smi] window_id: u32) -> Option<u32> {
-    let app_state = state.borrow::<SharedAppState>().clone();
-    with_state(&app_state, |s| {
-        s.windows.get(&window_id).and_then(|entry| {
-            entry.handle.as_ref().map(|h| {
-                let size = h.winit_window.inner_size();
-                size.height
-            })
-        })
-    })
-}
-
-#[op2]
-#[string]
-pub fn op_get_window_title(state: &mut OpState, #[smi] window_id: u32) -> Option<String> {
-    let app_state = state.borrow::<SharedAppState>().clone();
-    with_state(&app_state, |s| {
-        s.windows
-            .get(&window_id)
-            .and_then(|entry| entry.handle.as_ref().map(|h| h.winit_window.title()))
-    })
 }
 
 #[op2]
@@ -157,5 +110,108 @@ pub fn op_write_clipboard_text(state: &mut OpState, #[string] text: String) -> b
             eprintln!("[uzumaki] clipboard write error: {e}");
             false
         }
+    }
+}
+
+use deno_core::GarbageCollected;
+
+pub struct CoreWindow {
+    id: WindowEntryId,
+    state: SharedAppState,
+    proxy: EventLoopProxy<UserEvent>,
+}
+
+impl CoreWindow {
+    pub(crate) fn new(
+        id: WindowEntryId,
+        state: SharedAppState,
+        proxy: EventLoopProxy<UserEvent>,
+    ) -> Self {
+        Self { id, state, proxy }
+    }
+}
+
+// SAFETY: we're sure this can be GCed
+unsafe impl GarbageCollected for CoreWindow {
+    fn trace(&self, _visitor: &mut deno_core::v8::cppgc::Visitor) {}
+
+    fn get_name(&self) -> &'static std::ffi::CStr {
+        c"CoreWindow"
+    }
+}
+
+#[op2]
+impl CoreWindow {
+    #[fast]
+    pub fn close(&self) -> Result<(), deno_error::JsErrorBox> {
+        self.proxy
+            .send_event(UserEvent::CloseWindow { id: self.id })
+            .map_err(|_| {
+                deno_error::JsErrorBox::new("UzumakiInternalError", "error closing window")
+            })?;
+        Ok(())
+    }
+
+    #[getter]
+    pub fn id(&self) -> WindowEntryId {
+        self.id
+    }
+
+    #[getter]
+    pub fn width(&self) -> Option<u32> {
+        self.state
+            .borrow()
+            .windows
+            .get(&self.id)
+            .and_then(|w| w.width())
+    }
+
+    #[getter]
+    pub fn height(&self) -> Option<u32> {
+        self.state
+            .borrow()
+            .windows
+            .get(&self.id)
+            .and_then(|w| w.height())
+    }
+
+    #[getter]
+    #[string]
+    pub fn title(&self) -> Option<String> {
+        self.state.borrow().windows.get(&self.id).and_then(|entry| {
+            entry
+                .handle
+                .as_ref()
+                .map(|handle| handle.winit_window.title())
+        })
+    }
+
+    #[getter]
+    #[allow(non_snake_case)]
+    pub fn remBase(&self) -> f32 {
+        self.state
+            .borrow()
+            .windows
+            .get(&self.id)
+            .map(|w| w.rem_base)
+            .unwrap_or(16.0)
+    }
+
+    #[setter]
+    #[allow(non_snake_case)]
+    pub fn remBase(&self, value: f64) {
+        if let Some(entry) = self.state.borrow_mut().windows.get_mut(&self.id) {
+            entry.rem_base = value as f32;
+        }
+    }
+
+    #[getter]
+    #[allow(non_snake_case)]
+    pub fn scaleFactor(&self) -> Option<f32> {
+        self.state
+            .borrow()
+            .windows
+            .get(&self.id)
+            .and_then(|w| w.scale_factor())
     }
 }

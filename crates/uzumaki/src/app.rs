@@ -42,6 +42,26 @@ pub struct WindowEntry {
     pub cursor_blink_generation: u64,
 }
 
+impl WindowEntry {
+    pub fn width(&self) -> Option<u32> {
+        self.handle
+            .as_ref()
+            .map(|handle| handle.winit_window.inner_size().width)
+    }
+
+    pub fn height(&self) -> Option<u32> {
+        self.handle
+            .as_ref()
+            .map(|handle| handle.winit_window.inner_size().height)
+    }
+
+    pub fn scale_factor(&self) -> Option<f32> {
+        self.handle
+            .as_ref()
+            .map(|handle| handle.winit_window.scale_factor() as f32)
+    }
+}
+
 pub(crate) type WindowEntryId = u32;
 
 pub struct AppState {
@@ -105,6 +125,9 @@ pub(crate) enum UserEvent {
         width: u32,
         height: u32,
         title: String,
+    },
+    CloseWindow {
+        id: u32,
     },
     RequestRedraw {
         id: u32,
@@ -455,6 +478,31 @@ impl Application {
             self.spawn_cursor_blink_timer(id, generation, delay);
         }
     }
+
+    fn close_window(
+        &mut self,
+        event_loop: &winit::event_loop::ActiveEventLoop,
+        wid: WindowEntryId,
+    ) {
+        self.dispatch_event_to_js(&event_dispatch::AppEvent::WindowClose(
+            event_dispatch::WindowLoadEventData { window_id: wid },
+        ));
+
+        let mut state = self.app_state.borrow_mut();
+        let winit_id = state
+            .windows
+            .get(&wid)
+            .and_then(|entry| entry.handle.as_ref().map(|handle| handle.winit_window.id()));
+
+        if let Some(winit_id) = winit_id {
+            state.winit_id_to_entry_id.remove(&winit_id);
+        }
+
+        state.windows.remove(&wid);
+        if state.windows.is_empty() {
+            event_loop.exit();
+        }
+    }
 }
 
 impl ApplicationHandler<UserEvent> for Application {
@@ -527,6 +575,9 @@ impl ApplicationHandler<UserEvent> for Application {
                 self.dispatch_event_to_js(&event_dispatch::AppEvent::WindowLoad(
                     event_dispatch::WindowLoadEventData { window_id: id },
                 ));
+            }
+            UserEvent::CloseWindow { id } => {
+                self.close_window(event_loop, id);
             }
             UserEvent::RequestRedraw { id } => {
                 let state = self.app_state.borrow();
@@ -980,16 +1031,8 @@ impl ApplicationHandler<UserEvent> for Application {
                 }
             }
             WindowEvent::CloseRequested => {
-                self.dispatch_event_to_js(&event_dispatch::AppEvent::WindowClose(
-                    event_dispatch::WindowLoadEventData { window_id: wid },
-                ));
-                let mut state = self.app_state.borrow_mut();
-                state.winit_id_to_entry_id.remove(&window_id);
-                state.windows.remove(&wid);
-                if state.windows.is_empty() {
-                    event_loop.exit();
-                    return;
-                }
+                self.close_window(event_loop, wid);
+                return;
             }
             _ => {}
         }

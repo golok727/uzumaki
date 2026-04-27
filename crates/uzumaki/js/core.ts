@@ -1,12 +1,22 @@
 import { NodeId } from './types';
 
+export interface NativeWindow {
+  close(): void;
+  readonly id: number;
+  readonly width: number | null;
+  readonly height: number | null;
+  readonly title: string | null;
+  readonly scaleFactor: number | null;
+  remBase: number;
+}
+
 interface Core {
   createWindow(options: {
     width: number;
     height: number;
     title: string;
-  }): number;
-  requestClose(): void;
+  }): NativeWindow;
+  requestQuit(): void;
   requestRedraw(windowId: number): void;
   getRootNodeId(windowId: number): NodeId;
   createElement(windowId: number, elementType: string): NodeId;
@@ -50,10 +60,6 @@ interface Core {
   clearAttribute(windowId: number, nodeId: NodeId, name: string): void;
   getAttribute(windowId: number, nodeId: NodeId, name: string): unknown;
   focusInput(windowId: number, nodeId: NodeId): void;
-  setRemBase(windowId: number, value: number): void;
-  getWindowWidth(windowId: number): number | null;
-  getWindowHeight(windowId: number): number | null;
-  getWindowTitle(windowId: number): string | null;
   getAncestorPath(windowId: number, nodeId: NodeId): NodeId[];
   getSelection(windowId: number): SelectionState | null;
   getSelectedText(windowId: number): string;

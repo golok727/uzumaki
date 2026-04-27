@@ -1,4 +1,4 @@
-import core from './core';
+import core, { type NativeWindow } from './core';
 import {
   eventManager,
   EVENT_NAME_TO_TYPE,
@@ -17,7 +17,9 @@ export interface WindowAttributes {
 
 export class Window {
   private _id: number;
+  private _native: NativeWindow;
   private _label: string;
+  private _title: string;
   private _width: number;
   private _height: number;
   private _remBase: number = 16;
@@ -40,7 +42,9 @@ export class Window {
     this._width = width;
     this._height = height;
     this._label = label;
-    this._id = core.createWindow({ width, height, title });
+    this._title = title;
+    this._native = core.createWindow({ width, height, title });
+    this._id = this._native.id;
     windowsByLabel.set(label, this);
     windowsById.set(this._id, this);
   }
@@ -49,7 +53,7 @@ export class Window {
     eventManager.clearWindowHandlers(this._id);
     windowsByLabel.delete(this._label);
     windowsById.delete(this._id);
-    core.requestClose();
+    this._native.close();
   }
 
   addDisposable(cb: () => void): void {
@@ -66,11 +70,15 @@ export class Window {
   }
 
   get width(): number {
-    return core.getWindowWidth(this._id) ?? this._width;
+    return this._native.width ?? this._width;
   }
 
   get height(): number {
-    return core.getWindowHeight(this._id) ?? this._height;
+    return this._native.height ?? this._height;
+  }
+
+  get title(): string {
+    return this._native.title ?? this._title;
   }
 
   get label(): string {
@@ -86,12 +94,12 @@ export class Window {
   }
 
   get remBase(): number {
-    return this._remBase;
+    return this._native.remBase ?? this._remBase;
   }
 
   set remBase(value: number) {
     this._remBase = value;
-    core.setRemBase(this._id, value);
+    this._native.remBase = value;
   }
 
   on<K extends EventName>(
