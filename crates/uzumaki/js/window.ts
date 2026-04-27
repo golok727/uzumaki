@@ -1,4 +1,4 @@
-import core, { type NativeWindow } from './core';
+import core, { setNativeProp, type NativeWindow } from './core';
 import {
   eventManager,
   EVENT_NAME_TO_TYPE,
@@ -13,6 +13,7 @@ export interface WindowAttributes {
   width: number;
   height: number;
   title: string;
+  rootStyles: Record<string, unknown>;
 }
 
 export class Window {
@@ -32,6 +33,7 @@ export class Window {
       width = 800,
       height = 600,
       title = 'uzumaki',
+      rootStyles,
     }: Partial<WindowAttributes> = {},
   ) {
     const existing = windowsByLabel.get(label);
@@ -45,6 +47,12 @@ export class Window {
     this._title = title;
     this._native = core.createWindow({ width, height, title });
     this._id = this._native.id;
+    if (rootStyles) {
+      const root = core.getRootNodeId(this._id);
+      for (const [key, value] of Object.entries(rootStyles)) {
+        if (value != null) setNativeProp(this._id, root, key, value);
+      }
+    }
     windowsByLabel.set(label, this);
     windowsById.set(this._id, this);
   }

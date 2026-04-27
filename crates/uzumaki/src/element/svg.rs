@@ -1,12 +1,24 @@
 use vello::Scene;
 use vello::kurbo::{Affine, BezPath, Stroke as KStroke};
-use vello::peniko::{Brush, Color, Fill};
+use vello::peniko::{Brush, Color as VelloColor, Fill};
 
-pub fn render_svg_tree(scene: &mut Scene, tree: &usvg::Tree, transform: Affine) {
-    render_group(scene, tree.root(), transform);
+use crate::style::Color;
+
+pub fn render_svg_tree(
+    scene: &mut Scene,
+    tree: &usvg::Tree,
+    transform: Affine,
+    current_color: Option<Color>,
+) {
+    render_group(scene, tree.root(), transform, current_color);
 }
 
-fn render_group(scene: &mut Scene, group: &usvg::Group, parent_transform: Affine) {
+fn render_group(
+    scene: &mut Scene,
+    group: &usvg::Group,
+    parent_transform: Affine,
+    current_color: Option<Color>,
+) {
     let local_transform = parent_transform * to_affine(group.transform());
     let opacity = group.opacity().get();
     let has_layer = opacity < 1.0 || group.clip_path().is_some();
@@ -23,10 +35,12 @@ fn render_group(scene: &mut Scene, group: &usvg::Group, parent_transform: Affine
 
     for node in group.children() {
         match node {
-            usvg::Node::Group(g) => render_group(scene, g, local_transform),
-            usvg::Node::Path(path) => render_path(scene, path, local_transform),
+            usvg::Node::Group(g) => render_group(scene, g, local_transform, current_color),
+            usvg::Node::Path(path) => render_path(scene, path, local_transform, current_color),
             usvg::Node::Image(_) => {}
-            usvg::Node::Text(text) => render_group(scene, text.flattened(), local_transform),
+            usvg::Node::Text(text) => {
+                render_group(scene, text.flattened(), local_transform, current_color)
+            }
         }
     }
 
@@ -35,7 +49,12 @@ fn render_group(scene: &mut Scene, group: &usvg::Group, parent_transform: Affine
     }
 }
 
-fn render_path(scene: &mut Scene, path: &usvg::Path, transform: Affine) {
+fn render_path(
+    scene: &mut Scene,
+    path: &usvg::Path,
+    transform: Affine,
+    current_color: Option<Color>,
+) {
     if !path.is_visible() {
         return;
     }
@@ -43,7 +62,7 @@ fn render_path(scene: &mut Scene, path: &usvg::Path, transform: Affine) {
 
     let paint_fill = |scene: &mut Scene| {
         if let Some(fill) = path.fill() {
-            let brush = paint_to_brush(fill.paint(), fill.opacity().get());
+            let brush = paint_to_brush(fill.paint(), fill.opacity().get(), current_color);
             let rule = match fill.rule() {
                 usvg::FillRule::NonZero => Fill::NonZero,
                 usvg::FillRule::EvenOdd => Fill::EvenOdd,
@@ -53,7 +72,7 @@ fn render_path(scene: &mut Scene, path: &usvg::Path, transform: Affine) {
     };
     let paint_stroke = |scene: &mut Scene| {
         if let Some(stroke) = path.stroke() {
-            let brush = paint_to_brush(stroke.paint(), stroke.opacity().get());
+            let brush = paint_to_brush(stroke.paint(), stroke.opacity().get(), current_color);
             let mut k = KStroke::new(stroke.width().get() as f64);
             k.miter_limit = stroke.miterlimit().get() as f64;
             scene.stroke(&k, transform, &brush, None, &bez);
@@ -72,20 +91,20 @@ fn render_path(scene: &mut Scene, path: &usvg::Path, transform: Affine) {
     }
 }
 
-fn paint_to_brush(paint: &usvg::Paint, opacity: f32) -> Brush {
+fn paint_to_brush(paint: &usvg::Paint, opacity: f32, current_color: Option<Color>) -> Brush {
+    let alpha = (opacity.clamp(0.0, 1.0) * 255.0) as u8;
     match paint {
-        usvg::Paint::Color(c) => Brush::Solid(Color::from_rgba8(
-            c.red,
-            c.green,
-            c.blue,
-            (opacity.clamp(0.0, 1.0) * 255.0) as u8,
-        )),
-        _ => Brush::Solid(Color::from_rgba8(
-            128,
-            128,
-            128,
-            (opacity.clamp(0.0, 1.0) * 255.0) as u8,
-        )),
+        usvg::Paint::Color(c) => {
+            if let Some(color) = current_color
+                && c.red == 0
+                && c.green == 0
+                && c.blue == 0
+            {
+                return Brush::Solid(VelloColor::from_rgba8(color.r, color.g, color.b, alpha));
+            }
+            Brush::Solid(VelloColor::from_rgba8(c.red, c.green, c.blue, alpha))
+        }
+        _ => Brush::Solid(VelloColor::from_rgba8(128, 128, 128, alpha)),
     }
 }
 

@@ -11,12 +11,13 @@ impl UIState {
         self.selectable_text_runs.clear();
         let Some(root) = self.root else { return };
 
-        // DFS: (node_id, parent_resolved_text_select, current_run_index_or_none)
-        let mut stack: Vec<(UzNodeId, bool, Option<usize>)> = vec![(root, false, None)];
+        // DFS: (node_id, parent_style, current_run_index_or_none)
+        let mut stack = vec![(root, None, None)];
 
-        while let Some((node_id, parent_ts, run_idx)) = stack.pop() {
+        while let Some((node_id, parent_style, run_idx)) = stack.pop() {
             let node = &self.nodes[node_id];
-            let resolved_text_sel = node.text_selectable().as_value().unwrap_or(parent_ts);
+            let style = self.computed_style(node_id, parent_style.as_deref());
+            let resolved_text_sel = style.text_selectable.selectable();
 
             // A node that explicitly enables textSelect when the parent scope
             // doesn't have it starts a new selection scope.
@@ -58,7 +59,7 @@ impl UIState {
                 child = self.nodes[cid].next_sibling;
             }
             for &cid in children.iter().rev() {
-                stack.push((cid, resolved_text_sel, current_run));
+                stack.push((cid, Some(Box::new(style.clone())), current_run));
             }
         }
     }

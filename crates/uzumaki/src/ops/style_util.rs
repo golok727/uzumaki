@@ -351,6 +351,7 @@ fn set_style_str(
         | StyleProp::WordBreak
         | StyleProp::Position => {
             if set_enum_style_prop_from_str(&mut node.style, prop, value) {
+                remember_inherited_enum(node, prop);
                 StyleEffect::AppliedNeedsSync
             } else {
                 clear_style_prop(node, prop, variant)
@@ -493,6 +494,7 @@ fn set_style_number(
         | StyleProp::WordBreak
         | StyleProp::Position => {
             set_enum_style_prop(&mut node.style, prop, value as i32);
+            remember_inherited_enum(node, prop);
             StyleEffect::AppliedNeedsSync
         }
         StyleProp::Visibility => {
@@ -978,6 +980,7 @@ fn set_color_style_prop(node: &mut Node, prop: StyleProp, color: Color) -> Style
         }
         StyleProp::Color => {
             node.style.text.color = color;
+            node.interactivity.base_style.text.color = Some(color);
             StyleEffect::AppliedNeedsSync
         }
         StyleProp::BorderColor => {
@@ -1007,7 +1010,9 @@ fn set_f32_style_prop(node: &mut Node, prop: StyleProp, v: f32) -> StyleEffect {
             return StyleEffect::AppliedNeedsSync;
         }
         StyleProp::TextSelect => {
-            node.set_text_selectable((v > 0.5).into());
+            let text_selectable = (v > 0.5).into();
+            node.set_text_selectable(text_selectable);
+            node.interactivity.base_style.text_selectable = Some(text_selectable);
             return StyleEffect::Applied;
         }
         _ => {}
@@ -1082,7 +1087,10 @@ fn set_f32_style_prop(node: &mut Node, prop: StyleProp, v: f32) -> StyleEffect {
                 height: DefiniteLength::Px(v),
             };
         }
-        StyleProp::FontSize => style.text.font_size = v,
+        StyleProp::FontSize => {
+            style.text.font_size = v;
+            node.interactivity.base_style.text.font_size = Some(v);
+        }
         StyleProp::FontWeight => {}
         StyleProp::Rounded => style.corner_radii = Corners::uniform(v),
         StyleProp::RoundedTL => style.corner_radii.top_left = v,
@@ -1234,6 +1242,18 @@ fn set_enum_style_prop_from_str(style: &mut UzStyle, prop: StyleProp, value: &st
     set_enum_style_prop(style, prop, number)
 }
 
+fn remember_inherited_enum(node: &mut Node, prop: StyleProp) {
+    match prop {
+        StyleProp::OverflowWrap => {
+            node.interactivity.base_style.text.overflow_wrap = Some(node.style.text.overflow_wrap);
+        }
+        StyleProp::WordBreak => {
+            node.interactivity.base_style.text.word_break = Some(node.style.text.word_break);
+        }
+        _ => {}
+    }
+}
+
 // ---------------------------------------------------------------------------
 // Clear style prop
 // ---------------------------------------------------------------------------
@@ -1286,8 +1306,14 @@ fn clear_style_prop(node: &mut Node, prop: StyleProp, variant: StyleVariant) -> 
         StyleProp::Justify => node.style.justify_content = default.justify_content,
         StyleProp::Gap => node.style.gap = default.gap,
         StyleProp::Bg => node.style.background = default.background,
-        StyleProp::Color => node.style.text.color = default.text.color,
-        StyleProp::FontSize => node.style.text.font_size = default.text.font_size,
+        StyleProp::Color => {
+            node.style.text.color = default.text.color;
+            node.interactivity.base_style.text.color = None;
+        }
+        StyleProp::FontSize => {
+            node.style.text.font_size = default.text.font_size;
+            node.interactivity.base_style.text.font_size = None;
+        }
         StyleProp::FontWeight => node.style.text.font_weight = default.text.font_weight,
         StyleProp::Rounded => node.style.corner_radii = default.corner_radii,
         StyleProp::RoundedTL => node.style.corner_radii.top_left = default.corner_radii.top_left,
@@ -1322,9 +1348,18 @@ fn clear_style_prop(node: &mut Node, prop: StyleProp, variant: StyleVariant) -> 
             node.style.overflow_y = default.overflow_y;
             node.scroll_state = None;
         }
-        StyleProp::TextSelect => node.set_text_selectable(default.text_selectable),
-        StyleProp::OverflowWrap => node.style.text.overflow_wrap = default.text.overflow_wrap,
-        StyleProp::WordBreak => node.style.text.word_break = default.text.word_break,
+        StyleProp::TextSelect => {
+            node.set_text_selectable(default.text_selectable);
+            node.interactivity.base_style.text_selectable = None;
+        }
+        StyleProp::OverflowWrap => {
+            node.style.text.overflow_wrap = default.text.overflow_wrap;
+            node.interactivity.base_style.text.overflow_wrap = None;
+        }
+        StyleProp::WordBreak => {
+            node.style.text.word_break = default.text.word_break;
+            node.interactivity.base_style.text.word_break = None;
+        }
         StyleProp::Position => node.style.position = default.position,
         StyleProp::Top => node.style.inset.top = default.inset.top,
         StyleProp::Right => node.style.inset.right = default.inset.right,

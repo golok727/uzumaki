@@ -24,14 +24,7 @@ pub fn op_create_window(
     let app_state = state.borrow::<SharedAppState>().clone();
     with_state(&app_state, |s| {
         let mut dom = UIState::new();
-        let root = dom.create_view(UzStyle {
-            display: Display::Flex,
-            size: Size {
-                width: Length::Percent(1.0),
-                height: Length::Percent(1.0),
-            },
-            ..Default::default()
-        });
+        let root = dom.create_view(UzStyle::root());
         dom.set_root(root);
 
         s.windows.insert(

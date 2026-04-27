@@ -538,16 +538,8 @@ impl UIState {
         let Some(root) = self.root else { return };
         let taffy_root = self.nodes[root].taffy_node;
 
-        let computed_styles = self
-            .nodes
-            .iter()
-            .map(|(node_id, node)| {
-                let style = node
-                    .interactivity
-                    .compute_style(&node.style, node_id, &self.hit_state);
-                (node.taffy_node, style.to_taffy(), style.text)
-            })
-            .collect::<Vec<_>>();
+        let mut computed_styles = Vec::new();
+        self.collect_computed_styles(root, None, &mut computed_styles);
 
         for (taffy_node, taffy_style, text_style) in computed_styles {
             self.taffy.set_style(taffy_node, taffy_style).unwrap();
@@ -573,6 +565,30 @@ impl UIState {
                 },
             )
             .unwrap();
+    }
+
+    pub(crate) fn computed_style(&self, node_id: UzNodeId, parent: Option<&UzStyle>) -> UzStyle {
+        let node = &self.nodes[node_id];
+        let parent = parent.unwrap_or(&node.style);
+        node.interactivity
+            .compute_style_inherited(&node.style, parent, node_id, &self.hit_state)
+    }
+
+    fn collect_computed_styles(
+        &self,
+        node_id: UzNodeId,
+        parent: Option<&UzStyle>,
+        out: &mut Vec<(taffy::NodeId, taffy::Style, TextStyle)>,
+    ) {
+        let style = self.computed_style(node_id, parent);
+        let node = &self.nodes[node_id];
+        out.push((node.taffy_node, style.to_taffy(), style.text.clone()));
+
+        let mut child = node.first_child;
+        while let Some(child_id) = child {
+            self.collect_computed_styles(child_id, Some(&style), out);
+            child = self.nodes[child_id].next_sibling;
+        }
     }
 
     /// Run hit test at the given mouse position and update hit_state.

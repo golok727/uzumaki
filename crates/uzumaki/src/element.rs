@@ -93,7 +93,10 @@ impl RasterImageData {
 #[derive(Debug, Clone, Default)]
 pub enum ImageData {
     Raster(RasterImageData),
-    Svg(Arc<usvg::Tree>),
+    Svg {
+        tree: Arc<usvg::Tree>,
+        uses_current_color: bool,
+    },
     #[default]
     None,
 }
@@ -106,7 +109,7 @@ impl ImageData {
     pub fn natural_size(&self) -> Option<(f32, f32)> {
         match self {
             Self::Raster(r) => Some((r.width as f32, r.height as f32)),
-            Self::Svg(tree) => {
+            Self::Svg { tree, .. } => {
                 let s = tree.size();
                 Some((s.width(), s.height()))
             }
@@ -123,7 +126,10 @@ impl From<RasterImageData> for ImageData {
 
 impl From<usvg::Tree> for ImageData {
     fn from(value: usvg::Tree) -> Self {
-        Self::Svg(Arc::new(value))
+        Self::Svg {
+            tree: Arc::new(value),
+            uses_current_color: false,
+        }
     }
 }
 
@@ -136,15 +142,6 @@ impl ImageNode {
     pub fn clear(&mut self) {
         self.data = ImageData::None;
     }
-}
-
-// General-purpose mechanism for properties that propagate from parent to child
-// unless explicitly overridden. Designed for extension — future inheritable
-// properties (font color, font size, line height, etc.) go here.
-
-#[derive(Clone, Debug, Default)]
-pub struct InheritedProperties {
-    pub text_selectable: bool,
 }
 
 /// One text node's contribution to a textSelect run.

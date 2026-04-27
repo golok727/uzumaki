@@ -7,9 +7,7 @@ use vello::peniko::{Color as VelloColor, Fill};
 use crate::element::checkbox::CheckboxRenderInfo;
 use crate::element::image::ImageRenderInfo;
 use crate::element::input::InputRenderInfo;
-use crate::element::{
-    ImageMeasureInfo, InheritedProperties, NodeContext, ScrollThumbRect, UzNodeId,
-};
+use crate::element::{ImageMeasureInfo, NodeContext, ScrollThumbRect, UzNodeId};
 use crate::style::{Bounds, Overflow, TextStyle, UzStyle, Visibility};
 use crate::text::{
     TextRenderer, apply_text_style_to_editor, secure_cursor_geometry, secure_selection_geometry,
@@ -65,7 +63,7 @@ impl<'a> Painter<'a> {
             0.0,
             Affine::scale(self.scale),
             Affine::IDENTITY,
-            InheritedProperties::default(),
+            None,
         )];
 
         while let Some(item) = stack.pop() {
@@ -88,7 +86,7 @@ impl<'a> Painter<'a> {
                     parent_y,
                     parent_paint_transform,
                     parent_hit_transform,
-                    parent_inherited,
+                    parent_style,
                 ) => {
                     // Extract all needed data from the node (immutable borrow scope)
                     let (
@@ -101,23 +99,12 @@ impl<'a> Painter<'a> {
                         needs_hitbox,
                         is_scrollable,
                         first_child,
-                        inherited,
                     ) = {
                         let node = &self.dom.nodes[node_id];
 
                         let taffy_node = node.taffy_node;
-                        let computed_style = node.interactivity.compute_style(
-                            &node.style,
-                            node_id,
-                            &self.dom.hit_state,
-                        );
-
-                        // Resolve inherited properties from the effective style so variants like
-                        // hover:selectable behave the same way as base selectable.
-                        let mut inherited = parent_inherited.clone();
-                        if let Some(text_selectable) = computed_style.text_selectable.as_value() {
-                            inherited.text_selectable = text_selectable;
-                        }
+                        let computed_style =
+                            self.dom.computed_style(node_id, parent_style.as_deref());
 
                         let text = node
                             .as_text_node()
@@ -169,7 +156,6 @@ impl<'a> Painter<'a> {
                             needs_hitbox,
                             is_scrollable,
                             first_child,
-                            inherited,
                         )
                     };
 
@@ -377,7 +363,7 @@ impl<'a> Painter<'a> {
                                 y - clamped_offset as f64,
                                 child_paint_parent,
                                 child_hit_parent,
-                                inherited.clone(),
+                                Some(Box::new(computed_style.clone())),
                             ));
                         }
                         // 2. PushClip
@@ -392,7 +378,7 @@ impl<'a> Painter<'a> {
                                 y,
                                 transform,
                                 hit_transform,
-                                inherited.clone(),
+                                Some(Box::new(computed_style.clone())),
                             ));
                         }
                     }
@@ -727,7 +713,7 @@ enum RenderCommand {
 }
 
 enum StackItem {
-    Visit(UzNodeId, f64, f64, Affine, Affine, InheritedProperties),
+    Visit(UzNodeId, f64, f64, Affine, Affine, Option<Box<UzStyle>>),
     PushClip(Rect, Affine),
     PopClip,
     PaintThumb(ThumbInfo),

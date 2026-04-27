@@ -29,7 +29,11 @@ fn decode(data: &[u8]) -> Result<ImageData, JsErrorBox> {
     if looks_like_svg(data) {
         let opts = usvg::Options::default();
         let tree = usvg::Tree::from_data(data, &opts).map_err(invalid_image_data)?;
-        return Ok(tree.into());
+        let text = std::str::from_utf8(data).unwrap_or("");
+        return Ok(ImageData::Svg {
+            tree: Arc::new(tree),
+            uses_current_color: text.contains("currentColor") || text.contains("currentcolor"),
+        });
     }
     let decoded = image::load_from_memory(data).map_err(invalid_image_data)?;
     let (width, height) = decoded.dimensions();

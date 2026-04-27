@@ -240,6 +240,32 @@ impl Interactivity {
         style
     }
 
+    pub fn compute_style_inherited(
+        &self,
+        base: &UzStyle,
+        parent: &UzStyle,
+        node_id: UzNodeId,
+        hit_state: &HitTestState,
+    ) -> UzStyle {
+        let mut style = base.clone();
+        style.inherit_from(parent);
+        style.refine(&self.base_style);
+
+        if hit_state.is_hovered(node_id)
+            && let Some(hover) = &self.hover_style
+        {
+            style.refine(hover);
+        }
+
+        if hit_state.is_active(node_id)
+            && let Some(active) = &self.active_style
+        {
+            style.refine(active);
+        }
+
+        style
+    }
+
     /// Set the hover style refinement.
     pub fn on_hover(&mut self, style: UzStyleRefinement) {
         self.hover_style = Some(Box::new(style));

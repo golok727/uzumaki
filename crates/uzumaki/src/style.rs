@@ -575,6 +575,57 @@ impl Default for UzStyle {
 }
 
 impl UzStyle {
+    pub fn root() -> Self {
+        Self {
+            display: Display::Flex,
+            size: Size {
+                width: Length::Percent(1.0),
+                height: Length::Percent(1.0),
+            },
+            text_selectable: TextSelectable::False,
+            ..Default::default()
+        }
+    }
+
+    pub fn inherit_from(&mut self, parent: &Self) {
+        self.text = parent.text.clone();
+        self.text_selectable = parent.text_selectable;
+    }
+
+    pub fn default_for_element(element_type: &str) -> Self {
+        match element_type {
+            "button" => Self {
+                flex_shrink: 0.0,
+                align_items: Some(AlignItems::Center),
+                justify_content: Some(JustifyContent::Center),
+                cursor: Some(UzCursorIcon::Pointer),
+                text: TextStyle {
+                    overflow_wrap: OverflowWrap::Normal,
+                    word_break: WordBreak::KeepAll,
+                    ..Default::default()
+                },
+                ..Default::default()
+            },
+            "input" => Self {
+                text: TextStyle {
+                    overflow_wrap: OverflowWrap::Normal,
+                    word_break: WordBreak::KeepAll,
+                    ..Default::default()
+                },
+                ..Default::default()
+            },
+            "text" | "#text" | "p" => Self {
+                text: TextStyle {
+                    overflow_wrap: OverflowWrap::Normal,
+                    word_break: WordBreak::Normal,
+                    ..Default::default()
+                },
+                ..Default::default()
+            },
+            _ => Default::default(),
+        }
+    }
+
     pub fn to_taffy(&self) -> taffy::Style {
         taffy::Style {
             display: match self.display {
