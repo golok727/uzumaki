@@ -781,7 +781,7 @@ pub(crate) fn measure(
         }
 
         let aspect_ratio = *width / *height;
-        let measured_width = known_dimensions.width.unwrap_or_else(|| {
+        let measured_width = known_dimensions.width.unwrap_or({
             if let Some(known_height) = known_dimensions.height {
                 known_height * aspect_ratio
             } else {

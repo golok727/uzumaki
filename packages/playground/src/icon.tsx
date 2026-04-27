@@ -4,6 +4,7 @@ function loadIcon(name: string, color: string): string {
   const key = `${name}:${color}`;
   const cached = cache.get(key);
   if (cached) return cached;
+  // todo find a better way to load this
   const url = new URL(`../assets/icons/${name}.svg`, import.meta.url);
   const raw = Deno.readTextFileSync(url);
   const themed = raw.replaceAll('currentColor', color);
