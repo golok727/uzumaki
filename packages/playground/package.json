@@ -13,6 +13,7 @@
     "preview": "cargo r -p uzumaki --release -- dist/index.js"
   },
   "devDependencies": {
+    "@types/deno": "^2.5.0",
     "@types/node": "^25.6.0",
     "@types/react": "^19.2.14"
   },

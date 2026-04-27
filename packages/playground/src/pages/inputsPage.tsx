@@ -10,6 +10,7 @@ export function InputsPage() {
   const [bio, setBio] = useState('');
   const [search, setSearch] = useState('');
   const [submitted, setSubmitted] = useState(false);
+  const inputPadding = 8;
 
   const pwMatch = password === confirm && confirm.length > 0;
   const pwMismatch = confirm.length > 0 && password !== confirm;
@@ -41,7 +42,7 @@ export function InputsPage() {
             fontSize={15}
             color={C.text}
             bg={C.surface2}
-            p={4}
+            p={inputPadding}
             rounded={8}
             border={1}
             borderColor={search.length > 0 ? C.accent : C.border}
@@ -77,7 +78,7 @@ export function InputsPage() {
               fontSize={14}
               color={C.text}
               bg={C.surface2}
-              p={4}
+              p={inputPadding}
               rounded={8}
               border={1}
               borderColor={C.border}
@@ -95,7 +96,7 @@ export function InputsPage() {
               fontSize={14}
               color={C.text}
               bg={C.surface2}
-              p={4}
+              p={inputPadding}
               rounded={8}
               border={1}
               borderColor={C.border}
@@ -117,7 +118,7 @@ export function InputsPage() {
               fontSize={14}
               color={C.text}
               bg={C.surface2}
-              p={4}
+              p={inputPadding}
               rounded={8}
               border={1}
               borderColor={C.border}
@@ -136,7 +137,7 @@ export function InputsPage() {
               fontSize={14}
               color={C.text}
               bg={C.surface2}
-              p={4}
+              p={inputPadding}
               rounded={8}
               border={1}
               borderColor={

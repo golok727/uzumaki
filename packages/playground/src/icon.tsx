@@ -1,13 +1,11 @@
-import { useEffect, useState } from 'react';
-
 const cache = new Map<string, string>();
 
-async function loadIcon(name: string, color: string): Promise<string> {
+function loadIcon(name: string, color: string): string {
   const key = `${name}:${color}`;
   const cached = cache.get(key);
   if (cached) return cached;
   const url = new URL(`../assets/icons/${name}.svg`, import.meta.url);
-  const raw = await Deno.readTextFile(url);
+  const raw = Deno.readTextFileSync(url);
   const themed = raw.replaceAll('currentColor', color);
   const dataUrl = `data:image/svg+xml;base64,${btoa(themed)}`;
   cache.set(key, dataUrl);
@@ -23,18 +21,6 @@ export function Icon({
   color: string;
   size?: number;
 }) {
-  const [src, setSrc] = useState<string | null>(null);
-
-  useEffect(() => {
-    let active = true;
-    loadIcon(name, color).then((url) => {
-      if (active) setSrc(url);
-    });
-    return () => {
-      active = false;
-    };
-  }, [name, color]);
-
-  if (!src) return <view w={size} h={size} />;
+  const src = loadIcon(name, color);
   return <image src={src} w={size} h={size} />;
 }

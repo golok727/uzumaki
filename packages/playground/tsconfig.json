@@ -1,9 +1,10 @@
 {
   "compilerOptions": {
     // Environment setup & latest features
-    "lib": ["ESNext"],
+    "lib": ["ESNext", "DOM"],
     "target": "ESNext",
-    "types": ["node"],
+    "types": ["deno"],
+    "typeRoots": ["./node_modules/@types"],
     "module": "Preserve",
     "moduleDetection": "force",
     "jsx": "react-jsx",
