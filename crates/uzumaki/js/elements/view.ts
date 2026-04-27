@@ -5,7 +5,6 @@ import {
   isEventProp,
   listenerKey,
   parseEventProp,
-  isNativeAttribute,
 } from '../utils';
 import { Window } from '../window';
 import { BaseElement } from './base';
@@ -31,7 +30,7 @@ export class ViewElement extends BaseElement<Record<string, any>> {
           handler: value,
           capture,
         });
-      } else if (isNativeAttribute(key)) {
+      } else {
         assignNativeStyle(this.styles, key, value);
       }
     }
@@ -55,7 +54,7 @@ export class ViewElement extends BaseElement<Record<string, any>> {
           handler: value,
           capture,
         });
-      } else if (isNativeAttribute(key)) {
+      } else {
         assignNativeStyle(newStyles, key, value);
       }
     }

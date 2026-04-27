@@ -1,4 +1,3 @@
-import { STYLE_ATTRIBUTE_NAMES } from '../constants';
 import core from '../core';
 import { ListenerEntry } from '../types';
 import {
@@ -115,7 +114,7 @@ export class ImageElement extends BaseElement<Record<string, any>> {
           handler: value,
           capture,
         });
-      } else if (STYLE_ATTRIBUTE_NAMES.has(key)) {
+      } else {
         assignNativeStyle(this.styles, key, value);
       }
     }
@@ -221,7 +220,7 @@ export class ImageElement extends BaseElement<Record<string, any>> {
           handler: value,
           capture,
         });
-      } else if (STYLE_ATTRIBUTE_NAMES.has(key)) {
+      } else {
         assignNativeStyle(newStyles, key, value);
       }
     }

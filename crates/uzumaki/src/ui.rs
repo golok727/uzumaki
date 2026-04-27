@@ -111,7 +111,10 @@ impl UIState {
             return UzCursorIcon::Default;
         };
 
-        if let Some(c) = node.style.cursor {
+        let style = node
+            .interactivity
+            .compute_style(&node.style, node_id, &self.hit_state);
+        if let Some(c) = style.cursor {
             return c;
         }
 
@@ -126,7 +129,8 @@ impl UIState {
         let mut cur = node.parent;
         while let Some(id) = cur {
             let n = &self.nodes[id];
-            if let Some(c) = n.style.cursor {
+            let style = n.interactivity.compute_style(&n.style, id, &self.hit_state);
+            if let Some(c) = style.cursor {
                 return c;
             }
             cur = n.parent;
@@ -533,6 +537,24 @@ impl UIState {
     pub fn compute_layout(&mut self, width: f32, height: f32, text_renderer: &mut TextRenderer) {
         let Some(root) = self.root else { return };
         let taffy_root = self.nodes[root].taffy_node;
+
+        let computed_styles = self
+            .nodes
+            .iter()
+            .map(|(node_id, node)| {
+                let style = node
+                    .interactivity
+                    .compute_style(&node.style, node_id, &self.hit_state);
+                (node.taffy_node, style.to_taffy(), style.text)
+            })
+            .collect::<Vec<_>>();
+
+        for (taffy_node, taffy_style, text_style) in computed_styles {
+            self.taffy.set_style(taffy_node, taffy_style).unwrap();
+            if let Some(ctx) = self.taffy.get_node_context_mut(taffy_node) {
+                ctx.text_style = text_style;
+            }
+        }
 
         self.taffy
             .compute_layout_with_measure(

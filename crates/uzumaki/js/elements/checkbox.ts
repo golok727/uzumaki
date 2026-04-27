@@ -5,7 +5,6 @@ import { ListenerEntry } from '../types';
 import {
   assignNativeStyle,
   isEventProp,
-  isNativeAttribute,
   listenerKey,
   parseEventProp,
 } from '../utils';
@@ -47,7 +46,7 @@ export class CheckboxElement extends BaseElement<Record<string, any>> {
         });
       } else if (CHECKBOX_ATTR_NAMES.has(key)) {
         this.checkboxAttrs[key] = value;
-      } else if (isNativeAttribute(key)) {
+      } else {
         assignNativeStyle(this.styles, key, value);
       }
     }
@@ -106,7 +105,7 @@ export class CheckboxElement extends BaseElement<Record<string, any>> {
         });
       } else if (CHECKBOX_ATTR_NAMES.has(key)) {
         newCheckboxAttrs[key] = value;
-      } else if (isNativeAttribute(key)) {
+      } else {
         assignNativeStyle(newStyles, key, value);
       }
     }

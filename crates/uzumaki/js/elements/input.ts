@@ -7,7 +7,6 @@ import {
   isEventProp,
   listenerKey,
   parseEventProp,
-  isNativeAttribute,
 } from '../utils';
 import { Window } from '../window';
 import { BaseElement } from './base';
@@ -47,7 +46,7 @@ export class InputElement extends BaseElement<Record<string, any>> {
         });
       } else if (INPUT_ATTR_NAMES.has(key)) {
         this.inputAttrs[key] = value;
-      } else if (isNativeAttribute(key)) {
+      } else {
         assignNativeStyle(this.styles, key, value);
       }
     }
@@ -110,7 +109,7 @@ export class InputElement extends BaseElement<Record<string, any>> {
         });
       } else if (INPUT_ATTR_NAMES.has(key)) {
         newInputAttrs[key] = value;
-      } else if (isNativeAttribute(key)) {
+      } else {
         assignNativeStyle(newStyles, key, value);
       }
     }

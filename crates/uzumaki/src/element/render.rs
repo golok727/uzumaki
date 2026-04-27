@@ -10,7 +10,7 @@ use crate::element::input::InputRenderInfo;
 use crate::element::{
     ImageMeasureInfo, InheritedProperties, NodeContext, ScrollThumbRect, UzNodeId,
 };
-use crate::style::{Bounds, TextStyle, UzStyle, Visibility};
+use crate::style::{Bounds, Overflow, TextStyle, UzStyle, Visibility};
 use crate::text::{
     TextRenderer, apply_text_style_to_editor, secure_cursor_geometry, secure_selection_geometry,
 };
@@ -105,20 +105,19 @@ impl<'a> Painter<'a> {
                     ) = {
                         let node = &self.dom.nodes[node_id];
 
-                        // Resolve inherited properties
-                        let mut inherited = parent_inherited.clone();
-
-                        // if not inherited property set the value
-                        if let Some(text_selectable) = node.text_selectable().as_value() {
-                            inherited.text_selectable = text_selectable;
-                        }
-
                         let taffy_node = node.taffy_node;
                         let computed_style = node.interactivity.compute_style(
                             &node.style,
                             node_id,
                             &self.dom.hit_state,
                         );
+
+                        // Resolve inherited properties from the effective style so variants like
+                        // hover:selectable behave the same way as base selectable.
+                        let mut inherited = parent_inherited.clone();
+                        if let Some(text_selectable) = computed_style.text_selectable.as_value() {
+                            inherited.text_selectable = text_selectable;
+                        }
 
                         let text = node
                             .as_text_node()
@@ -157,7 +156,7 @@ impl<'a> Painter<'a> {
                         // non-listener overlays consume pointer targeting instead of leaking
                         // hover/active state to lower siblings.
                         let needs_hitbox = true;
-                        let is_scrollable = node.scroll_state.is_some();
+                        let is_scrollable = matches!(computed_style.overflow_y, Overflow::Scroll);
                         let first_child = node.first_child;
 
                         (
@@ -296,6 +295,10 @@ impl<'a> Painter<'a> {
                         let content_height = layout.content_size.height;
                         let visible_height = layout.size.height;
                         let max_scroll = (content_height - visible_height).max(0.0);
+                        if self.dom.nodes[node_id].scroll_state.is_none() {
+                            self.dom.nodes[node_id].scroll_state =
+                                Some(crate::element::ScrollState::new());
+                        }
                         if let Some(ss) = self.dom.nodes[node_id].scroll_state.as_mut()
                             && ss.scroll_offset_y > max_scroll
                         {

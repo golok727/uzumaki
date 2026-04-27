@@ -3,7 +3,6 @@ import { ListenerEntry } from '../types';
 import {
   assignNativeStyle,
   isEventProp,
-  isNativeAttribute,
   listenerKey,
   parseEventProp,
 } from '../utils';
@@ -40,7 +39,7 @@ export class TextElement extends BaseElement<Record<string, any>> {
           handler: value,
           capture,
         });
-      } else if (isNativeAttribute(key)) {
+      } else {
         assignNativeStyle(this.styles, key, value);
       }
     }
@@ -71,7 +70,7 @@ export class TextElement extends BaseElement<Record<string, any>> {
           handler: value,
           capture,
         });
-      } else if (isNativeAttribute(key)) {
+      } else {
         assignNativeStyle(newStyles, key, value);
       }
     }
