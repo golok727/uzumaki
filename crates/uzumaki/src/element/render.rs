@@ -150,10 +150,8 @@ impl<'a> Painter<'a> {
                         } else {
                             None
                         };
-                        let image_snapshot = node.as_image().and_then(|image| {
-                            image.image.as_ref().map(|data| ImageRenderInfo {
-                                image: data.clone(),
-                            })
+                        let image_snapshot = node.as_image().map(|image| ImageRenderInfo {
+                            data: image.data.clone(),
                         });
                         // Visible boxes participate in hit testing by default. This lets
                         // non-listener overlays consume pointer targeting instead of leaking

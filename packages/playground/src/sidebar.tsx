@@ -9,6 +9,7 @@ const TABS: { id: Tab; label: string; icon: string }[] = [
   { id: 'events', label: 'Mouse Events', icon: '🐭' },
   { id: 'timer', label: 'Timers', icon: '⏱' },
   { id: 'issues', label: 'GitHub Issues', icon: '😉' },
+  { id: 'images', label: 'Images', icon: '🖼' },
 ];
 
 export function Sidebar({

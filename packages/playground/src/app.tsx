@@ -9,6 +9,7 @@ import { LayoutPage } from './pages/layoutPage';
 import { StressPage } from './pages/stressPage';
 import { EventsPage } from './pages/eventsPage';
 import { IssuesPage } from './pages/issuesPage';
+import { ImagesPage } from './pages/imagesPage';
 import { TimerPage } from './pages/timerPage';
 
 export function App() {
@@ -22,6 +23,7 @@ export function App() {
     stress: <StressPage />,
     events: <EventsPage />,
     issues: <IssuesPage />,
+    images: <ImagesPage />,
     timer: <TimerPage />,
   }[activeTab];
 

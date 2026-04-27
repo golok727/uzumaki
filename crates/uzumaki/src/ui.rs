@@ -3,8 +3,8 @@ use slab::Slab;
 use crate::{
     cursor::UzCursorIcon,
     element::{
-        ElementData, ElementNode, ImageMeasureInfo, ImageNode, Node, NodeContext, ScrollDragState,
-        ScrollThumbRect, TextNode, TextRunEntry, TextSelectRun, UzNodeId, render,
+        ElementData, ElementNode, ImageData, ImageMeasureInfo, ImageNode, Node, NodeContext,
+        ScrollDragState, ScrollThumbRect, TextNode, TextRunEntry, TextSelectRun, UzNodeId, render,
     },
     input::InputState,
     interactivity::{HitTestState, HitboxStore},
@@ -453,27 +453,22 @@ impl UIState {
             .unwrap();
     }
 
-    pub fn set_image_data(
-        &mut self,
-        node_id: UzNodeId,
-        width: u32,
-        height: u32,
-        image: vello::peniko::ImageData,
-    ) {
+    pub fn set_image_data(&mut self, node_id: UzNodeId, data: ImageData) {
         let Some(node) = self.nodes.get_mut(node_id) else {
             return;
         };
         let Some(image_node) = node.as_image_mut() else {
             return;
         };
-        image_node.image = Some(image);
+        let measure = data.natural_size().map(|(w, h)| ImageMeasureInfo {
+            width: w,
+            height: h,
+        });
+        image_node.data = data;
 
         let taffy_node = node.taffy_node;
         if let Some(ctx) = self.taffy.get_node_context_mut(taffy_node) {
-            ctx.image = Some(ImageMeasureInfo {
-                width: width as f32,
-                height: height as f32,
-            });
+            ctx.image = measure;
         }
         let _ = self.taffy.mark_dirty(taffy_node);
     }

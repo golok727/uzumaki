@@ -5,4 +5,5 @@ export type Tab =
   | 'stress'
   | 'events'
   | 'issues'
+  | 'images'
   | 'timer';

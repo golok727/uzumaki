@@ -2,13 +2,15 @@ use crate::cursor::UzCursorIcon;
 use crate::input::InputState;
 use crate::interactivity::Interactivity;
 use crate::style::{Bounds, TextSelectable, TextStyle, UzStyle};
-use vello::peniko::ImageData;
+use std::sync::Arc;
+use vello::peniko::Blob;
 
 pub mod checkbox;
 pub mod image;
 pub mod input;
 pub mod render;
 pub mod selection;
+pub mod svg;
 pub mod text;
 pub mod view;
 
@@ -71,14 +73,68 @@ pub struct ImageMeasureInfo {
     pub height: f32,
 }
 
+#[derive(Debug, Clone, PartialEq)]
+pub struct RasterImageData {
+    pub width: u32,
+    pub height: u32,
+    pub data: Blob<u8>,
+}
+
+impl RasterImageData {
+    pub fn new(width: u32, height: u32, data: Arc<Vec<u8>>) -> Self {
+        Self {
+            width,
+            height,
+            data: Blob::new(data),
+        }
+    }
+}
+
+#[derive(Debug, Clone, Default)]
+pub enum ImageData {
+    Raster(RasterImageData),
+    Svg(Arc<usvg::Tree>),
+    #[default]
+    None,
+}
+
+impl ImageData {
+    pub fn is_none(&self) -> bool {
+        matches!(self, Self::None)
+    }
+
+    pub fn natural_size(&self) -> Option<(f32, f32)> {
+        match self {
+            Self::Raster(r) => Some((r.width as f32, r.height as f32)),
+            Self::Svg(tree) => {
+                let s = tree.size();
+                Some((s.width(), s.height()))
+            }
+            Self::None => None,
+        }
+    }
+}
+
+impl From<RasterImageData> for ImageData {
+    fn from(value: RasterImageData) -> Self {
+        Self::Raster(value)
+    }
+}
+
+impl From<usvg::Tree> for ImageData {
+    fn from(value: usvg::Tree) -> Self {
+        Self::Svg(Arc::new(value))
+    }
+}
+
 #[derive(Clone, Debug, Default)]
 pub struct ImageNode {
-    pub image: Option<ImageData>,
+    pub data: ImageData,
 }
 
 impl ImageNode {
     pub fn clear(&mut self) {
-        self.image = None;
+        self.data = ImageData::None;
     }
 }
 

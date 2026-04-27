@@ -13,6 +13,29 @@ import { BaseElement } from './base';
 const WINDOWS_DRIVE_PATH = /^[A-Za-z]:[\\/]/;
 const URL_SCHEME = /^[A-Za-z][A-Za-z\d+\-.]*:/;
 
+const LIFECYCLE_PROPS = new Set([
+  'children',
+  'key',
+  'ref',
+  'src',
+  'onLoad',
+  'onLoadStart',
+  'onError',
+]);
+
+type ImageStatus = 'idle' | 'loading' | 'loaded' | 'error';
+
+export interface ImageLoadEvent {
+  src: string;
+  width?: number;
+  height?: number;
+}
+
+export interface ImageErrorEvent {
+  src: string;
+  message: string;
+}
+
 function isFilePath(source: string) {
   return (
     WINDOWS_DRIVE_PATH.test(source) ||
@@ -47,6 +70,10 @@ export class ImageElement extends BaseElement<Record<string, any>> {
   private src: string | undefined;
   private loadGeneration = 0;
   private disposed = false;
+  private status: ImageStatus = 'idle';
+  private onLoad: ((ev: ImageLoadEvent) => void) | undefined;
+  private onLoadStart: ((ev: { src: string }) => void) | undefined;
+  private onError: ((ev: ImageErrorEvent) => void) | undefined;
 
   constructor(window: Window, props: Record<string, any>) {
     const id = core.createElement(window.id, 'image');
@@ -58,15 +85,14 @@ export class ImageElement extends BaseElement<Record<string, any>> {
   }
 
   private parseProps(props: Record<string, any>): void {
+    this.onLoad = typeof props.onLoad === 'function' ? props.onLoad : undefined;
+    this.onLoadStart =
+      typeof props.onLoadStart === 'function' ? props.onLoadStart : undefined;
+    this.onError =
+      typeof props.onError === 'function' ? props.onError : undefined;
+
     for (const key in props) {
-      if (
-        key === 'children' ||
-        key === 'key' ||
-        key === 'ref' ||
-        key === 'src'
-      ) {
-        continue;
-      }
+      if (LIFECYCLE_PROPS.has(key)) continue;
       const value = props[key];
       if (value == null) continue;
       if (isEventProp(key)) {
@@ -95,24 +121,43 @@ export class ImageElement extends BaseElement<Record<string, any>> {
     core.requestRedraw(this.windowId);
 
     if (!src) {
+      this.status = 'idle';
       return;
+    }
+
+    this.status = 'loading';
+    try {
+      this.onLoadStart?.({ src });
+    } catch (error) {
+      console.error('[uzumaki] onLoadStart handler threw:', error);
     }
 
     try {
       const data = await readImageSource(src);
-      if (!this.isLoadCurrent(generation)) {
-        return;
-      }
+      if (!this.isLoadCurrent(generation)) return;
       core.setEncodedImageData(this.windowId, this.id, data);
       core.requestRedraw(this.windowId);
-    } catch (error) {
-      if (!this.isLoadCurrent(generation)) {
-        return;
+      this.status = 'loaded';
+      try {
+        this.onLoad?.({ src });
+      } catch (error) {
+        console.error('[uzumaki] onLoad handler threw:', error);
       }
+    } catch (error) {
+      if (!this.isLoadCurrent(generation)) return;
       core.clearImageData(this.windowId, this.id);
       core.requestRedraw(this.windowId);
+      this.status = 'error';
       const message = error instanceof Error ? error.message : String(error);
-      console.error(`[uzumaki] Failed to load image "${src}": ${message}`);
+      if (this.onError) {
+        try {
+          this.onError({ src, message });
+        } catch (error) {
+          console.error('[uzumaki] onError handler threw:', error);
+        }
+      } else {
+        console.error(`[uzumaki] Failed to load image "${src}": ${message}`);
+      }
     }
   }
 
@@ -128,18 +173,20 @@ export class ImageElement extends BaseElement<Record<string, any>> {
     newProps: Record<string, any>,
     _oldProps: Record<string, any>,
   ): void {
+    this.onLoad =
+      typeof newProps.onLoad === 'function' ? newProps.onLoad : undefined;
+    this.onLoadStart =
+      typeof newProps.onLoadStart === 'function'
+        ? newProps.onLoadStart
+        : undefined;
+    this.onError =
+      typeof newProps.onError === 'function' ? newProps.onError : undefined;
+
     const newStyles: Record<string, any> = {};
     const newEvents: Map<string, ListenerEntry> = new Map();
 
     for (const key in newProps) {
-      if (
-        key === 'children' ||
-        key === 'key' ||
-        key === 'ref' ||
-        key === 'src'
-      ) {
-        continue;
-      }
+      if (LIFECYCLE_PROPS.has(key)) continue;
       const value = newProps[key];
       if (value == null) continue;
       if (isEventProp(key)) {

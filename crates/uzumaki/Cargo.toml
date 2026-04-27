@@ -43,3 +43,4 @@ vello = "0.8.0"
 wgpu = "28.0.0"
 winit = "0.30.13"
 image = { version = "0.25.10", default-features = false, features = ["bmp", "gif", "ico", "jpeg", "png", "webp"] }
+usvg = { version = "0.45.1", default-features = false }

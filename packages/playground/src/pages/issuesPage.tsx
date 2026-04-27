@@ -3,8 +3,6 @@ import { C } from '../theme';
 import { Badge } from '../components';
 import { Table } from '../table';
 
-const remoteImageUrl = 'https://picsum.photos/id/237/800/400';
-
 interface GitHubIssue {
   number: number;
   title: string;
@@ -27,7 +25,7 @@ export function IssuesPage() {
         return res.json();
       })
       .then((data) => {
-        setIssues(data);
+        setIssues(data as GitHubIssue[]);
         setLoading(false);
       })
       .catch((error) => {
@@ -98,31 +96,6 @@ export function IssuesPage() {
       </view>
 
       <view display="flex" flexDir="col" gap={20} p={24}>
-        <view
-          display="flex"
-          flexDir="col"
-          gap={12}
-          p={18}
-          bg={C.surface2}
-          rounded={12}
-          border={1}
-          borderColor={C.border}
-        >
-          <text fontSize={15} fontWeight={800} color={C.text}>
-            Remote Image Test
-          </text>
-          <image
-            src={remoteImageUrl}
-            w={420}
-            rounded={10}
-            border={1}
-            borderColor={C.border}
-          />
-          <text fontSize={12} color={C.textMuted}>
-            Source: {remoteImageUrl}
-          </text>
-        </view>
-
         {loading && (
           <view p={40} display="flex" items="center" justify="center">
             <text fontSize={14} color={C.textMuted}>
