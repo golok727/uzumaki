@@ -167,5 +167,11 @@ export namespace JSX {
         children?: any;
         key?: string | number;
       };
+    image: ElementAttributes &
+      EventProps & {
+        src: string;
+        children?: any;
+        key?: string | number;
+      };
   }
 }

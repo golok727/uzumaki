@@ -5,8 +5,11 @@ use vello::kurbo::{Affine, Rect, RoundedRect, RoundedRectRadii};
 use vello::peniko::{Color as VelloColor, Fill};
 
 use crate::element::checkbox::CheckboxRenderInfo;
+use crate::element::image::ImageRenderInfo;
 use crate::element::input::InputRenderInfo;
-use crate::element::{InheritedProperties, NodeContext, ScrollThumbRect, UzNodeId};
+use crate::element::{
+    ImageMeasureInfo, InheritedProperties, NodeContext, ScrollThumbRect, UzNodeId,
+};
 use crate::style::{Bounds, TextStyle, UzStyle, Visibility};
 use crate::text::{
     TextRenderer, apply_text_style_to_editor, secure_cursor_geometry, secure_selection_geometry,
@@ -94,6 +97,7 @@ impl<'a> Painter<'a> {
                         text,
                         input_snapshot,
                         checkbox_snapshot,
+                        image_snapshot,
                         needs_hitbox,
                         is_scrollable,
                         first_child,
@@ -146,6 +150,11 @@ impl<'a> Painter<'a> {
                         } else {
                             None
                         };
+                        let image_snapshot = node.as_image().and_then(|image| {
+                            image.image.as_ref().map(|data| ImageRenderInfo {
+                                image: data.clone(),
+                            })
+                        });
                         // Visible boxes participate in hit testing by default. This lets
                         // non-listener overlays consume pointer targeting instead of leaking
                         // hover/active state to lower siblings.
@@ -159,6 +168,7 @@ impl<'a> Painter<'a> {
                             text,
                             input_snapshot,
                             checkbox_snapshot,
+                            image_snapshot,
                             needs_hitbox,
                             is_scrollable,
                             first_child,
@@ -400,6 +410,7 @@ impl<'a> Painter<'a> {
                         needs_hitbox,
                         input,
                         checkbox: checkbox_snapshot,
+                        image: image_snapshot,
                     })));
                 }
             }
@@ -522,6 +533,14 @@ impl<'a> Painter<'a> {
                 local_bounds,
                 &info.style,
                 checkbox_info,
+                info.transform,
+            );
+        } else if let Some(image_info) = &info.image {
+            crate::element::image::paint_image(
+                self.scene,
+                local_bounds,
+                &info.style,
+                image_info,
                 info.transform,
             );
         } else if let Some((content, text_style)) = &info.text {
@@ -683,6 +702,7 @@ struct RenderInfo {
     needs_hitbox: bool,
     input: Option<InputRenderInfo>,
     checkbox: Option<CheckboxRenderInfo>,
+    image: Option<ImageRenderInfo>,
 }
 
 struct ThumbInfo {
@@ -757,6 +777,33 @@ pub(crate) fn measure(
         };
     }
 
+    if let Some(ImageMeasureInfo { width, height }) = &ctx.image {
+        if *width <= 0.0 || *height <= 0.0 {
+            return default_size;
+        }
+
+        let aspect_ratio = *width / *height;
+        let measured_width = known_dimensions.width.unwrap_or_else(|| {
+            if let Some(known_height) = known_dimensions.height {
+                known_height * aspect_ratio
+            } else {
+                *width
+            }
+        });
+        let measured_height = known_dimensions.height.unwrap_or_else(|| {
+            if let Some(known_width) = known_dimensions.width {
+                known_width / aspect_ratio
+            } else {
+                *height
+            }
+        });
+
+        return taffy::Size {
+            width: measured_width,
+            height: measured_height,
+        };
+    }
+
     default_size
 }
 
@@ -765,5 +812,129 @@ fn available_as_option(space: taffy::AvailableSpace) -> Option<f32> {
         taffy::AvailableSpace::Definite(v) => Some(v),
         taffy::AvailableSpace::MinContent => Some(0.0),
         taffy::AvailableSpace::MaxContent => None,
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::measure;
+    use crate::element::{ImageMeasureInfo, NodeContext};
+    use crate::style::TextStyle;
+    use crate::text::TextRenderer;
+
+    fn image_context(width: f32, height: f32) -> NodeContext {
+        NodeContext {
+            dom_id: 0,
+            text: None,
+            text_style: TextStyle::default(),
+            is_input: false,
+            image: Some(ImageMeasureInfo { width, height }),
+        }
+    }
+
+    #[test]
+    fn image_measure_uses_natural_size_when_unconstrained() {
+        let mut renderer = TextRenderer::new();
+        let mut ctx = image_context(320.0, 180.0);
+        let size = measure(
+            &mut renderer,
+            taffy::Size {
+                width: None,
+                height: None,
+            },
+            taffy::Size {
+                width: taffy::AvailableSpace::MaxContent,
+                height: taffy::AvailableSpace::MaxContent,
+            },
+            Some(&mut ctx),
+        );
+        assert_eq!(size.width, 320.0);
+        assert_eq!(size.height, 180.0);
+    }
+
+    #[test]
+    fn image_measure_preserves_aspect_ratio_with_width_only() {
+        let mut renderer = TextRenderer::new();
+        let mut ctx = image_context(400.0, 200.0);
+        let size = measure(
+            &mut renderer,
+            taffy::Size {
+                width: Some(160.0),
+                height: None,
+            },
+            taffy::Size {
+                width: taffy::AvailableSpace::MaxContent,
+                height: taffy::AvailableSpace::MaxContent,
+            },
+            Some(&mut ctx),
+        );
+        assert_eq!(size.width, 160.0);
+        assert_eq!(size.height, 80.0);
+    }
+
+    #[test]
+    fn image_measure_preserves_aspect_ratio_with_height_only() {
+        let mut renderer = TextRenderer::new();
+        let mut ctx = image_context(200.0, 400.0);
+        let size = measure(
+            &mut renderer,
+            taffy::Size {
+                width: None,
+                height: Some(100.0),
+            },
+            taffy::Size {
+                width: taffy::AvailableSpace::MaxContent,
+                height: taffy::AvailableSpace::MaxContent,
+            },
+            Some(&mut ctx),
+        );
+        assert_eq!(size.width, 50.0);
+        assert_eq!(size.height, 100.0);
+    }
+
+    #[test]
+    fn image_measure_uses_explicit_box_when_both_dimensions_are_known() {
+        let mut renderer = TextRenderer::new();
+        let mut ctx = image_context(320.0, 180.0);
+        let size = measure(
+            &mut renderer,
+            taffy::Size {
+                width: Some(512.0),
+                height: Some(128.0),
+            },
+            taffy::Size {
+                width: taffy::AvailableSpace::MaxContent,
+                height: taffy::AvailableSpace::MaxContent,
+            },
+            Some(&mut ctx),
+        );
+        assert_eq!(size.width, 512.0);
+        assert_eq!(size.height, 128.0);
+    }
+
+    #[test]
+    fn image_measure_without_bitmap_returns_default_size() {
+        let mut renderer = TextRenderer::new();
+        let mut ctx = NodeContext {
+            dom_id: 0,
+            text: None,
+            text_style: TextStyle::default(),
+            is_input: false,
+            image: None,
+        };
+        let size = measure(
+            &mut renderer,
+            taffy::Size {
+                width: None,
+                height: None,
+            },
+            taffy::Size {
+                width: taffy::AvailableSpace::MaxContent,
+                height: taffy::AvailableSpace::MaxContent,
+            },
+            Some(&mut ctx),
+        );
+        assert_eq!(size.width, 0.0);
+        assert_eq!(size.height, 0.0);
     }
 }

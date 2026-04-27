@@ -5,6 +5,8 @@ import {
   op_get_root_node_id,
   op_create_element,
   op_create_text_node,
+  op_set_image_data,
+  op_clear_image_data,
   op_append_child,
   op_insert_before,
   op_remove_child,
@@ -25,6 +27,43 @@ import {
   op_write_clipboard_text,
 } from 'ext:core/ops';
 
+const WINDOWS_DRIVE_PATH = /^[A-Za-z]:[\\/]/;
+const URL_SCHEME = /^[A-Za-z][A-Za-z\d+\-.]*:/;
+
+function isFilePath(source) {
+  return (
+    WINDOWS_DRIVE_PATH.test(source) ||
+    source.startsWith('/') ||
+    source.startsWith('./') ||
+    source.startsWith('../') ||
+    source.startsWith('\\\\')
+  );
+}
+
+async function readImageSource(source) {
+  if (isFilePath(source)) {
+    return Deno.readFile(source);
+  }
+
+  if (URL_SCHEME.test(source)) {
+    const url = new URL(source);
+    if (url.protocol === 'file:') {
+      return Deno.readFile(url);
+    }
+    const response = await fetch(url);
+    if (!response.ok) {
+      throw new Error(`HTTP ${response.status} while loading ${source}`);
+    }
+    return new Uint8Array(await response.arrayBuffer());
+  }
+
+  return Deno.readFile(source);
+}
+
+async function decodeImageSource(source) {
+  return readImageSource(source);
+}
+
 Object.defineProperty(globalThis, '__uzumaki_ops_dont_touch_this__', {
   value: Object.freeze({
     createWindow: op_create_window,
@@ -33,6 +72,8 @@ Object.defineProperty(globalThis, '__uzumaki_ops_dont_touch_this__', {
     getRootNodeId: op_get_root_node_id,
     createElement: op_create_element,
     createTextNode: op_create_text_node,
+    setImageData: op_set_image_data,
+    clearImageData: op_clear_image_data,
     appendChild: op_append_child,
     insertBefore: op_insert_before,
     removeChild: op_remove_child,
@@ -51,6 +92,7 @@ Object.defineProperty(globalThis, '__uzumaki_ops_dont_touch_this__', {
     getAncestorPath: op_get_ancestor_path,
     readClipboardText: op_read_clipboard_text,
     writeClipboardText: op_write_clipboard_text,
+    decodeImageSource,
   }),
   writable: false,
   configurable: false,

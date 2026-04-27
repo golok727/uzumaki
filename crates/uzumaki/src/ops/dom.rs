@@ -37,6 +37,8 @@ pub fn op_create_element(
             entry.dom.create_input(UzStyle::default())
         } else if element_type == "checkbox" {
             entry.dom.create_checkbox(UzStyle::default())
+        } else if element_type == "image" {
+            entry.dom.create_image(UzStyle::default())
         } else {
             entry.dom.create_view(UzStyle::default())
         };

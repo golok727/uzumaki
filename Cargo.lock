@@ -9221,6 +9221,7 @@ dependencies = [
  "deno_error",
  "deno_resolver",
  "deno_runtime",
+ "image",
  "node_resolver",
  "parley",
  "pollster",

@@ -2,8 +2,10 @@ use crate::cursor::UzCursorIcon;
 use crate::input::InputState;
 use crate::interactivity::Interactivity;
 use crate::style::{Bounds, TextSelectable, TextStyle, UzStyle};
+use vello::peniko::ImageData;
 
 pub mod checkbox;
+pub mod image;
 pub mod input;
 pub mod render;
 pub mod selection;
@@ -63,6 +65,23 @@ impl TextNode {
     }
 }
 
+#[derive(Clone, Debug)]
+pub struct ImageMeasureInfo {
+    pub width: f32,
+    pub height: f32,
+}
+
+#[derive(Clone, Debug, Default)]
+pub struct ImageNode {
+    pub image: Option<ImageData>,
+}
+
+impl ImageNode {
+    pub fn clear(&mut self) {
+        self.image = None;
+    }
+}
+
 // General-purpose mechanism for properties that propagate from parent to child
 // unless explicitly overridden. Designed for extension — future inheritable
 // properties (font color, font size, line height, etc.) go here.
@@ -95,6 +114,7 @@ pub struct NodeContext {
     pub text: Option<TextNode>,
     pub text_style: TextStyle,
     pub is_input: bool,
+    pub image: Option<ImageMeasureInfo>,
 }
 
 pub struct ElementNode {
@@ -118,12 +138,20 @@ impl ElementNode {
         Self::new(ElementData::CheckboxInput(checked))
     }
 
+    pub fn new_image(state: ImageNode) -> Self {
+        Self::new(ElementData::Image(Box::new(state)))
+    }
+
     pub fn is_text_input(&self) -> bool {
         self.data.is_text_input()
     }
 
     pub fn is_checkbox_input(&self) -> bool {
         self.data.is_checkbox_input()
+    }
+
+    pub fn is_image(&self) -> bool {
+        self.data.is_image()
     }
 
     pub fn is_focussable(&self) -> bool {
@@ -140,6 +168,7 @@ pub enum ElementData {
     // this is text Element <text>
     TextInput(Box<InputState>),
     CheckboxInput(bool),
+    Image(Box<ImageNode>),
     // for view nodes
     #[default]
     None,
@@ -160,6 +189,10 @@ impl ElementData {
 
     pub fn is_checkbox_input(&self) -> bool {
         matches!(self, Self::CheckboxInput(_))
+    }
+
+    pub fn is_image(&self) -> bool {
+        matches!(self, Self::Image(_))
     }
 
     pub fn as_text_input(&self) -> Option<&InputState> {
@@ -186,6 +219,20 @@ impl ElementData {
     pub fn as_checkbox_input_mut(&mut self) -> Option<&mut bool> {
         match self {
             Self::CheckboxInput(checked) => Some(checked),
+            _ => None,
+        }
+    }
+
+    pub fn as_image(&self) -> Option<&ImageNode> {
+        match self {
+            Self::Image(image) => Some(image),
+            _ => None,
+        }
+    }
+
+    pub fn as_image_mut(&mut self) -> Option<&mut ImageNode> {
+        match self {
+            Self::Image(image) => Some(image),
             _ => None,
         }
     }
@@ -276,6 +323,20 @@ impl NodeData {
         }
     }
 
+    pub fn as_image(&self) -> Option<&ImageNode> {
+        match self {
+            Self::Element(element) => element.data.as_image(),
+            _ => None,
+        }
+    }
+
+    pub fn as_image_mut(&mut self) -> Option<&mut ImageNode> {
+        match self {
+            Self::Element(element) => element.data.as_image_mut(),
+            _ => None,
+        }
+    }
+
     pub fn is_text_node(&self) -> bool {
         matches!(self, Self::Text(_))
     }
@@ -290,6 +351,13 @@ impl NodeData {
     pub fn is_checkbox_input(&self) -> bool {
         match self {
             Self::Element(element) => element.data.is_checkbox_input(),
+            _ => false,
+        }
+    }
+
+    pub fn is_image(&self) -> bool {
+        match self {
+            Self::Element(element) => element.data.is_image(),
             _ => false,
         }
     }
@@ -420,12 +488,24 @@ impl Node {
         self.data.as_text_node_mut()
     }
 
+    pub fn as_image(&self) -> Option<&ImageNode> {
+        self.data.as_image()
+    }
+
+    pub fn as_image_mut(&mut self) -> Option<&mut ImageNode> {
+        self.data.as_image_mut()
+    }
+
     pub fn is_text_input(&self) -> bool {
         self.data.is_text_input()
     }
 
     pub fn is_checkbox_input(&self) -> bool {
         self.data.is_checkbox_input()
+    }
+
+    pub fn is_image(&self) -> bool {
+        self.data.is_image()
     }
 
     pub fn is_text_node(&self) -> bool {

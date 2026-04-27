@@ -138,3 +138,35 @@ them easy to customize with `bg`, `borderColor`, `color`, `rounded`, `border`,
   <text color="#e4e4e7">Email marketing</text>
 </view>
 ```
+
+## `<image>`
+
+Renders a native raster image decoded by the runtime and painted through Vello.
+
+```tsx
+const hero = new URL('./hero.png', import.meta.url).href;
+
+<image src={hero} w={320} rounded={12} />;
+```
+
+### Image props
+
+| Prop  | Type     | Description          |
+| ----- | -------- | -------------------- |
+| `src` | `string` | Image source to load |
+
+Sizing behavior in v1:
+
+- No `w` and `h`: uses the image's natural size
+- Only one of `w` or `h`: preserves aspect ratio
+- Both `w` and `h`: stretches to the given box
+
+Source behavior in v1:
+
+- Preferred bundled asset form: `new URL('./asset.png', import.meta.url).href`
+- Also supports remote URLs such as `https://...`
+- Also supports explicit local file paths and `file://` URLs
+
+Supported formats follow Deno's current image pipeline and cover common raster
+formats such as PNG, JPEG, GIF, BMP, ICO, and WebP. SVG is not supported by
+this element.

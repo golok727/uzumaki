@@ -52,6 +52,8 @@ extension!(
     op_get_root_node_id,
     op_create_element,
     op_create_text_node,
+    op_set_image_data,
+    op_clear_image_data,
     op_append_child,
     op_insert_before,
     op_remove_child,

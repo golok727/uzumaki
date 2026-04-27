@@ -11,6 +11,8 @@ interface Core {
   getRootNodeId(windowId: number): NodeId;
   createElement(windowId: number, elementType: string): NodeId;
   createTextNode(windowId: number, text: string): NodeId;
+  setImageData(windowId: number, nodeId: NodeId, data: Uint8Array): void;
+  clearImageData(windowId: number, nodeId: NodeId): void;
   appendChild(windowId: number, parentId: NodeId, childId: NodeId): void;
   insertBefore(
     windowId: number,
@@ -51,6 +53,7 @@ interface Core {
   getSelectedText(windowId: number): string;
   readClipboardText(): string | null;
   writeClipboardText(text: string): boolean;
+  decodeImageSource(source: string): Promise<Uint8Array>;
 }
 
 export interface SelectionState {
