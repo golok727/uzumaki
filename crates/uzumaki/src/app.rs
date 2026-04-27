@@ -123,9 +123,7 @@ pub(crate) fn with_state<R>(state: &SharedAppState, f: impl FnOnce(&mut AppState
 pub(crate) enum UserEvent {
     CreateWindow {
         id: u32,
-        width: u32,
-        height: u32,
-        title: String,
+        options: crate::ops::window::CreateWindowOptions,
     },
     CloseWindow {
         id: u32,
@@ -520,22 +518,10 @@ impl ApplicationHandler<UserEvent> for Application {
 
     fn user_event(&mut self, event_loop: &winit::event_loop::ActiveEventLoop, event: UserEvent) {
         match event {
-            UserEvent::CreateWindow {
-                id,
-                width,
-                height,
-                title,
-            } => {
-                let attributes = winit::window::WindowAttributes::default()
-                    .with_title(title)
-                    .with_inner_size(winit::dpi::Size::new(winit::dpi::LogicalSize::new(
-                        width, height,
-                    )))
-                    .with_min_inner_size(winit::dpi::Size::new(winit::dpi::LogicalSize::new(
-                        400, 300,
-                    )));
-
+            UserEvent::CreateWindow { id, options } => {
+                let attributes = options.to_window_attributes();
                 let is_visible = attributes.visible;
+                let transparent = attributes.transparent;
 
                 let Ok(winit_window) = event_loop.create_window(attributes.with_visible(false))
                 else {
@@ -553,7 +539,7 @@ impl ApplicationHandler<UserEvent> for Application {
                     "Window entry '{}' must exist before creating handle",
                     id
                 );
-                match window::Window::new(&state.gpu, winit_window) {
+                match window::Window::new(&state.gpu, winit_window, transparent) {
                     Ok(handle) => {
                         state.winit_id_to_entry_id.insert(winit_id, id);
 

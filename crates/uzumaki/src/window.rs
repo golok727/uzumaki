@@ -19,12 +19,17 @@ pub struct Window {
     pub(crate) scene: Scene,
     pub(crate) text_renderer: TextRenderer,
     current_cursor: UzCursorIcon,
+    transparent: bool,
     valid_surface: bool,
     vello_target: Option<(wgpu::Texture, wgpu::TextureView)>,
 }
 
 impl Window {
-    pub fn new(gpu: &GpuContext, winit_window: Arc<WinitWindow>) -> Result<Self> {
+    pub fn new(
+        gpu: &GpuContext,
+        winit_window: Arc<WinitWindow>,
+        transparent: bool,
+    ) -> Result<Self> {
         let surface = gpu
             .instance
             .create_surface(winit_window.clone())
@@ -81,6 +86,7 @@ impl Window {
             scene,
             text_renderer: TextRenderer::new(),
             current_cursor: UzCursorIcon::Default,
+            transparent,
             valid_surface,
             vello_target: None,
         })
@@ -129,7 +135,11 @@ impl Window {
         let target_view = Self::ensure_vello_target(&mut self.vello_target, device, width, height);
 
         let render_params = RenderParams {
-            base_color: Color::from_rgba8(24, 24, 37, 255),
+            base_color: if self.transparent {
+                Color::from_rgba8(0, 0, 0, 0)
+            } else {
+                Color::from_rgba8(24, 24, 37, 255)
+            },
             width,
             height,
             antialiasing_method: vello::AaConfig::Area,

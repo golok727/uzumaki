@@ -1,12 +1,45 @@
 import { NodeId } from './types';
 
+export interface WindowPosition {
+  x: number;
+  y: number;
+}
+
+export interface WindowSize {
+  width: number;
+  height: number;
+}
+
+export type WindowTheme = 'light' | 'dark' | 'system';
+
 export interface NativeWindow {
   close(): void;
   readonly id: number;
   readonly width: number | null;
   readonly height: number | null;
   readonly title: string | null;
+  setTitle(title: string): boolean;
+  readonly visible: boolean | null;
+  setVisible(visible: boolean): boolean;
+  readonly resizable: boolean | null;
+  setResizable(resizable: boolean): boolean;
+  readonly decorated: boolean | null;
+  setDecorations(decorations: boolean): boolean;
+  readonly maximized: boolean | null;
+  setMaximized(maximized: boolean): boolean;
+  readonly minimized: boolean | null;
+  setMinimized(minimized: boolean): boolean;
+  readonly fullscreen: boolean | null;
+  setFullscreen(fullscreen: boolean): boolean;
+  setMinSize(width: number, height: number): boolean;
+  setMaxSize(width: number, height: number): boolean;
+  readonly innerSize: WindowSize | null;
+  readonly outerSize: WindowSize | null;
+  readonly position: WindowPosition | null;
+  setPosition(x: number, y: number): boolean;
   readonly scaleFactor: number | null;
+  readonly theme: WindowTheme | null;
+  setTheme(theme: WindowTheme): boolean;
   remBase: number;
 }
 
@@ -15,6 +48,18 @@ interface Core {
     width: number;
     height: number;
     title: string;
+    visible?: boolean;
+    resizable?: boolean;
+    decorations?: boolean;
+    transparent?: boolean;
+    maximized?: boolean;
+    fullscreen?: boolean;
+    minWidth?: number;
+    minHeight?: number;
+    maxWidth?: number;
+    maxHeight?: number;
+    position?: WindowPosition;
+    theme?: WindowTheme;
   }): NativeWindow;
   requestQuit(): void;
   requestRedraw(windowId: number): void;

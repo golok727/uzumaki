@@ -1,4 +1,9 @@
-import core, { type NativeWindow } from './core';
+import core, {
+  type NativeWindow,
+  type WindowPosition,
+  type WindowSize,
+  type WindowTheme,
+} from './core';
 import {
   eventManager,
   EVENT_NAME_TO_TYPE,
@@ -10,46 +15,139 @@ const windowsByLabel = new Map<string, Window>();
 const windowsById = new Map<number, Window>();
 
 export interface WindowAttributes {
+  width?: number;
+  height?: number;
+  title?: string;
+  visible?: boolean;
+  resizable?: boolean;
+  decorations?: boolean;
+  transparent?: boolean;
+  maximized?: boolean;
+  fullscreen?: boolean;
+  minWidth?: number;
+  minHeight?: number;
+  maxWidth?: number;
+  maxHeight?: number;
+  position?: WindowPosition;
+  theme?: WindowTheme;
+}
+
+interface NormalizedWindowAttributes {
   width: number;
   height: number;
   title: string;
+  visible: boolean;
+  resizable: boolean;
+  decorations: boolean;
+  transparent: boolean;
+  maximized: boolean;
+  fullscreen: boolean;
+  minWidth?: number;
+  minHeight?: number;
+  maxWidth?: number;
+  maxHeight?: number;
+  position?: WindowPosition;
+  theme?: WindowTheme;
+}
+
+interface WindowFallbackState {
+  width: number;
+  height: number;
+  title: string;
+  visible: boolean;
+  resizable: boolean;
+  decorated: boolean;
+  maximized: boolean;
+  minimized: boolean;
+  fullscreen: boolean;
+  theme: WindowTheme | null;
+  position: WindowPosition | null;
+}
+
+function normalizeWindowAttributes(
+  attributes: WindowAttributes,
+): NormalizedWindowAttributes {
+  const {
+    width = 800,
+    height = 600,
+    title = 'uzumaki',
+    visible = true,
+    resizable = true,
+    decorations = true,
+    transparent = false,
+    maximized = false,
+    fullscreen = false,
+    minWidth,
+    minHeight,
+    maxWidth,
+    maxHeight,
+    position,
+    theme,
+  } = attributes;
+
+  return {
+    width,
+    height,
+    title,
+    visible,
+    resizable,
+    decorations,
+    transparent,
+    maximized,
+    fullscreen,
+    minWidth,
+    minHeight,
+    maxWidth,
+    maxHeight,
+    position,
+    theme,
+  };
+}
+
+function createFallbackState(
+  attributes: NormalizedWindowAttributes,
+): WindowFallbackState {
+  return {
+    width: attributes.width,
+    height: attributes.height,
+    title: attributes.title,
+    visible: attributes.visible,
+    resizable: attributes.resizable,
+    decorated: attributes.decorations,
+    maximized: attributes.maximized,
+    minimized: false,
+    fullscreen: attributes.fullscreen,
+    theme: attributes.theme ?? null,
+    position: attributes.position ?? null,
+  };
 }
 
 export class Window {
   private _id: number;
   private _native: NativeWindow;
   private _label: string;
-  private _title: string;
-  private _width: number;
-  private _height: number;
+  private _fallbackState: WindowFallbackState;
   private _remBase: number = 16;
   private _disposed: boolean = false;
   private _disposables: (() => void)[] = [];
 
-  constructor(
-    label: string,
-    {
-      width = 800,
-      height = 600,
-      title = 'uzumaki',
-    }: Partial<WindowAttributes> = {},
-  ) {
+  constructor(label: string, attributes: WindowAttributes = {}) {
     const existing = windowsByLabel.get(label);
     if (existing) {
       throw new Error(`Window with label ${label} already exists`);
     }
 
-    this._width = width;
-    this._height = height;
+    const normalizedAttributes = normalizeWindowAttributes(attributes);
+
+    this._fallbackState = createFallbackState(normalizedAttributes);
     this._label = label;
-    this._title = title;
-    this._native = core.createWindow({ width, height, title });
+    this._native = core.createWindow(normalizedAttributes);
     this._id = this._native.id;
     windowsByLabel.set(label, this);
     windowsById.set(this._id, this);
   }
 
-  close() {
+  close(): void {
     eventManager.clearWindowHandlers(this._id);
     windowsByLabel.delete(this._label);
     windowsById.delete(this._id);
@@ -64,21 +162,132 @@ export class Window {
     return windowsById.get(id);
   }
 
-  setSize(width: number, height: number) {
-    this._width = width;
-    this._height = height;
+  private setFallbackState<K extends keyof WindowFallbackState>(
+    key: K,
+    value: WindowFallbackState[K],
+  ): void {
+    this._fallbackState[key] = value;
+  }
+
+  private getFallbackValue<K extends keyof WindowFallbackState>(
+    key: K,
+    value: WindowFallbackState[K] | null | undefined,
+  ): WindowFallbackState[K] {
+    return value ?? this._fallbackState[key];
+  }
+
+  setSize(width: number, height: number): void {
+    this.setFallbackState('width', width);
+    this.setFallbackState('height', height);
+  }
+
+  setTitle(title: string): void {
+    this.setFallbackState('title', title);
+    this._native.setTitle(title);
+  }
+
+  setVisible(visible: boolean): void {
+    this.setFallbackState('visible', visible);
+    this._native.setVisible(visible);
+  }
+
+  setResizable(resizable: boolean): void {
+    this.setFallbackState('resizable', resizable);
+    this._native.setResizable(resizable);
+  }
+
+  setDecorations(decorations: boolean): void {
+    this.setFallbackState('decorated', decorations);
+    this._native.setDecorations(decorations);
+  }
+
+  setMaximized(maximized: boolean): void {
+    this.setFallbackState('maximized', maximized);
+    this._native.setMaximized(maximized);
+  }
+
+  setMinimized(minimized: boolean): void {
+    this.setFallbackState('minimized', minimized);
+    this._native.setMinimized(minimized);
+  }
+
+  setFullscreen(fullscreen: boolean): void {
+    this.setFallbackState('fullscreen', fullscreen);
+    this._native.setFullscreen(fullscreen);
+  }
+
+  setMinSize(width: number, height: number): void {
+    this._native.setMinSize(width, height);
+  }
+
+  setMaxSize(width: number, height: number): void {
+    this._native.setMaxSize(width, height);
+  }
+
+  setPosition(x: number, y: number): void {
+    this.setFallbackState('position', { x, y });
+    this._native.setPosition(x, y);
+  }
+
+  setTheme(theme: WindowTheme): void {
+    this.setFallbackState('theme', theme);
+    this._native.setTheme(theme);
   }
 
   get width(): number {
-    return this._native.width ?? this._width;
+    return this.getFallbackValue('width', this._native.width);
   }
 
   get height(): number {
-    return this._native.height ?? this._height;
+    return this.getFallbackValue('height', this._native.height);
   }
 
   get title(): string {
-    return this._native.title ?? this._title;
+    return this.getFallbackValue('title', this._native.title);
+  }
+
+  get visible(): boolean {
+    return this.getFallbackValue('visible', this._native.visible);
+  }
+
+  get resizable(): boolean {
+    return this.getFallbackValue('resizable', this._native.resizable);
+  }
+
+  get decorated(): boolean {
+    return this.getFallbackValue('decorated', this._native.decorated);
+  }
+
+  get maximized(): boolean {
+    return this.getFallbackValue('maximized', this._native.maximized);
+  }
+
+  get minimized(): boolean | null {
+    return this.getFallbackValue('minimized', this._native.minimized);
+  }
+
+  get fullscreen(): boolean {
+    return this.getFallbackValue('fullscreen', this._native.fullscreen);
+  }
+
+  get innerSize(): WindowSize | null {
+    return this._native.innerSize;
+  }
+
+  get outerSize(): WindowSize | null {
+    return this._native.outerSize;
+  }
+
+  get position(): WindowPosition | null {
+    return this.getFallbackValue('position', this._native.position);
+  }
+
+  get scaleFactor(): number | null {
+    return this._native.scaleFactor;
+  }
+
+  get theme(): WindowTheme | null {
+    return this.getFallbackValue('theme', this._native.theme);
   }
 
   get label(): string {
@@ -136,7 +345,7 @@ export class Window {
 }
 
 /** @internal Called when the native window is destroyed. */
-export function disposeWindow(_window: Window) {
+export function disposeWindow(_window: Window): void {
   const window = _window as never as {
     id: number;
     label: string;
