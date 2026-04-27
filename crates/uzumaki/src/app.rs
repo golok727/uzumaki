@@ -1,7 +1,7 @@
 use std::cell::RefCell;
 use std::collections::HashMap;
 use std::path::PathBuf;
-use std::rc::Rc;
+use std::rc::{Rc, Weak};
 use std::sync::Arc;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::task::{Context, Poll};
@@ -113,6 +113,7 @@ unsafe impl Send for AppState {}
 unsafe impl Sync for AppState {}
 
 pub(crate) type SharedAppState = Rc<RefCell<AppState>>;
+pub(crate) type WeakAppState = Weak<RefCell<AppState>>;
 
 pub(crate) fn with_state<R>(state: &SharedAppState, f: impl FnOnce(&mut AppState) -> R) -> R {
     f(&mut state.borrow_mut())
