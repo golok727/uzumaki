@@ -543,26 +543,23 @@ impl ApplicationHandler<UserEvent> for Application {
                 let winit_id = winit_window.id();
 
                 let mut state = self.app_state.borrow_mut();
-                assert!(
-                    state.windows.contains_key(&id),
-                    "Window entry '{}' must exist before creating handle",
-                    id
-                );
                 match window::Window::new(&state.gpu, winit_window, transparent) {
                     Ok(handle) => {
-                        state.winit_id_to_entry_id.insert(winit_id, id);
+                        let created = if let Some(window) = state.windows.get_mut(&id) {
+                            if minimized {
+                                handle.winit_window.set_minimized(true);
+                            }
+                            handle.winit_window.set_visible(is_visible);
+                            window.handle = Some(handle);
+                            true
+                        } else {
+                            eprintln!("Window entry '{id}' missing while creating handle");
+                            false
+                        };
 
-                        let window = state.windows.get_mut(&id).unwrap();
-                        if minimized {
-                            handle.winit_window.set_minimized(true);
+                        if created {
+                            state.winit_id_to_entry_id.insert(winit_id, id);
                         }
-                        handle.winit_window.set_visible(is_visible);
-                        window.handle = Some(handle);
-                        // handle.paint_and_present(
-                        //     &state.gpu.device,
-                        //     &state.gpu.queue,
-                        //     &mut window.dom,
-                        // );
                     }
                     Err(e) => eprintln!("Error creating window: {:#?}", e),
                 }

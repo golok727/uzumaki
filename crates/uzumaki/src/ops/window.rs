@@ -1,6 +1,6 @@
 use deno_core::*;
 use refineable::Refineable;
-use winit::dpi::{LogicalPosition, LogicalSize};
+use winit::dpi::{LogicalPosition, LogicalSize, PhysicalPosition};
 use winit::event_loop::EventLoopProxy;
 use winit::window::{
     Fullscreen, Theme, Window as WinitWindow, WindowAttributes, WindowButtons, WindowLevel,
@@ -85,6 +85,14 @@ struct WindowSize {
 impl WindowPosition {
     fn to_logical_position(self) -> LogicalPosition<f64> {
         LogicalPosition::new(self.x, self.y)
+    }
+
+    fn from_physical_position(position: PhysicalPosition<i32>, scale_factor: f64) -> Self {
+        let position: LogicalPosition<f64> = position.to_logical(scale_factor);
+        Self {
+            x: position.x,
+            y: position.y,
+        }
     }
 }
 
@@ -643,9 +651,8 @@ impl CoreWindow {
     #[serde]
     pub fn position(&self, state: &OpState) -> Option<WindowPosition> {
         self.with_winit_window_option(state, |window| {
-            window.outer_position().ok().map(|position| WindowPosition {
-                x: position.x as f64,
-                y: position.y as f64,
+            window.outer_position().ok().map(|position| {
+                WindowPosition::from_physical_position(position, window.scale_factor())
             })
         })
     }
@@ -746,6 +753,7 @@ impl CoreWindow {
 #[cfg(test)]
 mod tests {
     use super::{WindowOptions, WindowPosition, WindowTheme};
+    use winit::dpi::PhysicalPosition;
     use winit::window::{Fullscreen, Theme};
 
     fn base_options() -> WindowOptions {
@@ -800,6 +808,13 @@ mod tests {
         assert!(attributes.min_inner_size.is_some());
         assert!(attributes.max_inner_size.is_some());
         assert!(attributes.position.is_some());
+    }
+
+    #[test]
+    fn physical_position_is_reported_as_logical_position() {
+        let position = WindowPosition::from_physical_position(PhysicalPosition::new(300, 150), 1.5);
+
+        assert_eq!(position, WindowPosition { x: 200.0, y: 100.0 });
     }
 
     #[test]

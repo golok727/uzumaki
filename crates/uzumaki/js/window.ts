@@ -104,9 +104,10 @@ export class Window {
   }
 
   close(): void {
-    eventManager.clearWindowHandlers(this._id);
-    windowsByLabel.delete(this._label);
-    windowsById.delete(this._id);
+    if (this._disposed) {
+      return;
+    }
+
     this._native.close();
   }
 
@@ -333,7 +334,12 @@ export function disposeWindow(_window: Window): void {
     _disposables: (() => void)[];
   };
 
+  if (window._disposed) {
+    return;
+  }
+
   window._disposed = true;
+  eventManager.clearWindowHandlers(window.id);
   for (const cb of window._disposables) {
     cb();
   }

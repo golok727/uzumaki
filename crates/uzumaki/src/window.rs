@@ -66,8 +66,6 @@ impl Window {
 
         surface.configure(&gpu.device, &surface_config);
 
-        // let renderer = vello::Renderer::new(&gpu.device, RendererOptions::default())
-        //     .context("Error creating renderer")?;
         let renderer = vello::Renderer::new(
             &gpu.device,
             RendererOptions {
