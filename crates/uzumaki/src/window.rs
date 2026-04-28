@@ -51,6 +51,7 @@ impl Window {
                 )
             })
             .unwrap_or(wgpu::TextureFormat::Bgra8Unorm);
+        let alpha_mode = choose_alpha_mode(&surface_caps.alpha_modes, transparent);
 
         let surface_config = wgpu::SurfaceConfiguration {
             usage: wgpu::TextureUsages::RENDER_ATTACHMENT,
@@ -59,7 +60,7 @@ impl Window {
             height: size.height.max(1),
             present_mode: wgpu::PresentMode::Fifo,
             desired_maximum_frame_latency: 2,
-            alpha_mode: surface_caps.alpha_modes[0],
+            alpha_mode,
             view_formats: vec![format],
         };
 
@@ -236,5 +237,74 @@ impl Window {
             self.valid_surface = false;
             false
         }
+    }
+}
+
+fn choose_alpha_mode(
+    modes: &[wgpu::CompositeAlphaMode],
+    transparent: bool,
+) -> wgpu::CompositeAlphaMode {
+    if transparent {
+        modes
+            .iter()
+            .copied()
+            .find(|mode| {
+                matches!(
+                    mode,
+                    wgpu::CompositeAlphaMode::PreMultiplied
+                        | wgpu::CompositeAlphaMode::PostMultiplied
+                        | wgpu::CompositeAlphaMode::Inherit
+                )
+            })
+            .or_else(|| modes.first().copied())
+            .unwrap_or(wgpu::CompositeAlphaMode::Auto)
+    } else {
+        modes
+            .iter()
+            .copied()
+            .find(|mode| *mode == wgpu::CompositeAlphaMode::Opaque)
+            .or_else(|| modes.first().copied())
+            .unwrap_or(wgpu::CompositeAlphaMode::Auto)
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::choose_alpha_mode;
+
+    #[test]
+    fn transparent_windows_prefer_compositing_alpha_modes() {
+        let modes = [
+            wgpu::CompositeAlphaMode::Opaque,
+            wgpu::CompositeAlphaMode::PostMultiplied,
+        ];
+
+        assert_eq!(
+            choose_alpha_mode(&modes, true),
+            wgpu::CompositeAlphaMode::PostMultiplied
+        );
+    }
+
+    #[test]
+    fn opaque_windows_prefer_opaque_alpha_mode() {
+        let modes = [
+            wgpu::CompositeAlphaMode::Inherit,
+            wgpu::CompositeAlphaMode::Opaque,
+        ];
+
+        assert_eq!(
+            choose_alpha_mode(&modes, false),
+            wgpu::CompositeAlphaMode::Opaque
+        );
+    }
+
+    #[test]
+    fn alpha_mode_selection_falls_back_to_supported_mode() {
+        let modes = [wgpu::CompositeAlphaMode::Opaque];
+
+        assert_eq!(
+            choose_alpha_mode(&modes, true),
+            wgpu::CompositeAlphaMode::Opaque
+        );
     }
 }
