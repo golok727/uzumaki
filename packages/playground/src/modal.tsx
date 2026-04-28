@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useId, useState } from 'react';
 import { C } from './theme';
 
 function ModalCounter() {
@@ -45,9 +45,10 @@ function ModalCounter() {
 }
 
 export function Modal({ onClose }: { onClose: () => void }) {
+  const modalId = useId();
   return (
     <view
-      id="modal_backdrop"
+      id={modalId}
       position="absolute"
       top={0}
       left={0}
@@ -58,7 +59,7 @@ export function Modal({ onClose }: { onClose: () => void }) {
       items="center"
       justify="center"
       onClick={(ev) => {
-        if (ev.target?.elementId === 'modal_backdrop') onClose();
+        if (ev.target?.elementId === modalId) onClose();
       }}
     >
       <view
