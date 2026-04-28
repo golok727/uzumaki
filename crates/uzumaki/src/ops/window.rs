@@ -1,7 +1,9 @@
 use deno_core::*;
 use winit::event_loop::EventLoopProxy;
 
-use crate::app::{SharedAppState, UserEvent, WeakAppState, WindowEntry, WindowEntryId, with_state};
+use crate::app::{
+    SharedAppState, UserEvent, WindowEntry, WindowEntryId, with_state, with_state_ref,
+};
 use crate::style::*;
 use crate::ui::UIState;
 
@@ -53,11 +55,7 @@ pub fn op_create_window(
             )
         })?;
 
-    Ok(CoreWindow::new(
-        id,
-        std::rc::Rc::downgrade(&app_state),
-        proxy.clone(),
-    ))
+    Ok(CoreWindow::new(id))
 }
 
 #[op2(fast)]
@@ -114,21 +112,11 @@ use deno_core::GarbageCollected;
 
 pub struct CoreWindow {
     id: WindowEntryId,
-    state: WeakAppState,
-    proxy: EventLoopProxy<UserEvent>,
 }
 
 impl CoreWindow {
-    pub(crate) fn new(
-        id: WindowEntryId,
-        state: WeakAppState,
-        proxy: EventLoopProxy<UserEvent>,
-    ) -> Self {
-        Self { id, state, proxy }
-    }
-
-    fn state(&self) -> Option<SharedAppState> {
-        self.state.upgrade()
+    pub fn new(id: WindowEntryId) -> Self {
+        Self { id }
     }
 }
 
@@ -143,9 +131,16 @@ unsafe impl GarbageCollected for CoreWindow {
 
 #[op2]
 impl CoreWindow {
+    #[getter]
+    pub fn id(&self) -> WindowEntryId {
+        self.id
+    }
+
     #[fast]
-    pub fn close(&self) -> Result<(), deno_error::JsErrorBox> {
-        self.proxy
+    pub fn close(&self, state: &OpState) -> Result<(), deno_error::JsErrorBox> {
+        let proxy = state.borrow::<EventLoopProxy<UserEvent>>();
+
+        proxy
             .send_event(UserEvent::CloseWindow { id: self.id })
             .map_err(|_| {
                 deno_error::JsErrorBox::new("UzumakiInternalError", "error closing window")
@@ -153,77 +148,85 @@ impl CoreWindow {
         Ok(())
     }
 
+    /**
+     * inner width of window in logical pixels
+     */
     #[getter]
-    pub fn id(&self) -> WindowEntryId {
-        self.id
+    #[allow(non_snake_case)]
+    pub fn innerWidth(&self, state: &OpState) -> Option<u32> {
+        let app = state.borrow::<SharedAppState>();
+
+        with_state_ref(app, |state| {
+            state
+                .windows
+                .get(&self.id)
+                .and_then(|w| w.inner_size().map(|(w, _)| w))
+        })
     }
 
     #[getter]
-    pub fn width(&self) -> Option<u32> {
-        self.state()?
-            .borrow()
-            .windows
-            .get(&self.id)
-            .and_then(|w| w.width())
+    #[allow(non_snake_case)]
+    pub fn scaleFactor(&self, state: &OpState) -> Option<f32> {
+        let app = state.borrow::<SharedAppState>();
+
+        with_state_ref(app, |state| {
+            state.windows.get(&self.id).and_then(|w| w.scale_factor())
+        })
     }
 
+    /**
+     * inner height of window in logical pixels
+     */
     #[getter]
-    pub fn height(&self) -> Option<u32> {
-        self.state()?
-            .borrow()
-            .windows
-            .get(&self.id)
-            .and_then(|w| w.height())
+    #[allow(non_snake_case)]
+    pub fn innerHeight(&self, state: &OpState) -> Option<u32> {
+        let app = state.borrow::<SharedAppState>();
+
+        with_state_ref(app, |state| {
+            state
+                .windows
+                .get(&self.id)
+                .and_then(|w| w.inner_size().map(|(_, h)| h))
+        })
     }
 
     #[getter]
     #[string]
-    pub fn title(&self) -> Option<String> {
-        self.state()?
-            .borrow()
-            .windows
-            .get(&self.id)
-            .and_then(|entry| {
+    pub fn title(&self, state: &OpState) -> Option<String> {
+        let app = state.borrow::<SharedAppState>();
+
+        with_state_ref(app, |state| {
+            state.windows.get(&self.id).and_then(|entry| {
                 entry
                     .handle
                     .as_ref()
                     .map(|handle| handle.winit_window.title())
             })
+        })
     }
 
     #[getter]
     #[allow(non_snake_case)]
-    pub fn remBase(&self) -> f32 {
-        self.state()
-            .map(|state| {
-                state
-                    .borrow()
-                    .windows
-                    .get(&self.id)
-                    .map(|w| w.rem_base)
-                    .unwrap_or(16.0)
-            })
-            .unwrap_or(16.0)
+    pub fn remBase(&self, state: &OpState) -> f32 {
+        let app = state.borrow::<SharedAppState>();
+
+        with_state_ref(app, |state| {
+            state
+                .windows
+                .get(&self.id)
+                .map(|w| w.rem_base)
+                .unwrap_or(16.0)
+        })
     }
 
     #[setter]
     #[allow(non_snake_case)]
-    pub fn remBase(&self, value: f64) {
-        let Some(state) = self.state() else {
-            return;
-        };
-        if let Some(entry) = state.borrow_mut().windows.get_mut(&self.id) {
-            entry.rem_base = value as f32;
-        }
-    }
-
-    #[getter]
-    #[allow(non_snake_case)]
-    pub fn scaleFactor(&self) -> Option<f32> {
-        self.state()?
-            .borrow()
-            .windows
-            .get(&self.id)
-            .and_then(|w| w.scale_factor())
+    pub fn remBase(&self, state: &mut OpState, value: f64) {
+        let app = state.borrow_mut::<SharedAppState>();
+        with_state(app, |state| {
+            if let Some(entry) = state.windows.get_mut(&self.id) {
+                entry.rem_base = value as f32;
+            }
+        });
     }
 }

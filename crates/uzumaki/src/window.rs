@@ -90,6 +90,14 @@ impl Window {
         self.winit_window.id()
     }
 
+    pub fn scale_factor(&self) -> f64 {
+        self.winit_window.scale_factor()
+    }
+
+    pub fn inner_size(&self) -> winit::dpi::PhysicalSize<u32> {
+        self.winit_window.inner_size()
+    }
+
     pub(crate) fn set_cursor(&mut self, icon: UzCursorIcon) {
         if self.current_cursor == icon {
             return;

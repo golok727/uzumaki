@@ -1,7 +1,7 @@
 use std::cell::RefCell;
 use std::collections::HashMap;
 use std::path::PathBuf;
-use std::rc::{Rc, Weak};
+use std::rc::Rc;
 use std::sync::Arc;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::task::{Context, Poll};
@@ -43,16 +43,17 @@ pub struct WindowEntry {
 }
 
 impl WindowEntry {
-    pub fn width(&self) -> Option<u32> {
-        self.handle
-            .as_ref()
-            .map(|handle| handle.winit_window.inner_size().width)
-    }
+    /*
+     * Inner size in logicl pixels
+     */
+    pub fn inner_size(&self) -> Option<(u32, u32)> {
+        self.handle.as_ref().map(|handle| {
+            let scale_factor = handle.winit_window.scale_factor();
+            let size: winit::dpi::LogicalSize<u32> =
+                handle.winit_window.inner_size().to_logical(scale_factor);
 
-    pub fn height(&self) -> Option<u32> {
-        self.handle
-            .as_ref()
-            .map(|handle| handle.winit_window.inner_size().height)
+            (size.width, size.height)
+        })
     }
 
     pub fn scale_factor(&self) -> Option<f32> {
@@ -113,10 +114,13 @@ unsafe impl Send for AppState {}
 unsafe impl Sync for AppState {}
 
 pub(crate) type SharedAppState = Rc<RefCell<AppState>>;
-pub(crate) type WeakAppState = Weak<RefCell<AppState>>;
 
 pub(crate) fn with_state<R>(state: &SharedAppState, f: impl FnOnce(&mut AppState) -> R) -> R {
     f(&mut state.borrow_mut())
+}
+
+pub(crate) fn with_state_ref<R>(state: &SharedAppState, f: impl FnOnce(&AppState) -> R) -> R {
+    f(&state.borrow())
 }
 
 #[derive(Debug, Clone)]

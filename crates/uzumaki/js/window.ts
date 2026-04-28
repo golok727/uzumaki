@@ -77,12 +77,16 @@ export class Window {
     this._height = height;
   }
 
-  get width(): number {
-    return this._native.width ?? this._width;
+  get scaleFactor(): number {
+    return this._native.scaleFactor ?? 1;
   }
 
-  get height(): number {
-    return this._native.height ?? this._height;
+  get innerWidth(): number {
+    return this._native.innerWidth ?? this._width;
+  }
+
+  get innerHeight(): number {
+    return this._native.innerHeight ?? this._height;
   }
 
   get title(): string {

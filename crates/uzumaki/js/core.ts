@@ -3,8 +3,8 @@ import { NodeId } from './types';
 export interface NativeWindow {
   close(): void;
   readonly id: number;
-  readonly width: number | null;
-  readonly height: number | null;
+  readonly innerWidth: number | null;
+  readonly innerHeight: number | null;
   readonly title: string | null;
   readonly scaleFactor: number | null;
   remBase: number;
