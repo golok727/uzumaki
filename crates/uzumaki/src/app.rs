@@ -769,7 +769,12 @@ impl ApplicationHandler<UserEvent> for Application {
                         let tab_outcome = {
                             let mut state = self.app_state.borrow_mut();
                             state.windows.get_mut(&wid).map(|entry| {
-                                event_dispatch::handle_tab_focus(&mut entry.dom, wid, &key_event)
+                                event_dispatch::handle_tab_focus(
+                                    &mut entry.dom,
+                                    wid,
+                                    &key_event,
+                                    modifiers,
+                                )
                             })
                         };
                         let tab_consumed = if let Some(outcome) = tab_outcome {
@@ -875,14 +880,24 @@ impl ApplicationHandler<UserEvent> for Application {
                                             wid,
                                             &key_event,
                                         );
+                                    let (button_redraw, button_events) =
+                                        event_dispatch::handle_key_for_button(
+                                            &mut entry.dom,
+                                            wid,
+                                            &key_event,
+                                        );
                                     if redraw {
                                         needs_redraw = true;
                                     }
                                     if checkbox_redraw {
                                         needs_redraw = true;
                                     }
+                                    if button_redraw {
+                                        needs_redraw = true;
+                                    }
                                     let mut all_events = events;
                                     all_events.extend(checkbox_events);
+                                    all_events.extend(button_events);
                                     all_events
                                 })
                             };

@@ -569,8 +569,7 @@ impl Node {
         self.data.default_cursor()
     }
 
-    /// Whether this node can receive keyboard focus. Driven by the element's
-    /// `is_focussable` flag so views can opt in (e.g. buttons, contenteditable).
+    /// Whether this node can receive keyboard focus.
     pub fn is_focusable(&self) -> bool {
         self.as_element()
             .map(|e| e.is_focussable())

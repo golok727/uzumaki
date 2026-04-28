@@ -5,6 +5,7 @@ pub(crate) enum StyleVariant {
     Base,
     Hover,
     Active,
+    Focus,
 }
 
 #[derive(Copy, Clone, Debug, Eq, PartialEq)]
@@ -49,6 +50,9 @@ pub(crate) enum StyleProp {
     BorderBottom,
     BorderLeft,
     BorderColor,
+    Outline,
+    OutlineColor,
+    OutlineOffset,
     Opacity,
     Display,
     Cursor,
@@ -106,6 +110,11 @@ impl FromStr for AttributeKind {
                 .parse::<StyleProp>()
                 .map(|p| AttributeKind::Style(p, StyleVariant::Active));
         }
+        if let Some(rest) = value.strip_prefix("focus:") {
+            return rest
+                .parse::<StyleProp>()
+                .map(|p| AttributeKind::Style(p, StyleVariant::Focus));
+        }
 
         value
             .parse::<StyleProp>()
@@ -158,6 +167,9 @@ impl FromStr for StyleProp {
             "borderBottom" => Self::BorderBottom,
             "borderLeft" => Self::BorderLeft,
             "borderColor" => Self::BorderColor,
+            "outline" => Self::Outline,
+            "outlineColor" => Self::OutlineColor,
+            "outlineOffset" => Self::OutlineOffset,
             "opacity" => Self::Opacity,
             "display" => Self::Display,
             "cursor" => Self::Cursor,

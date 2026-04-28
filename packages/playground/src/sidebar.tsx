@@ -53,7 +53,7 @@ export function Sidebar({
           const isActive = active === t.id;
           const iconColor = isActive ? C.accentHi : C.textMuted;
           return (
-            <view
+            <button
               key={t.id}
               onClick={() => setActive(t.id)}
               display="flex"
@@ -81,7 +81,7 @@ export function Sidebar({
                 </text>
               </view>
               {isActive && <view w={4} h={4} bg={C.accentHi} rounded={4} />}
-            </view>
+            </button>
           );
         })}
         <button

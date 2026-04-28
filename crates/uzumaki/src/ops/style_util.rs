@@ -523,6 +523,10 @@ fn get_or_init_variant_style(node: &mut Node, variant: StyleVariant) -> &mut UzS
             .interactivity
             .active_style
             .get_or_insert_with(|| Box::new(UzStyleRefinement::default())),
+        StyleVariant::Focus => node
+            .interactivity
+            .focus_style
+            .get_or_insert_with(|| Box::new(UzStyleRefinement::default())),
         StyleVariant::Base => unreachable!(),
     }
 }
@@ -538,6 +542,10 @@ fn set_variant_color(
         StyleProp::Bg => r.background = Some(color),
         StyleProp::Color => r.text.color = Some(color),
         StyleProp::BorderColor => r.border_color = Some(color),
+        StyleProp::OutlineColor => {
+            let outline = r.outline.get_or_insert(Outline::FOCUS_RING);
+            outline.color = color;
+        }
         _ => return StyleEffect::Ignored,
     }
     StyleEffect::Applied
@@ -725,6 +733,14 @@ fn set_variant_number(
         StyleProp::BorderRight => r.border_widths.right = Some(value),
         StyleProp::BorderBottom => r.border_widths.bottom = Some(value),
         StyleProp::BorderLeft => r.border_widths.left = Some(value),
+        StyleProp::Outline => {
+            let outline = r.outline.get_or_insert(Outline::FOCUS_RING);
+            outline.width = value;
+        }
+        StyleProp::OutlineOffset => {
+            let outline = r.outline.get_or_insert(Outline::FOCUS_RING);
+            outline.offset = value;
+        }
         StyleProp::Opacity => r.opacity = Some(value),
         StyleProp::Visibility => {
             r.visibility = Some(if value > 0.5 {
@@ -877,6 +893,7 @@ fn clear_variant_prop(node: &mut Node, prop: StyleProp, variant: StyleVariant) -
     let style = match variant {
         StyleVariant::Hover => node.interactivity.hover_style.as_mut(),
         StyleVariant::Active => node.interactivity.active_style.as_mut(),
+        StyleVariant::Focus => node.interactivity.focus_style.as_mut(),
         StyleVariant::Base => unreachable!(),
     };
     if let Some(style) = style {
@@ -937,6 +954,9 @@ fn clear_variant_prop(node: &mut Node, prop: StyleProp, variant: StyleVariant) -
             StyleProp::BorderLeft => style.border_widths.left = None,
             StyleProp::Opacity => style.opacity = None,
             StyleProp::BorderColor => style.border_color = None,
+            StyleProp::Outline | StyleProp::OutlineColor | StyleProp::OutlineOffset => {
+                style.outline = None;
+            }
             StyleProp::Display => style.display = None,
             StyleProp::Cursor => style.cursor = None,
             StyleProp::Interactive => {}
@@ -1008,6 +1028,11 @@ fn set_color_style_prop(node: &mut Node, prop: StyleProp, color: Color) -> Style
         StyleProp::BorderColor => {
             node.style.border_color = Some(color);
             StyleEffect::AppliedNeedsSync
+        }
+        StyleProp::OutlineColor => {
+            let outline = node.style.outline.get_or_insert(Outline::FOCUS_RING);
+            outline.color = color;
+            StyleEffect::Applied
         }
         _ => StyleEffect::Ignored,
     }
@@ -1124,6 +1149,14 @@ fn set_f32_style_prop(node: &mut Node, prop: StyleProp, v: f32) -> StyleEffect {
         StyleProp::BorderRight => style.border_widths.right = v,
         StyleProp::BorderBottom => style.border_widths.bottom = v,
         StyleProp::BorderLeft => style.border_widths.left = v,
+        StyleProp::Outline => {
+            let outline = style.outline.get_or_insert(Outline::FOCUS_RING);
+            outline.width = v;
+        }
+        StyleProp::OutlineOffset => {
+            let outline = style.outline.get_or_insert(Outline::FOCUS_RING);
+            outline.offset = v;
+        }
         StyleProp::Opacity => style.opacity = v,
         StyleProp::Visibility => {
             style.visibility = if v > 0.5 {
@@ -1344,6 +1377,9 @@ fn clear_style_prop(node: &mut Node, prop: StyleProp, variant: StyleVariant) -> 
         StyleProp::BorderBottom => node.style.border_widths.bottom = default.border_widths.bottom,
         StyleProp::BorderLeft => node.style.border_widths.left = default.border_widths.left,
         StyleProp::BorderColor => node.style.border_color = default.border_color,
+        StyleProp::Outline | StyleProp::OutlineColor | StyleProp::OutlineOffset => {
+            node.style.outline = default.outline;
+        }
         StyleProp::Opacity => node.style.opacity = default.opacity,
         StyleProp::TranslateX => node.style.transform.translate_x = default.transform.translate_x,
         StyleProp::TranslateY => node.style.transform.translate_y = default.transform.translate_y,
@@ -1406,6 +1442,15 @@ fn get_style_prop(node: &Node, prop: StyleProp) -> Value {
         StyleProp::Bg => style.background.map(color_to_json).unwrap_or(Value::Null),
         StyleProp::Color => color_to_json(style.text.color),
         StyleProp::BorderColor => style.border_color.map(color_to_json).unwrap_or(Value::Null),
+        StyleProp::Outline => style.outline.map(|o| json!(o.width)).unwrap_or(Value::Null),
+        StyleProp::OutlineColor => style
+            .outline
+            .map(|o| color_to_json(o.color))
+            .unwrap_or(Value::Null),
+        StyleProp::OutlineOffset => style
+            .outline
+            .map(|o| json!(o.offset))
+            .unwrap_or(Value::Null),
         StyleProp::Opacity => json!(style.opacity),
         StyleProp::Visibility => json!(matches!(style.visibility, Visibility::Visible)),
         StyleProp::Scrollable => json!(matches!(style.overflow_y, Overflow::Scroll)),

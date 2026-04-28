@@ -163,6 +163,25 @@ pub struct BoxShadow {
     pub spread_radius: f32,
 }
 
+/// Focus/decoration outline. Painted outside the element bounds, doesn't affect
+/// layout. `offset` is the gap between border edge and outline; the outline is
+/// stroked at `width` outside that.
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub struct Outline {
+    pub color: Color,
+    pub width: f32,
+    pub offset: f32,
+}
+
+impl Outline {
+    /// Default focus ring used when a focused element has no explicit outline.
+    pub const FOCUS_RING: Self = Self {
+        color: Color::rgba(86, 156, 214, 255),
+        width: 2.0,
+        offset: 2.0,
+    };
+}
+
 #[derive(Clone, Copy, Debug, PartialEq, Default)]
 pub enum Length {
     #[default]
@@ -514,6 +533,7 @@ pub struct UzStyle {
     pub corner_radii: Corners,
     pub opacity: f32,
     pub box_shadow: Option<BoxShadow>,
+    pub outline: Option<Outline>,
 
     pub cursor: Option<UzCursorIcon>,
 
@@ -564,6 +584,7 @@ impl Default for UzStyle {
             corner_radii: Corners::default(),
             opacity: 1.0,
             box_shadow: None,
+            outline: None,
 
             cursor: None,
 
@@ -736,6 +757,48 @@ impl UzStyle {
             } else {
                 self.paint_rect_borders(bounds, scene, vbc, transform);
             }
+        }
+
+        // 5. Outline (drawn outside the box, doesn't affect layout)
+        if let Some(outline) = self.outline
+            && outline.width > 0.0
+            && !outline.color.is_transparent()
+        {
+            self.paint_outline(bounds, scene, outline, opacity, transform);
+        }
+    }
+
+    fn paint_outline(
+        &self,
+        bounds: Bounds,
+        scene: &mut Scene,
+        outline: Outline,
+        opacity: f32,
+        transform: Affine,
+    ) {
+        let color = outline.color.with_opacity(opacity).to_vello();
+        // Stroke is centered on the path, so push the path outward by
+        // `offset + width/2` to land its inner edge `offset` away from the box.
+        let inset = -(outline.offset as f64 + outline.width as f64 / 2.0);
+        let outer = Bounds::new(
+            bounds.x + inset,
+            bounds.y + inset,
+            bounds.width - 2.0 * inset,
+            bounds.height - 2.0 * inset,
+        );
+        let stroke = Stroke::new(outline.width as f64);
+        if self.corner_radii.any_nonzero() {
+            let grow = outline.offset + outline.width / 2.0;
+            let grown = Corners {
+                top_left: (self.corner_radii.top_left + grow).max(0.0),
+                top_right: (self.corner_radii.top_right + grow).max(0.0),
+                bottom_right: (self.corner_radii.bottom_right + grow).max(0.0),
+                bottom_left: (self.corner_radii.bottom_left + grow).max(0.0),
+            };
+            let shape = rounded_rect(outer, &grown);
+            scene.stroke(&stroke, transform, color, None, &shape);
+        } else {
+            scene.stroke(&stroke, transform, color, None, &outer.to_rect());
         }
     }
 

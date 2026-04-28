@@ -216,12 +216,60 @@ impl UIState {
         }
     }
 
-    /// Move focus to the next focusable element (text input or checkbox) in
-    /// document order. Returns the previous and new focus ids when focus
-    /// actually changed, allowing callers to dispatch blur/focus events.
+    /// Walk the DOM in reverse document order. At each step go to the previous
+    /// sibling's deepest-last descendant, or up to the parent. Wraps to the
+    /// deepest-last descendant of root.
+    pub fn prev_node(
+        &self,
+        start_id: UzNodeId,
+        mut filter: impl FnMut(&super::Node) -> bool,
+    ) -> Option<UzNodeId> {
+        let mut node_id = start_id;
+        loop {
+            let cur = self.nodes.get(node_id)?;
+            let next_id = if let Some(prev) = cur.prev_sibling {
+                self.deepest_last(prev)
+            } else if let Some(parent) = cur.parent {
+                parent
+            } else {
+                self.deepest_last(self.root?)
+            };
+
+            let next = self.nodes.get(next_id)?;
+            if filter(next) {
+                return Some(next_id);
+            }
+            if next_id == start_id {
+                return None;
+            }
+            node_id = next_id;
+        }
+    }
+
+    fn deepest_last(&self, mut id: UzNodeId) -> UzNodeId {
+        while let Some(last) = self.nodes.get(id).and_then(|n| n.last_child) {
+            id = last;
+        }
+        id
+    }
+
+    /// Move focus to the next focusable element in document order.
     pub fn focus_next_node(&mut self) -> Option<FocusChange> {
+        self.focus_step(false)
+    }
+
+    /// Move focus to the previous focusable element in document order.
+    pub fn focus_prev_node(&mut self) -> Option<FocusChange> {
+        self.focus_step(true)
+    }
+
+    fn focus_step(&mut self, backward: bool) -> Option<FocusChange> {
         let start_id = self.focused_node.or(self.root)?;
-        let new_id = self.next_node(start_id, |n| n.is_focusable())?;
+        let new_id = if backward {
+            self.prev_node(start_id, |n| n.is_focusable())?
+        } else {
+            self.next_node(start_id, |n| n.is_focusable())?
+        };
 
         let old = self.focused_node;
         if old == Some(new_id) {

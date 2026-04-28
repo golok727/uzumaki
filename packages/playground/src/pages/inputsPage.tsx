@@ -10,6 +10,11 @@ export function InputsPage() {
   const [bio, setBio] = useState('');
   const [search, setSearch] = useState('');
   const [submitted, setSubmitted] = useState(false);
+
+  const [noRounding, setNoRounding] = useState(false);
+  const [rounded, setRounded] = useState(true);
+  const [circle, setCircle] = useState(false);
+
   const inputPadding = 8;
 
   const pwMatch = password === confirm && confirm.length > 0;
@@ -175,7 +180,7 @@ export function InputsPage() {
             value={bio}
             onChangeText={setBio}
             placeholder="Tell us about yourself... (multiline input, try pasting long text)"
-            fontSize={14}
+            fontSize={16}
             color={C.text}
             bg={C.surface2}
             p={12}
@@ -257,6 +262,69 @@ export function InputsPage() {
 
         <Divider />
 
+        <view display="flex" flexDir="col" gap={12}>
+          <text fontSize={14} fontWeight={700} color={C.text}>
+            Checkboxes
+          </text>
+          <view
+            display="flex"
+            flexDir="col"
+            p={16}
+            gap={14}
+            bg={C.surface2}
+            rounded={8}
+            border={1}
+            borderColor={C.border}
+          >
+            <view display="flex" items="center" gap={12}>
+              <checkbox
+                checked={noRounding}
+                onChange={setNoRounding}
+                bg={C.accent}
+                borderColor={noRounding ? C.accent : C.border}
+                color="#ffffff"
+                w={20}
+                h={20}
+                hover:opacity={0.9}
+              />
+              <text fontSize={14} color={C.text}>
+                Square checkbox{noRounding ? ' [selected]' : ''}
+              </text>
+            </view>
+            <view display="flex" items="center" gap={12}>
+              <checkbox
+                checked={rounded}
+                onChange={setRounded}
+                bg={C.success}
+                borderColor={rounded ? C.success : C.border}
+                color="#08110a"
+                rounded={4}
+                w={20}
+                h={20}
+              />
+              <text fontSize={14} color={C.text}>
+                Rounded checkbox{rounded ? ' [selected]' : ''}
+              </text>
+            </view>
+            <view display="flex" items="center" gap={12}>
+              <checkbox
+                checked={circle}
+                onChange={setCircle}
+                bg={C.warning}
+                borderColor={circle ? C.warning : C.border}
+                color="#1b1104"
+                rounded={10}
+                w={20}
+                h={20}
+              />
+              <text fontSize={14} color={C.text}>
+                Circular checkbox{circle ? ' [selected]' : ''}
+              </text>
+            </view>
+          </view>
+        </view>
+        <Divider />
+
         <view display="flex" flexDir="col" gap={8}>
           <view display="flex" flexDir="row" items="center" gap={8}>
             <text fontSize={13} fontWeight={600} color={C.textSub}>
@@ -271,14 +339,12 @@ export function InputsPage() {
             rounded={8}
             border={1}
             borderColor={C.borderHi}
-            overflowX="hidden"
           >
             <text fontSize={13} color={C.textDim} w="100%">
               The quick brown fox jumps over the lazy dog. Pack my box with five
               dozen liquor jugs. How valiantly the strong and quick brown fox
               leaps over the sleeping lazy hound dog! Try selecting this text
-              with your mouse — this tests the selectable prop and focus element
-              behavior.
+              with your mouse.
             </text>
           </view>
         </view>

@@ -50,6 +50,9 @@ interface ElementStyles {
   borderBottom?: number | string;
   borderLeft?: number | string;
   borderColor?: string;
+  outline?: number | string;
+  outlineColor?: string;
+  outlineOffset?: number | string;
   opacity?: number | string;
   cursor?:
     | 'default'
