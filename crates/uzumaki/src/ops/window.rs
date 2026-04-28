@@ -11,6 +11,9 @@ use crate::app::{
 use crate::style::*;
 use crate::ui::UIState;
 
+const DEFAULT_MIN_WINDOW_WIDTH: f64 = 400.0;
+const DEFAULT_MIN_WINDOW_HEIGHT: f64 = 300.0;
+
 #[derive(Clone, Debug, serde::Serialize, serde::Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub(crate) struct CreateWindowOptions {
@@ -149,7 +152,8 @@ impl EnabledWindowButtons {
 }
 
 impl WindowSize {
-    fn from_physical_size(size: winit::dpi::PhysicalSize<u32>) -> Self {
+    fn from_physical_size(size: winit::dpi::PhysicalSize<u32>, scale_factor: f64) -> Self {
+        let size: LogicalSize<u32> = size.to_logical(scale_factor);
         Self {
             width: size.width,
             height: size.height,
@@ -208,8 +212,12 @@ impl CreateWindowOptions {
         if self.fullscreen == Some(true) {
             attributes = attributes.with_fullscreen(Some(Fullscreen::Borderless(None)));
         }
+        let default_min_size =
+            LogicalSize::new(DEFAULT_MIN_WINDOW_WIDTH, DEFAULT_MIN_WINDOW_HEIGHT);
         if let Some(min_size) = try_logical_size(self.min_width, self.min_height) {
             attributes = attributes.with_min_inner_size(min_size);
+        } else {
+            attributes = attributes.with_min_inner_size(default_min_size);
         }
         if let Some(max_size) = try_logical_size(self.max_width, self.max_height) {
             attributes = attributes.with_max_inner_size(max_size);
@@ -601,7 +609,7 @@ impl CoreWindow {
     #[serde]
     pub fn innerSize(&self, state: &OpState) -> Option<WindowSize> {
         self.with_winit_window(state, |window| {
-            WindowSize::from_physical_size(window.inner_size())
+            WindowSize::from_physical_size(window.inner_size(), window.scale_factor())
         })
     }
 
@@ -609,7 +617,7 @@ impl CoreWindow {
     #[serde]
     pub fn outerSize(&self, state: &OpState) -> Option<WindowSize> {
         self.with_winit_window(state, |window| {
-            WindowSize::from_physical_size(window.outer_size())
+            WindowSize::from_physical_size(window.outer_size(), window.scale_factor())
         })
     }
 
@@ -794,14 +802,23 @@ mod tests {
     }
 
     #[test]
-    fn incomplete_size_constraints_are_ignored() {
+    fn default_min_size_is_preserved_without_explicit_min_size() {
+        let options = base_options();
+
+        let attributes = options.to_window_attributes();
+
+        assert!(attributes.min_inner_size.is_some());
+    }
+
+    #[test]
+    fn incomplete_size_constraints_do_not_override_defaults() {
         let mut options = base_options();
         options.min_width = Some(320.0);
         options.max_height = Some(900.0);
 
         let attributes = options.to_window_attributes();
 
-        assert!(attributes.min_inner_size.is_none());
+        assert!(attributes.min_inner_size.is_some());
         assert!(attributes.max_inner_size.is_none());
     }
 
