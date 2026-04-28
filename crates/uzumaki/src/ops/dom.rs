@@ -43,7 +43,13 @@ pub fn op_create_element(
         } else if element_type == "text" {
             entry.dom.create_text(String::new(), style)
         } else {
-            entry.dom.create_view(style)
+            let id = entry.dom.create_view(style);
+            if element_type == "button"
+                && let Some(el) = entry.dom.nodes[id].as_element_mut()
+            {
+                el.set_focussable(true);
+            }
+            id
         };
         Ok(id as u32)
     })

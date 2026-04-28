@@ -217,6 +217,10 @@ impl UIState {
             .unwrap();
         // Input always needs a hitbox for click-to-focus
         self.nodes[node_id].interactivity.js_interactive = true;
+        self.nodes[node_id]
+            .as_element_mut()
+            .expect("input should be an element")
+            .set_focussable(true);
         node_id
     }
 

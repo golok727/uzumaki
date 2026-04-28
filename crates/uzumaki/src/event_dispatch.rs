@@ -1094,6 +1094,52 @@ pub fn handle_key_for_checkbox(
     )
 }
 
+pub struct TabFocusOutcome {
+    pub consumed: bool,
+    pub needs_redraw: bool,
+    pub events: Vec<AppEvent>,
+}
+
+/// Handle Tab to advance focus to the next focusable element. Tab is always
+/// consumed (never inserts a tab character into a focused input).
+pub fn handle_tab_focus(
+    dom: &mut UIState,
+    wid: u32,
+    key_event: &winit::event::KeyEvent,
+) -> TabFocusOutcome {
+    use winit::event::ElementState;
+
+    let mut outcome = TabFocusOutcome {
+        consumed: false,
+        needs_redraw: false,
+        events: Vec::new(),
+    };
+
+    if key_event.state != ElementState::Pressed
+        || !matches!(&key_event.logical_key, Key::Named(NamedKey::Tab))
+    {
+        return outcome;
+    }
+
+    outcome.consumed = true;
+
+    if let Some(change) = dom.focus_next_node() {
+        if let Some(old) = change.old {
+            outcome.events.push(AppEvent::Blur(FocusEventData {
+                window_id: wid,
+                node_id: old,
+            }));
+        }
+        outcome.events.push(AppEvent::Focus(FocusEventData {
+            window_id: wid,
+            node_id: change.new,
+        }));
+        outcome.needs_redraw = true;
+    }
+
+    outcome
+}
+
 /// Handle keyboard shortcuts for view text selection (Shift+Arrows, Ctrl+A, etc.)
 /// Called after input-level processing, only when there's no focused input.
 /// Returns true if a redraw is needed.

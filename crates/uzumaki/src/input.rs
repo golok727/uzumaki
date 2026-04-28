@@ -601,10 +601,6 @@ impl InputState {
                     Some(edit) => KeyResult::Edit(edit),
                     None => KeyResult::Ignored,
                 },
-                NamedKey::Tab => match self.insert_text("    ", renderer) {
-                    Some(edit) => KeyResult::Edit(edit),
-                    None => KeyResult::Ignored,
-                },
                 _ => KeyResult::Ignored,
             },
             _ => KeyResult::Ignored,
