@@ -22,7 +22,7 @@ use deno_runtime::deno_web::{BlobStore, InMemoryBroadcastChannel};
 use deno_runtime::worker::{MainWorker, WorkerOptions, WorkerServiceOptions};
 use node_resolver::analyze::{CjsModuleExportAnalyzer, NodeCodeTranslator, NodeCodeTranslatorMode};
 use node_resolver::cache::NodeResolutionSys;
-use winit::window::WindowId;
+use winit::window::{WindowButtons, WindowId, WindowLevel};
 use winit::{application::ApplicationHandler, event::WindowEvent};
 
 use crate::clipboard;
@@ -40,6 +40,10 @@ pub struct WindowEntry {
     pub handle: Option<window::Window>,
     pub rem_base: f32,
     pub cursor_blink_generation: u64,
+    pub transparent: bool,
+    pub window_level: WindowLevel,
+    pub content_protected: bool,
+    pub enabled_buttons: WindowButtons,
 }
 
 impl WindowEntry {
@@ -526,6 +530,7 @@ impl ApplicationHandler<UserEvent> for Application {
                 let attributes = options.to_window_attributes();
                 let is_visible = attributes.visible;
                 let transparent = attributes.transparent;
+                let minimized = options.minimized();
 
                 let Ok(winit_window) = event_loop.create_window(attributes.with_visible(false))
                 else {
@@ -548,6 +553,9 @@ impl ApplicationHandler<UserEvent> for Application {
                         state.winit_id_to_entry_id.insert(winit_id, id);
 
                         let window = state.windows.get_mut(&id).unwrap();
+                        if minimized {
+                            handle.winit_window.set_minimized(true);
+                        }
                         handle.winit_window.set_visible(is_visible);
                         window.handle = Some(handle);
                         // handle.paint_and_present(

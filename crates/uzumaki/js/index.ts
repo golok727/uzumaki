@@ -2,6 +2,14 @@ import { eventManager, EventType } from './events';
 import { disposeWindow, Window } from './window';
 
 export { Window } from './window';
+export type {
+  EnabledWindowButtons,
+  WindowAttributes,
+  WindowLevel,
+  WindowPosition,
+  WindowSize,
+  WindowTheme,
+} from './window';
 export { Clipboard } from './clipboard';
 export { eventManager, EventType } from './events';
 export type {

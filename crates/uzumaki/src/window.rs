@@ -100,6 +100,15 @@ impl Window {
         self.winit_window.scale_factor()
     }
 
+    pub fn set_transparent(&mut self, transparent: bool) {
+        if self.transparent == transparent {
+            return;
+        }
+        self.transparent = transparent;
+        self.winit_window.set_transparent(transparent);
+        self.winit_window.request_redraw();
+    }
+
     pub fn inner_size(&self) -> winit::dpi::PhysicalSize<u32> {
         self.winit_window.inner_size()
     }

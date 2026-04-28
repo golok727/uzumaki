@@ -1,6 +1,8 @@
 import core, {
   setNativeProp,
+  type EnabledWindowButtons,
   type NativeWindow,
+  type WindowLevel,
   type WindowPosition,
   type WindowSize,
   type WindowTheme,
@@ -11,6 +13,14 @@ import {
   type EventName,
   type EventHandler,
 } from './events';
+
+export type {
+  EnabledWindowButtons,
+  WindowLevel,
+  WindowPosition,
+  WindowSize,
+  WindowTheme,
+} from './core';
 
 const windowsByLabel = new Map<string, Window>();
 const windowsById = new Map<number, Window>();
@@ -24,13 +34,19 @@ export interface WindowAttributes {
   decorations?: boolean;
   transparent?: boolean;
   maximized?: boolean;
+  minimized?: boolean;
   fullscreen?: boolean;
+  alwaysOnTop?: boolean;
+  windowLevel?: WindowLevel;
   minWidth?: number;
   minHeight?: number;
   maxWidth?: number;
   maxHeight?: number;
   position?: WindowPosition;
   theme?: WindowTheme;
+  active?: boolean;
+  contentProtected?: boolean;
+  enabledButtons?: EnabledWindowButtons;
   rootStyles?: Record<string, unknown>;
 }
 
@@ -43,13 +59,19 @@ interface NormalizedWindowAttributes {
   decorations: boolean;
   transparent: boolean;
   maximized: boolean;
+  minimized: boolean;
   fullscreen: boolean;
+  alwaysOnTop: boolean;
+  windowLevel: WindowLevel;
   minWidth?: number;
   minHeight?: number;
   maxWidth?: number;
   maxHeight?: number;
   position?: WindowPosition;
   theme?: WindowTheme;
+  active?: boolean;
+  contentProtected: boolean;
+  enabledButtons: Required<EnabledWindowButtons>;
   rootStyles?: Record<string, unknown>;
 }
 
@@ -59,12 +81,28 @@ interface WindowFallbackState {
   title: string;
   visible: boolean;
   resizable: boolean;
+  transparent: boolean;
   decorated: boolean;
   maximized: boolean;
   minimized: boolean;
   fullscreen: boolean;
+  alwaysOnTop: boolean;
+  windowLevel: WindowLevel;
   theme: WindowTheme | null;
   position: WindowPosition | null;
+  active: boolean | null;
+  contentProtected: boolean;
+  enabledButtons: Required<EnabledWindowButtons>;
+}
+
+function normalizeEnabledButtons(
+  buttons: EnabledWindowButtons = {},
+): Required<EnabledWindowButtons> {
+  return {
+    close: buttons.close ?? true,
+    minimize: buttons.minimize ?? true,
+    maximize: buttons.maximize ?? true,
+  };
 }
 
 function normalizeWindowAttributes(
@@ -79,15 +117,24 @@ function normalizeWindowAttributes(
     decorations = true,
     transparent = false,
     maximized = false,
+    minimized = false,
     fullscreen = false,
+    alwaysOnTop = false,
+    windowLevel = alwaysOnTop ? 'alwaysOnTop' : 'normal',
     minWidth,
     minHeight,
     maxWidth,
     maxHeight,
     position,
     theme,
+    active,
+    contentProtected = false,
+    enabledButtons,
     rootStyles,
   } = attributes;
+
+  const normalizedWindowLevel = windowLevel;
+  const normalizedAlwaysOnTop = normalizedWindowLevel === 'alwaysOnTop';
 
   return {
     width,
@@ -98,13 +145,19 @@ function normalizeWindowAttributes(
     decorations,
     transparent,
     maximized,
+    minimized,
     fullscreen,
+    alwaysOnTop: normalizedAlwaysOnTop,
+    windowLevel: normalizedWindowLevel,
     minWidth,
     minHeight,
     maxWidth,
     maxHeight,
     position,
     theme,
+    active,
+    contentProtected,
+    enabledButtons: normalizeEnabledButtons(enabledButtons),
     rootStyles,
   };
 }
@@ -118,12 +171,18 @@ function createFallbackState(
     title: attributes.title,
     visible: attributes.visible,
     resizable: attributes.resizable,
+    transparent: attributes.transparent,
     decorated: attributes.decorations,
     maximized: attributes.maximized,
-    minimized: false,
+    minimized: attributes.minimized,
     fullscreen: attributes.fullscreen,
+    alwaysOnTop: attributes.alwaysOnTop,
+    windowLevel: attributes.windowLevel,
     theme: attributes.theme ?? null,
     position: attributes.position ?? null,
+    active: attributes.active ?? null,
+    contentProtected: attributes.contentProtected,
+    enabledButtons: attributes.enabledButtons,
   };
 }
 
@@ -207,6 +266,11 @@ export class Window {
     this._native.setVisible(visible);
   }
 
+  setTransparent(transparent: boolean): void {
+    this.setFallbackState('transparent', transparent);
+    this._native.setTransparent(transparent);
+  }
+
   setResizable(resizable: boolean): void {
     this.setFallbackState('resizable', resizable);
     this._native.setResizable(resizable);
@@ -232,6 +296,21 @@ export class Window {
     this._native.setFullscreen(fullscreen);
   }
 
+  setAlwaysOnTop(alwaysOnTop: boolean): void {
+    this.setFallbackState('alwaysOnTop', alwaysOnTop);
+    this.setFallbackState(
+      'windowLevel',
+      alwaysOnTop ? 'alwaysOnTop' : 'normal',
+    );
+    this._native.setAlwaysOnTop(alwaysOnTop);
+  }
+
+  setWindowLevel(windowLevel: WindowLevel): void {
+    this.setFallbackState('windowLevel', windowLevel);
+    this.setFallbackState('alwaysOnTop', windowLevel === 'alwaysOnTop');
+    this._native.setWindowLevel(windowLevel);
+  }
+
   setMinSize(width: number, height: number): void {
     this._native.setMinSize(width, height);
   }
@@ -248,6 +327,24 @@ export class Window {
   setTheme(theme: WindowTheme): void {
     this.setFallbackState('theme', theme);
     this._native.setTheme(theme);
+  }
+
+  focus(): void {
+    this._native.focus();
+  }
+
+  setContentProtected(contentProtected: boolean): void {
+    this.setFallbackState('contentProtected', contentProtected);
+    this._native.setContentProtected(contentProtected);
+  }
+
+  setEnabledButtons(buttons: EnabledWindowButtons): void {
+    const normalized = normalizeEnabledButtons({
+      ...this._fallbackState.enabledButtons,
+      ...buttons,
+    });
+    this.setFallbackState('enabledButtons', normalized);
+    this._native.setEnabledButtons(normalized);
   }
 
   get scaleFactor(): number {
@@ -278,6 +375,10 @@ export class Window {
     return this.getFallbackValue('visible', this._native.visible);
   }
 
+  get transparent(): boolean {
+    return this.getFallbackValue('transparent', this._native.transparent);
+  }
+
   get resizable(): boolean {
     return this.getFallbackValue('resizable', this._native.resizable);
   }
@@ -298,6 +399,14 @@ export class Window {
     return this.getFallbackValue('fullscreen', this._native.fullscreen);
   }
 
+  get alwaysOnTop(): boolean {
+    return this.getFallbackValue('alwaysOnTop', this._native.alwaysOnTop);
+  }
+
+  get windowLevel(): WindowLevel {
+    return this.getFallbackValue('windowLevel', this._native.windowLevel);
+  }
+
   get innerSize(): WindowSize | null {
     return this._native.innerSize;
   }
@@ -312,6 +421,21 @@ export class Window {
 
   get theme(): WindowTheme | null {
     return this.getFallbackValue('theme', this._native.theme);
+  }
+
+  get active(): boolean | null {
+    return this._native.active ?? this._fallbackState.active;
+  }
+
+  get contentProtected(): boolean {
+    return this.getFallbackValue(
+      'contentProtected',
+      this._native.contentProtected,
+    );
+  }
+
+  get enabledButtons(): Required<EnabledWindowButtons> {
+    return this._native.enabledButtons ?? this._fallbackState.enabledButtons;
   }
 
   get label(): string {

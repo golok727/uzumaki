@@ -1,7 +1,9 @@
 use deno_core::*;
 use winit::dpi::{LogicalPosition, LogicalSize};
 use winit::event_loop::EventLoopProxy;
-use winit::window::{Fullscreen, Theme, Window as WinitWindow, WindowAttributes};
+use winit::window::{
+    Fullscreen, Theme, Window as WinitWindow, WindowAttributes, WindowButtons, WindowLevel,
+};
 
 use crate::app::{
     SharedAppState, UserEvent, WindowEntry, WindowEntryId, with_state, with_state_ref,
@@ -20,13 +22,19 @@ pub(crate) struct CreateWindowOptions {
     decorations: Option<bool>,
     transparent: Option<bool>,
     maximized: Option<bool>,
+    minimized: Option<bool>,
     fullscreen: Option<bool>,
+    always_on_top: Option<bool>,
+    window_level: Option<UzWindowLevel>,
     min_width: Option<f64>,
     min_height: Option<f64>,
     max_width: Option<f64>,
     max_height: Option<f64>,
     position: Option<WindowPosition>,
     theme: Option<WindowTheme>,
+    active: Option<bool>,
+    content_protected: Option<bool>,
+    enabled_buttons: Option<EnabledWindowButtons>,
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, serde::Serialize, serde::Deserialize)]
@@ -42,6 +50,22 @@ enum WindowTheme {
     Light,
     Dark,
     System,
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+#[serde(rename_all = "camelCase")]
+enum UzWindowLevel {
+    Normal,
+    AlwaysOnTop,
+    AlwaysOnBottom,
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct EnabledWindowButtons {
+    close: Option<bool>,
+    minimize: Option<bool>,
+    maximize: Option<bool>,
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq, serde::Serialize)]
@@ -74,6 +98,56 @@ impl WindowTheme {
     }
 }
 
+impl UzWindowLevel {
+    fn to_winit(self) -> WindowLevel {
+        match self {
+            Self::Normal => WindowLevel::Normal,
+            Self::AlwaysOnTop => WindowLevel::AlwaysOnTop,
+            Self::AlwaysOnBottom => WindowLevel::AlwaysOnBottom,
+        }
+    }
+
+    fn from_winit(level: WindowLevel) -> Self {
+        match level {
+            WindowLevel::Normal => Self::Normal,
+            WindowLevel::AlwaysOnTop => Self::AlwaysOnTop,
+            WindowLevel::AlwaysOnBottom => Self::AlwaysOnBottom,
+        }
+    }
+}
+
+impl EnabledWindowButtons {
+    fn all_enabled() -> Self {
+        Self {
+            close: Some(true),
+            minimize: Some(true),
+            maximize: Some(true),
+        }
+    }
+
+    fn to_winit(self) -> WindowButtons {
+        let mut buttons = WindowButtons::empty();
+        if self.close.unwrap_or(true) {
+            buttons |= WindowButtons::CLOSE;
+        }
+        if self.minimize.unwrap_or(true) {
+            buttons |= WindowButtons::MINIMIZE;
+        }
+        if self.maximize.unwrap_or(true) {
+            buttons |= WindowButtons::MAXIMIZE;
+        }
+        buttons
+    }
+
+    fn from_winit(buttons: WindowButtons) -> Self {
+        Self {
+            close: Some(buttons.contains(WindowButtons::CLOSE)),
+            minimize: Some(buttons.contains(WindowButtons::MINIMIZE)),
+            maximize: Some(buttons.contains(WindowButtons::MAXIMIZE)),
+        }
+    }
+}
+
 impl WindowSize {
     fn from_physical_size(size: winit::dpi::PhysicalSize<u32>) -> Self {
         Self {
@@ -84,6 +158,32 @@ impl WindowSize {
 }
 
 impl CreateWindowOptions {
+    pub(crate) fn transparent(&self) -> bool {
+        self.transparent.unwrap_or(false)
+    }
+
+    pub(crate) fn minimized(&self) -> bool {
+        self.minimized.unwrap_or(false)
+    }
+
+    pub(crate) fn content_protected(&self) -> bool {
+        self.content_protected.unwrap_or(false)
+    }
+
+    pub(crate) fn window_level(&self) -> WindowLevel {
+        match (self.window_level, self.always_on_top) {
+            (Some(level), _) => level.to_winit(),
+            (None, Some(true)) => WindowLevel::AlwaysOnTop,
+            (None, Some(false)) | (None, None) => WindowLevel::Normal,
+        }
+    }
+
+    pub(crate) fn enabled_buttons(&self) -> WindowButtons {
+        self.enabled_buttons
+            .unwrap_or_else(EnabledWindowButtons::all_enabled)
+            .to_winit()
+    }
+
     pub(crate) fn to_window_attributes(&self) -> WindowAttributes {
         let mut attributes = WindowAttributes::default()
             .with_title(self.title.clone())
@@ -104,6 +204,7 @@ impl CreateWindowOptions {
         if let Some(maximized) = self.maximized {
             attributes = attributes.with_maximized(maximized);
         }
+        attributes = attributes.with_window_level(self.window_level());
         if self.fullscreen == Some(true) {
             attributes = attributes.with_fullscreen(Some(Fullscreen::Borderless(None)));
         }
@@ -118,6 +219,15 @@ impl CreateWindowOptions {
         }
         if let Some(theme) = self.theme {
             attributes = attributes.with_theme(theme.to_winit());
+        }
+        if let Some(active) = self.active {
+            attributes = attributes.with_active(active);
+        }
+        if let Some(content_protected) = self.content_protected {
+            attributes = attributes.with_content_protected(content_protected);
+        }
+        if let Some(enabled_buttons) = self.enabled_buttons {
+            attributes = attributes.with_enabled_buttons(enabled_buttons.to_winit());
         }
 
         attributes
@@ -157,6 +267,10 @@ pub fn op_create_window(
                 handle: None,
                 rem_base: 16.0,
                 cursor_blink_generation: 0,
+                transparent: options.transparent(),
+                window_level: options.window_level(),
+                content_protected: options.content_protected(),
+                enabled_buttons: options.enabled_buttons(),
             },
         );
     });
@@ -293,6 +407,16 @@ impl CoreWindow {
         self.with_winit_window(state, |window| set_constraint(window, size))
             .is_some()
     }
+
+    fn set_window_level_state(&self, state: &OpState, level: WindowLevel) -> bool {
+        self.with_window_entry_mut(state, |entry| {
+            entry.window_level = level;
+            if let Some(handle) = entry.handle.as_ref() {
+                handle.winit_window.set_window_level(level);
+            }
+        })
+        .is_some()
+    }
 }
 
 // SAFETY: we're sure this can be GCed
@@ -348,6 +472,7 @@ impl CoreWindow {
         self.with_winit_window(state, |window| window.title())
     }
 
+    #[fast]
     pub fn setTitle(&self, state: &OpState, #[string] title: String) -> bool {
         self.update_winit_window(state, |window| window.set_title(&title))
     }
@@ -357,8 +482,25 @@ impl CoreWindow {
         self.with_winit_window_option(state, |window| window.is_visible())
     }
 
+    #[fast]
     pub fn setVisible(&self, state: &OpState, visible: bool) -> bool {
         self.update_winit_window(state, |window| window.set_visible(visible))
+    }
+
+    #[getter]
+    pub fn transparent(&self, state: &OpState) -> Option<bool> {
+        self.with_window_entry(state, |entry| entry.transparent)
+    }
+
+    #[fast]
+    pub fn setTransparent(&self, state: &OpState, transparent: bool) -> bool {
+        self.with_window_entry_mut(state, |entry| {
+            entry.transparent = transparent;
+            if let Some(handle) = entry.handle.as_mut() {
+                handle.set_transparent(transparent);
+            }
+        })
+        .is_some()
     }
 
     #[getter]
@@ -366,6 +508,7 @@ impl CoreWindow {
         self.with_winit_window(state, |window| window.is_resizable())
     }
 
+    #[fast]
     pub fn setResizable(&self, state: &OpState, resizable: bool) -> bool {
         self.update_winit_window(state, |window| window.set_resizable(resizable))
     }
@@ -375,6 +518,7 @@ impl CoreWindow {
         self.with_winit_window(state, |window| window.is_decorated())
     }
 
+    #[fast]
     pub fn setDecorations(&self, state: &OpState, decorations: bool) -> bool {
         self.update_winit_window(state, |window| window.set_decorations(decorations))
     }
@@ -384,6 +528,7 @@ impl CoreWindow {
         self.with_winit_window(state, |window| window.is_maximized())
     }
 
+    #[fast]
     pub fn setMaximized(&self, state: &OpState, maximized: bool) -> bool {
         self.update_winit_window(state, |window| window.set_maximized(maximized))
     }
@@ -393,6 +538,7 @@ impl CoreWindow {
         self.with_winit_window_option(state, |window| window.is_minimized())
     }
 
+    #[fast]
     pub fn setMinimized(&self, state: &OpState, minimized: bool) -> bool {
         self.update_winit_window(state, |window| window.set_minimized(minimized))
     }
@@ -402,6 +548,7 @@ impl CoreWindow {
         self.with_winit_window(state, |window| window.fullscreen().is_some())
     }
 
+    #[fast]
     pub fn setFullscreen(&self, state: &OpState, fullscreen: bool) -> bool {
         self.update_winit_window(state, |window| {
             let target = fullscreen.then_some(Fullscreen::Borderless(None));
@@ -409,12 +556,41 @@ impl CoreWindow {
         })
     }
 
+    #[getter]
+    pub fn alwaysOnTop(&self, state: &OpState) -> Option<bool> {
+        self.with_window_entry(state, |entry| {
+            entry.window_level == WindowLevel::AlwaysOnTop
+        })
+    }
+
+    #[fast]
+    pub fn setAlwaysOnTop(&self, state: &OpState, always_on_top: bool) -> bool {
+        let level = if always_on_top {
+            WindowLevel::AlwaysOnTop
+        } else {
+            WindowLevel::Normal
+        };
+        self.set_window_level_state(state, level)
+    }
+
+    #[getter]
+    #[serde]
+    pub fn windowLevel(&self, state: &OpState) -> Option<UzWindowLevel> {
+        self.with_window_entry(state, |entry| UzWindowLevel::from_winit(entry.window_level))
+    }
+
+    pub fn setWindowLevel(&self, state: &OpState, #[serde] level: UzWindowLevel) -> bool {
+        self.set_window_level_state(state, level.to_winit())
+    }
+
+    #[fast]
     pub fn setMinSize(&self, state: &OpState, width: f64, height: f64) -> bool {
         self.set_window_size_constraint(state, width, height, |window, size| {
             window.set_min_inner_size(Some(size));
         })
     }
 
+    #[fast]
     pub fn setMaxSize(&self, state: &OpState, width: f64, height: f64) -> bool {
         self.set_window_size_constraint(state, width, height, |window, size| {
             window.set_max_inner_size(Some(size));
@@ -448,6 +624,7 @@ impl CoreWindow {
         })
     }
 
+    #[fast]
     pub fn setPosition(&self, state: &OpState, x: f64, y: f64) -> bool {
         if !x.is_finite() || !y.is_finite() {
             return false;
@@ -477,11 +654,61 @@ impl CoreWindow {
     }
 
     #[getter]
+    pub fn active(&self, state: &OpState) -> Option<bool> {
+        self.with_winit_window(state, |window| window.has_focus())
+    }
+
+    #[fast]
+    pub fn focus(&self, state: &OpState) -> bool {
+        self.update_winit_window(state, |window| window.focus_window())
+    }
+
+    #[getter]
+    pub fn contentProtected(&self, state: &OpState) -> Option<bool> {
+        self.with_window_entry(state, |entry| entry.content_protected)
+    }
+
+    #[fast]
+    pub fn setContentProtected(&self, state: &OpState, protected: bool) -> bool {
+        self.with_window_entry_mut(state, |entry| {
+            entry.content_protected = protected;
+            if let Some(handle) = entry.handle.as_ref() {
+                handle.winit_window.set_content_protected(protected);
+            }
+        })
+        .is_some()
+    }
+
+    #[getter]
+    #[serde]
+    pub fn enabledButtons(&self, state: &OpState) -> Option<EnabledWindowButtons> {
+        self.with_window_entry(state, |entry| {
+            EnabledWindowButtons::from_winit(entry.enabled_buttons)
+        })
+    }
+
+    pub fn setEnabledButtons(
+        &self,
+        state: &OpState,
+        #[serde] buttons: EnabledWindowButtons,
+    ) -> bool {
+        let buttons = buttons.to_winit();
+        self.with_window_entry_mut(state, |entry| {
+            entry.enabled_buttons = buttons;
+            if let Some(handle) = entry.handle.as_ref() {
+                handle.winit_window.set_enabled_buttons(buttons);
+            }
+        })
+        .is_some()
+    }
+
+    #[getter]
     pub fn remBase(&self, state: &OpState) -> f32 {
         self.with_window_entry(state, |entry| entry.rem_base)
             .unwrap_or(16.0)
     }
 
+    #[fast]
     #[setter]
     pub fn remBase(&self, state: &mut OpState, value: f64) {
         self.with_window_entry_mut(state, |entry| {
@@ -505,13 +732,19 @@ mod tests {
             decorations: None,
             transparent: None,
             maximized: None,
+            minimized: None,
             fullscreen: None,
+            always_on_top: None,
+            window_level: None,
             min_width: None,
             min_height: None,
             max_width: None,
             max_height: None,
             position: None,
             theme: None,
+            active: None,
+            content_protected: None,
+            enabled_buttons: None,
         }
     }
 
@@ -525,6 +758,8 @@ mod tests {
         options.maximized = Some(true);
         options.fullscreen = Some(true);
         options.theme = Some(WindowTheme::Dark);
+        options.active = Some(true);
+        options.content_protected = Some(true);
 
         let attributes = options.to_window_attributes();
 
@@ -533,6 +768,8 @@ mod tests {
         assert!(!attributes.decorations);
         assert!(attributes.transparent);
         assert!(attributes.maximized);
+        assert!(attributes.active);
+        assert!(attributes.content_protected);
         assert_eq!(attributes.preferred_theme, Some(Theme::Dark));
         assert!(matches!(
             attributes.fullscreen,
@@ -576,5 +813,57 @@ mod tests {
         let attributes = options.to_window_attributes();
 
         assert_eq!(attributes.preferred_theme, None);
+    }
+
+    #[test]
+    fn always_on_top_maps_to_window_level_when_no_explicit_level() {
+        let mut options = base_options();
+        options.always_on_top = Some(true);
+
+        assert_eq!(
+            options.window_level(),
+            winit::window::WindowLevel::AlwaysOnTop
+        );
+        assert_eq!(
+            options.to_window_attributes().window_level,
+            winit::window::WindowLevel::AlwaysOnTop
+        );
+    }
+
+    #[test]
+    fn explicit_window_level_wins_over_always_on_top() {
+        let mut options = base_options();
+        options.always_on_top = Some(true);
+        options.window_level = Some(super::UzWindowLevel::AlwaysOnBottom);
+
+        assert_eq!(
+            options.window_level(),
+            winit::window::WindowLevel::AlwaysOnBottom
+        );
+    }
+
+    #[test]
+    fn enabled_buttons_default_missing_fields_to_enabled() {
+        let mut options = base_options();
+        options.enabled_buttons = Some(super::EnabledWindowButtons {
+            close: Some(false),
+            minimize: None,
+            maximize: Some(true),
+        });
+
+        let buttons = options.enabled_buttons();
+
+        assert!(!buttons.contains(winit::window::WindowButtons::CLOSE));
+        assert!(buttons.contains(winit::window::WindowButtons::MINIMIZE));
+        assert!(buttons.contains(winit::window::WindowButtons::MAXIMIZE));
+        assert_eq!(options.to_window_attributes().enabled_buttons, buttons);
+    }
+
+    #[test]
+    fn minimized_is_post_create_state() {
+        let mut options = base_options();
+        options.minimized = Some(true);
+
+        assert!(options.minimized());
     }
 }

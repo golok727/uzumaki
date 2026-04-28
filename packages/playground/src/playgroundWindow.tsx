@@ -114,6 +114,75 @@ export function openPositionedThemePreview() {
   );
 }
 
+export function openMinimizedPreview() {
+  createAuxWindow(
+    'minimized-preview',
+    'Minimized Preview',
+    'Created with minimized=true. Restore it from your taskbar or window overview.',
+    {
+      minimized: true,
+      theme: 'dark',
+      position: { x: 360, y: 360 },
+    },
+  );
+}
+
+export function openWindowLevelPreview() {
+  createAuxWindow(
+    'level-preview',
+    'Window Level Preview',
+    'Created with windowLevel=alwaysOnTop.',
+    {
+      windowLevel: 'alwaysOnTop',
+      theme: 'dark',
+      position: { x: 420, y: 160 },
+    },
+  );
+}
+
+export function openContentProtectedPreview() {
+  createAuxWindow(
+    'protected-preview',
+    'Content Protected Preview',
+    'Created with contentProtected=true. Support depends on the OS and window manager.',
+    {
+      contentProtected: true,
+      theme: 'dark',
+      position: { x: 480, y: 220 },
+    },
+  );
+}
+
+export function openDisabledButtonsPreview() {
+  createAuxWindow(
+    'buttons-preview',
+    'Disabled Buttons Preview',
+    'Created with close and maximize titlebar buttons disabled where supported.',
+    {
+      enabledButtons: {
+        close: false,
+        minimize: true,
+        maximize: false,
+      },
+      theme: 'dark',
+      position: { x: 540, y: 280 },
+    },
+  );
+}
+
+export function openActivePreview() {
+  createAuxWindow(
+    'active-preview',
+    'Active Preview',
+    'Created with active=true as a best-effort focus hint.',
+    {
+      active: true,
+      theme: 'dark',
+      position: { x: 600, y: 340 },
+    },
+  );
+}
+
 export function createHiddenPreview() {
   hiddenWindow = createAuxWindow(
     'hidden-preview',

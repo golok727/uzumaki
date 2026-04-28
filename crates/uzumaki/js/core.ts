@@ -11,6 +11,13 @@ export interface WindowSize {
 }
 
 export type WindowTheme = 'light' | 'dark' | 'system';
+export type WindowLevel = 'normal' | 'alwaysOnTop' | 'alwaysOnBottom';
+
+export interface EnabledWindowButtons {
+  close?: boolean;
+  minimize?: boolean;
+  maximize?: boolean;
+}
 
 export interface NativeWindow {
   close(): void;
@@ -21,6 +28,8 @@ export interface NativeWindow {
   setTitle(title: string): boolean;
   readonly visible: boolean | null;
   setVisible(visible: boolean): boolean;
+  readonly transparent: boolean | null;
+  setTransparent(transparent: boolean): boolean;
   readonly resizable: boolean | null;
   setResizable(resizable: boolean): boolean;
   readonly decorated: boolean | null;
@@ -31,6 +40,10 @@ export interface NativeWindow {
   setMinimized(minimized: boolean): boolean;
   readonly fullscreen: boolean | null;
   setFullscreen(fullscreen: boolean): boolean;
+  readonly alwaysOnTop: boolean | null;
+  setAlwaysOnTop(alwaysOnTop: boolean): boolean;
+  readonly windowLevel: WindowLevel | null;
+  setWindowLevel(level: WindowLevel): boolean;
   setMinSize(width: number, height: number): boolean;
   setMaxSize(width: number, height: number): boolean;
   readonly innerSize: WindowSize | null;
@@ -40,6 +53,12 @@ export interface NativeWindow {
   readonly scaleFactor: number | null;
   readonly theme: WindowTheme | null;
   setTheme(theme: WindowTheme): boolean;
+  readonly active: boolean | null;
+  focus(): boolean;
+  readonly contentProtected: boolean | null;
+  setContentProtected(contentProtected: boolean): boolean;
+  readonly enabledButtons: EnabledWindowButtons | null;
+  setEnabledButtons(buttons: EnabledWindowButtons): boolean;
   remBase: number;
 }
 
@@ -53,13 +72,19 @@ interface Core {
     decorations?: boolean;
     transparent?: boolean;
     maximized?: boolean;
+    minimized?: boolean;
     fullscreen?: boolean;
+    alwaysOnTop?: boolean;
+    windowLevel?: WindowLevel;
     minWidth?: number;
     minHeight?: number;
     maxWidth?: number;
     maxHeight?: number;
     position?: WindowPosition;
     theme?: WindowTheme;
+    active?: boolean;
+    contentProtected?: boolean;
+    enabledButtons?: EnabledWindowButtons;
   }): NativeWindow;
   requestQuit(): void;
   requestRedraw(windowId: number): void;
