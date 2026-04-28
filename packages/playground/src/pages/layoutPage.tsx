@@ -385,7 +385,7 @@ export function LayoutPage() {
                 display="flex"
                 items="center"
                 justify="center"
-                {...props}
+                {...(props as any)}
               >
                 <text fontSize={12} fontWeight={800} color="#ffffff">
                   {label}

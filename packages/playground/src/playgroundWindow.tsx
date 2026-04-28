@@ -66,6 +66,17 @@ export const playgroundWindow = new Window('main', {
   },
 });
 
+playgroundWindow.on('windowload', () => {
+  console.log(
+    'Window loaded width =',
+    playgroundWindow.innerWidth,
+    'height =',
+    playgroundWindow.innerHeight,
+    'title =',
+    playgroundWindow.title,
+  );
+});
+
 export function openTransparentPreview() {
   createAuxWindow(
     'transparent-preview',

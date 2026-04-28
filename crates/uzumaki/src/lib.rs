@@ -43,9 +43,18 @@ pub fn create_snapshot(
 
 use crate::ops::*;
 
+const VERSION: &str = env!("CARGO_PKG_VERSION");
+
+#[op2]
+#[string]
+fn op_get_uz_runtime_version() -> Result<String, deno_error::JsErrorBox> {
+    Ok(VERSION.to_string())
+}
+
 extension!(
   uzumaki,
   ops = [
+    op_get_uz_runtime_version,
     op_create_window,
     op_request_quit,
     op_request_redraw,

@@ -9,15 +9,12 @@ export function DashboardPage() {
   const [net, setNet] = useState(31);
   const [gpu, setGpu] = useState(78);
   const [disk, setDisk] = useState(54);
-  const [blink, setBlink] = useState(true);
   const [log, setLog] = useState<string[]>([
     'Renderer initialized',
     'wgpu device acquired',
     'Vello scene created',
     'React tree mounted',
   ]);
-
-  const spinFrames = ['◐', '◓', '◑', '◒'];
 
   useEffect(() => {
     const id = setInterval(() => {
@@ -27,7 +24,6 @@ export function DashboardPage() {
       setNet((v) => Math.max(0, Math.min(100, v + (Math.random() - 0.5) * 18)));
       setGpu((v) => Math.max(30, Math.min(99, v + (Math.random() - 0.5) * 6)));
       setDisk((v) => Math.max(10, Math.min(80, v + (Math.random() - 0.5) * 2)));
-      setBlink((b) => !b);
       setLog((prev) => {
         const events = [
           'Render pass started',
@@ -43,14 +39,13 @@ export function DashboardPage() {
           'Glyph rasterized',
           'Path stroked',
         ];
-        const ev = events[Math.floor(Math.random() * events.length)];
+        const ev = events[Math.floor(Math.random() * events.length)] as string;
         return [ev, ...prev.slice(0, 14)];
       });
     }, 500);
     return () => clearInterval(id);
   }, []);
 
-  const spinChar = spinFrames[tick % 4];
   const fps = 60;
 
   return (
@@ -71,7 +66,12 @@ export function DashboardPage() {
           </text>
           <view display="flex" flexDir="row" items="center" gap={8}>
             <view px={8} py={2} bg={C.accentDim} rounded={4}>
-              <text fontSize={10} fontWeight={700} color={C.accentHi}>
+              <text
+                textWrap="nowrap"
+                fontSize={10}
+                fontWeight={700}
+                color={C.accentHi}
+              >
                 DEMO MODE
               </text>
             </view>
@@ -91,10 +91,12 @@ export function DashboardPage() {
             bg={C.successDim}
             rounded={8}
           >
-            <text fontSize={14} color={C.success} opacity={blink ? 1 : 0.3}>
-              {spinChar}
-            </text>
-            <text fontSize={12} fontWeight={600} color={C.successHi}>
+            <text
+              fontSize={12}
+              textWrap="nowrap"
+              fontWeight={600}
+              color={C.successHi}
+            >
               LIVE
             </text>
           </view>
@@ -298,13 +300,7 @@ export function DashboardPage() {
             </text>
             <Badge label="STREAMING" color={C.successHi} bg={C.successDim} />
           </view>
-          <view
-            scrollable
-            h={160}
-            overflowX="hidden"
-            display="flex"
-            flexDir="col"
-          >
+          <view scrollable h={160} display="flex" flexDir="col">
             {log.map((ev, i) => (
               <view
                 key={i}

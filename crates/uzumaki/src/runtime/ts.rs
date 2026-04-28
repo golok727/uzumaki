@@ -68,6 +68,10 @@ impl ModuleLoader for TypescriptModuleLoader {
         referrer: &str,
         _kind: ResolutionKind,
     ) -> Result<ModuleSpecifier, ModuleLoaderError> {
+        if specifier == "uzumaki" {
+            return ModuleSpecifier::parse("ext:uzumaki/runtime.js").map_err(JsErrorBox::from_err);
+        }
+
         let referrer_url = ModuleSpecifier::parse(referrer).unwrap_or_else(|_| {
             deno_core::resolve_url_or_path(referrer, &std::env::current_dir().unwrap()).unwrap()
         });

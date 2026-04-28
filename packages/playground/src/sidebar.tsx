@@ -39,7 +39,6 @@ export function Sidebar({
     >
       <view mb={28} pt={4} display="flex" flexDir="col" gap={2}>
         <view display="flex" flexDir="row" items="center" gap={8}>
-          <view w={8} h={8} bg={C.accent} rounded={4} />
           <text fontSize={17} fontWeight={800} color={C.accentHi}>
             uzumaki
           </text>

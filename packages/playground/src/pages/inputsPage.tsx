@@ -1,6 +1,7 @@
 import { useState } from 'react';
 import { C } from '../theme';
 import { Divider, Badge } from '../components';
+import { Icon } from '../icon';
 
 export function InputsPage() {
   const [username, setUsername] = useState('');
@@ -156,9 +157,14 @@ export function InputsPage() {
               </text>
             )}
             {pwMatch && (
-              <text fontSize={11} color={C.success}>
-                ✓ Passwords match
-              </text>
+              <>
+                <view gap={2}>
+                  <text fontSize={11} color={C.success}>
+                    Passwords match
+                  </text>
+                  <Icon name="check" color={C.success} size={12} />
+                </view>
+              </>
             )}
           </view>
         </view>

@@ -68,6 +68,7 @@ export function StatCard({
 }) {
   return (
     <view
+      textWrap="nowrap"
       flex={1}
       p={16}
       bg={C.surface2}

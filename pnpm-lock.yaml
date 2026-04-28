@@ -69,15 +69,21 @@ importers:
         specifier: workspace:*
         version: link:../../crates/uzumaki
     devDependencies:
+      '@types/react':
+        specifier: ^19.2.14
+        version: 19.2.14
+      uzumaki-types:
+        specifier: workspace:*
+        version: link:../uzumaki-types
+
+  packages/uzumaki-types:
+    dependencies:
       '@types/deno':
         specifier: ^2.5.0
         version: 2.5.0
       '@types/node':
         specifier: ^25.6.0
         version: 25.6.0
-      '@types/react':
-        specifier: ^19.2.14
-        version: 19.2.14
 
 packages:
   '@astrojs/compiler@3.0.1':

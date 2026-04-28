@@ -57,5 +57,5 @@ export function indexColor(i: number, tick: number): string {
     '#783f1b',
     '#3c1a0c',
   ];
-  return palette[(i + Math.floor(tick / 3)) % palette.length];
+  return palette[(i + Math.floor(tick / 3)) % palette.length]!;
 }

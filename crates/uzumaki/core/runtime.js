@@ -24,6 +24,7 @@ import {
   op_get_ancestor_path,
   op_read_clipboard_text,
   op_write_clipboard_text,
+  op_get_uz_runtime_version,
 } from 'ext:core/ops';
 
 Object.defineProperty(globalThis, '__uzumaki_ops_dont_touch_this__', {
@@ -55,3 +56,5 @@ Object.defineProperty(globalThis, '__uzumaki_ops_dont_touch_this__', {
   writable: false,
   configurable: false,
 });
+
+export const RUNTIME_VERSION = op_get_uz_runtime_version();

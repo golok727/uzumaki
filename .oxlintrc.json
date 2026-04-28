@@ -292,6 +292,12 @@
       }
     },
     {
+      "files": ["packages/uzumaki-types/**/*.d.ts"],
+      "rules": {
+        "typescript/triple-slash-reference": "off"
+      }
+    },
+    {
       "files": [
         "scripts/**/*.ts",
         "**/*.config.{js,mjs,ts}",
