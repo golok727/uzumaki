@@ -1,6 +1,5 @@
 import core, {
   setNativeProp,
-  type EnabledWindowButtons,
   type NativeWindow,
   type WindowLevel,
   type WindowPosition,
@@ -15,7 +14,6 @@ import {
 } from './events';
 
 export type {
-  EnabledWindowButtons,
   WindowLevel,
   WindowPosition,
   WindowSize,
@@ -29,11 +27,6 @@ const DEFAULT_WINDOW_HEIGHT = 600;
 const DEFAULT_WINDOW_TITLE = 'uzumaki';
 const DEFAULT_WINDOW_LEVEL: WindowLevel = 'normal';
 const DEFAULT_WINDOW_THEME: WindowTheme | null = null;
-const DEFAULT_ENABLED_BUTTONS: Required<EnabledWindowButtons> = {
-  close: true,
-  minimize: true,
-  maximize: true,
-};
 
 export interface WindowAttributes {
   width?: number;
@@ -56,18 +49,10 @@ export interface WindowAttributes {
   theme?: WindowTheme;
   active?: boolean;
   contentProtected?: boolean;
-  enabledButtons?: EnabledWindowButtons;
+  closable?: boolean;
+  minimizable?: boolean;
+  maximizable?: boolean;
   rootStyles?: Record<string, unknown>;
-}
-
-function normalizeEnabledButtons(
-  buttons: EnabledWindowButtons | null | undefined,
-): Required<EnabledWindowButtons> {
-  return {
-    close: buttons?.close ?? DEFAULT_ENABLED_BUTTONS.close,
-    minimize: buttons?.minimize ?? DEFAULT_ENABLED_BUTTONS.minimize,
-    maximize: buttons?.maximize ?? DEFAULT_ENABLED_BUTTONS.maximize,
-  };
 }
 
 export class Window {
@@ -183,8 +168,16 @@ export class Window {
     this._native.setContentProtected(contentProtected);
   }
 
-  setEnabledButtons(buttons: EnabledWindowButtons): void {
-    this._native.setEnabledButtons(buttons);
+  setClosable(closable: boolean): void {
+    this._native.setClosable(closable);
+  }
+
+  setMinimizable(minimizable: boolean): void {
+    this._native.setMinimizable(minimizable);
+  }
+
+  setMaximizable(maximizable: boolean): void {
+    this._native.setMaximizable(maximizable);
   }
 
   get scaleFactor(): number {
@@ -263,8 +256,16 @@ export class Window {
     return this._native.contentProtected ?? false;
   }
 
-  get enabledButtons(): Required<EnabledWindowButtons> {
-    return normalizeEnabledButtons(this._native.enabledButtons);
+  get closable(): boolean {
+    return this._native.closable ?? true;
+  }
+
+  get minimizable(): boolean {
+    return this._native.minimizable ?? true;
+  }
+
+  get maximizable(): boolean {
+    return this._native.maximizable ?? true;
   }
 
   get label(): string {

@@ -37,27 +37,29 @@ render(window, <App />);
 
 ## Window options
 
-| Option                   | Type                                                          | Description                                         |
-| ------------------------ | ------------------------------------------------------------- | --------------------------------------------------- |
-| `width`                  | `number`                                                      | Initial window width in logical pixels              |
-| `height`                 | `number`                                                      | Initial window height in logical pixels             |
-| `title`                  | `string`                                                      | Window title bar text                               |
-| `visible`                | `boolean`                                                     | Whether the window starts visible                   |
-| `resizable`              | `boolean`                                                     | Whether the window can be resized                   |
-| `decorations`            | `boolean`                                                     | Whether native titlebar and borders are shown       |
-| `transparent`            | `boolean`                                                     | Whether the window background supports transparency |
-| `maximized`              | `boolean`                                                     | Whether the window starts maximized                 |
-| `minimized`              | `boolean`                                                     | Whether the window is minimized after creation      |
-| `fullscreen`             | `boolean`                                                     | Whether the window starts in borderless fullscreen  |
-| `alwaysOnTop`            | `boolean`                                                     | Convenience alias for `windowLevel: 'alwaysOnTop'`  |
-| `windowLevel`            | `'normal' \| 'alwaysOnTop' \| 'alwaysOnBottom'`               | Requested z-level hint                              |
-| `minWidth` / `minHeight` | `number`                                                      | Minimum size when both are provided                 |
-| `maxWidth` / `maxHeight` | `number`                                                      | Maximum size when both are provided                 |
-| `position`               | `{ x: number; y: number }`                                    | Initial window position                             |
-| `theme`                  | `'light' \| 'dark' \| 'system'`                               | Preferred native window theme                       |
-| `active`                 | `boolean`                                                     | Whether the window should request initial focus     |
-| `contentProtected`       | `boolean`                                                     | Requests screen-capture protection where supported  |
-| `enabledButtons`         | `{ close?: boolean; minimize?: boolean; maximize?: boolean }` | Enabled native titlebar buttons                     |
+| Option                   | Type                                            | Description                                         |
+| ------------------------ | ----------------------------------------------- | --------------------------------------------------- |
+| `width`                  | `number`                                        | Initial window width in logical pixels              |
+| `height`                 | `number`                                        | Initial window height in logical pixels             |
+| `title`                  | `string`                                        | Window title bar text                               |
+| `visible`                | `boolean`                                       | Whether the window starts visible                   |
+| `resizable`              | `boolean`                                       | Whether the window can be resized                   |
+| `decorations`            | `boolean`                                       | Whether native titlebar and borders are shown       |
+| `transparent`            | `boolean`                                       | Whether the window background supports transparency |
+| `maximized`              | `boolean`                                       | Whether the window starts maximized                 |
+| `minimized`              | `boolean`                                       | Whether the window is minimized after creation      |
+| `fullscreen`             | `boolean`                                       | Whether the window starts in borderless fullscreen  |
+| `alwaysOnTop`            | `boolean`                                       | Convenience alias for `windowLevel: 'alwaysOnTop'`  |
+| `windowLevel`            | `'normal' \| 'alwaysOnTop' \| 'alwaysOnBottom'` | Requested z-level hint                              |
+| `minWidth` / `minHeight` | `number`                                        | Minimum size when both are provided                 |
+| `maxWidth` / `maxHeight` | `number`                                        | Maximum size when both are provided                 |
+| `position`               | `{ x: number; y: number }`                      | Initial window position                             |
+| `theme`                  | `'light' \| 'dark' \| 'system'`                 | Preferred native window theme                       |
+| `active`                 | `boolean`                                       | Whether the window should request initial focus     |
+| `contentProtected`       | `boolean`                                       | Requests screen-capture protection where supported  |
+| `closable`               | `boolean`                                       | Whether the native close titlebar button is enabled |
+| `minimizable`            | `boolean`                                       | Whether the native minimize button is enabled       |
+| `maximizable`            | `boolean`                                       | Whether the native maximize button is enabled       |
 
 The first argument to `new Window()` is a window identifier string (e.g. `'main'`).
 Use `getWindow(label)` to retrieve an existing window when you want to reuse or focus it instead of creating a duplicate.
@@ -83,7 +85,9 @@ window.setPosition(120, 80);
 window.setTheme('dark');
 window.focus();
 window.setContentProtected(true);
-window.setEnabledButtons({ close: true, minimize: true, maximize: false });
+window.setClosable(true);
+window.setMinimizable(true);
+window.setMaximizable(false);
 ```
 
 Read back common state through getters:
@@ -106,11 +110,13 @@ window.scaleFactor;
 window.theme;
 window.active;
 window.contentProtected;
-window.enabledButtons;
+window.closable;
+window.minimizable;
+window.maximizable;
 ```
 
 ## Notes
 
 - Sizes and positions use logical pixels.
 - `fullscreen: true` uses borderless fullscreen.
-- `windowLevel`, `alwaysOnTop`, `contentProtected`, `enabledButtons`, `active`, and runtime transparency are best-effort platform hints. The underlying OS or window manager may ignore them.
+- `windowLevel`, `alwaysOnTop`, `contentProtected`, `closable`, `minimizable`, `maximizable`, `active`, and runtime transparency are best-effort platform hints. The underlying OS or window manager may ignore them.

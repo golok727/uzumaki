@@ -18,7 +18,7 @@ import {
 
 type WindowTheme = 'light' | 'dark' | 'system';
 type WindowLevel = 'normal' | 'alwaysOnTop' | 'alwaysOnBottom';
-type WindowButton = 'close' | 'minimize' | 'maximize';
+type WindowButton = 'closable' | 'minimizable' | 'maximizable';
 type ButtonTone = 'primary' | 'secondary' | 'warning';
 
 type WindowSnapshot = {
@@ -41,7 +41,7 @@ type WindowSnapshot = {
   theme: string;
   active: boolean | null;
   contentProtected: boolean;
-  enabledButtons: string;
+  titlebarButtons: string;
 };
 
 const WINDOW_LEVELS: WindowLevel[] = [
@@ -50,7 +50,11 @@ const WINDOW_LEVELS: WindowLevel[] = [
   'alwaysOnBottom',
 ];
 const WINDOW_THEMES: WindowTheme[] = ['light', 'dark', 'system'];
-const WINDOW_BUTTONS: WindowButton[] = ['close', 'minimize', 'maximize'];
+const WINDOW_BUTTONS: WindowButton[] = [
+  'closable',
+  'minimizable',
+  'maximizable',
+];
 
 function readSnapshot(): WindowSnapshot {
   const innerSize = playgroundWindow.innerSize;
@@ -58,7 +62,6 @@ function readSnapshot(): WindowSnapshot {
   const position = playgroundWindow.position;
   const theme = playgroundWindow.theme;
   const scaleFactor = playgroundWindow.scaleFactor;
-  const enabledButtons = playgroundWindow.enabledButtons;
 
   return {
     title: playgroundWindow.title,
@@ -80,10 +83,10 @@ function readSnapshot(): WindowSnapshot {
     theme: theme ?? 'n/a',
     active: playgroundWindow.active,
     contentProtected: playgroundWindow.contentProtected,
-    enabledButtons: [
-      enabledButtons.close ? 'close' : 'no-close',
-      enabledButtons.minimize ? 'minimize' : 'no-minimize',
-      enabledButtons.maximize ? 'maximize' : 'no-maximize',
+    titlebarButtons: [
+      playgroundWindow.closable ? 'closable' : 'not-closable',
+      playgroundWindow.minimizable ? 'minimizable' : 'not-minimizable',
+      playgroundWindow.maximizable ? 'maximizable' : 'not-maximizable',
     ].join(', '),
   };
 }
@@ -260,18 +263,14 @@ export function WindowPage() {
   }
 
   function toggleTitlebarButton(button: WindowButton) {
-    const enabled = playgroundWindow.enabledButtons[button];
-    const nextButtons = {
-      close: playgroundWindow.enabledButtons.close,
-      minimize: playgroundWindow.enabledButtons.minimize,
-      maximize: playgroundWindow.enabledButtons.maximize,
-      [button]: !enabled,
+    const enabled = playgroundWindow[button];
+    const setters = {
+      closable: playgroundWindow.setClosable.bind(playgroundWindow),
+      minimizable: playgroundWindow.setMinimizable.bind(playgroundWindow),
+      maximizable: playgroundWindow.setMaximizable.bind(playgroundWindow),
     };
 
-    apply(
-      () => playgroundWindow.setEnabledButtons(nextButtons),
-      `${button} button ${!enabled}`,
-    );
+    apply(() => setters[button](!enabled), `${button} button ${!enabled}`);
   }
 
   return (
@@ -362,8 +361,8 @@ export function WindowPage() {
               value={String(snapshot.contentProtected)}
             />
             <SnapshotLine
-              label="enabledButtons"
-              value={snapshot.enabledButtons}
+              label="titlebarButtons"
+              value={snapshot.titlebarButtons}
             />
           </Panel>
 
@@ -438,7 +437,7 @@ export function WindowPage() {
         <Panel title="TITLEBAR BUTTONS">
           <view display="flex" flexDir="row" gap={8}>
             {WINDOW_BUTTONS.map((button) => {
-              const enabled = playgroundWindow.enabledButtons[button];
+              const enabled = playgroundWindow[button];
 
               return (
                 <ActionButton

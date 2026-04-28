@@ -13,12 +13,6 @@ export interface WindowSize {
 export type WindowTheme = 'light' | 'dark' | 'system';
 export type WindowLevel = 'normal' | 'alwaysOnTop' | 'alwaysOnBottom';
 
-export interface EnabledWindowButtons {
-  close?: boolean;
-  minimize?: boolean;
-  maximize?: boolean;
-}
-
 export interface NativeWindow {
   close(): void;
   readonly id: number;
@@ -57,8 +51,12 @@ export interface NativeWindow {
   focus(): boolean;
   readonly contentProtected: boolean | null;
   setContentProtected(contentProtected: boolean): boolean;
-  readonly enabledButtons: EnabledWindowButtons | null;
-  setEnabledButtons(buttons: EnabledWindowButtons): boolean;
+  readonly closable: boolean | null;
+  setClosable(closable: boolean): boolean;
+  readonly minimizable: boolean | null;
+  setMinimizable(minimizable: boolean): boolean;
+  readonly maximizable: boolean | null;
+  setMaximizable(maximizable: boolean): boolean;
   remBase: number;
 }
 
@@ -84,7 +82,9 @@ interface Core {
     theme?: WindowTheme;
     active?: boolean;
     contentProtected?: boolean;
-    enabledButtons?: EnabledWindowButtons;
+    closable?: boolean;
+    minimizable?: boolean;
+    maximizable?: boolean;
   }): NativeWindow;
   requestQuit(): void;
   requestRedraw(windowId: number): void;

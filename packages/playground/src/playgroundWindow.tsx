@@ -170,13 +170,11 @@ export function openDisabledButtonsPreview() {
   getOrCreateWindow(
     'buttons-preview',
     'Disabled Buttons Preview',
-    'Created with close and maximize titlebar buttons disabled where supported.',
+    'Created with closable=false and maximizable=false where supported.',
     {
-      enabledButtons: {
-        close: false,
-        minimize: true,
-        maximize: false,
-      },
+      closable: false,
+      minimizable: true,
+      maximizable: false,
       theme: 'dark',
       position: { x: 540, y: 280 },
     },

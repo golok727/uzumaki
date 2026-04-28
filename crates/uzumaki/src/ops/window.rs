@@ -39,7 +39,9 @@ pub(crate) struct WindowOptions {
     theme: Option<WindowTheme>,
     active: Option<bool>,
     content_protected: bool,
-    enabled_buttons: EnabledWindowButtons,
+    closable: bool,
+    minimizable: bool,
+    maximizable: bool,
 }
 
 pub(crate) type CreateWindowOptions = WindowOptionsRefinement;
@@ -65,14 +67,6 @@ enum UzWindowLevel {
     Normal,
     AlwaysOnTop,
     AlwaysOnBottom,
-}
-
-#[derive(Clone, Copy, Debug, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
-#[serde(rename_all = "camelCase")]
-struct EnabledWindowButtons {
-    close: Option<bool>,
-    minimize: Option<bool>,
-    maximize: Option<bool>,
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq, serde::Serialize)]
@@ -131,44 +125,6 @@ impl UzWindowLevel {
     }
 }
 
-impl EnabledWindowButtons {
-    fn all_enabled() -> Self {
-        Self {
-            close: Some(true),
-            minimize: Some(true),
-            maximize: Some(true),
-        }
-    }
-
-    fn to_winit(self) -> WindowButtons {
-        let mut buttons = WindowButtons::empty();
-        if self.close.unwrap_or(true) {
-            buttons |= WindowButtons::CLOSE;
-        }
-        if self.minimize.unwrap_or(true) {
-            buttons |= WindowButtons::MINIMIZE;
-        }
-        if self.maximize.unwrap_or(true) {
-            buttons |= WindowButtons::MAXIMIZE;
-        }
-        buttons
-    }
-
-    fn from_winit(buttons: WindowButtons) -> Self {
-        Self {
-            close: Some(buttons.contains(WindowButtons::CLOSE)),
-            minimize: Some(buttons.contains(WindowButtons::MINIMIZE)),
-            maximize: Some(buttons.contains(WindowButtons::MAXIMIZE)),
-        }
-    }
-}
-
-impl Default for EnabledWindowButtons {
-    fn default() -> Self {
-        Self::all_enabled()
-    }
-}
-
 impl WindowSize {
     fn from_physical_size(size: winit::dpi::PhysicalSize<u32>, scale_factor: f64) -> Self {
         let size: LogicalSize<u32> = size.to_logical(scale_factor);
@@ -202,7 +158,9 @@ impl Default for WindowOptions {
             theme: None,
             active: None,
             content_protected: false,
-            enabled_buttons: EnabledWindowButtons::default(),
+            closable: true,
+            minimizable: true,
+            maximizable: true,
         }
     }
 }
@@ -225,7 +183,7 @@ impl WindowOptions {
     }
 
     pub(crate) fn enabled_buttons(&self) -> WindowButtons {
-        self.enabled_buttons.to_winit()
+        window_buttons(self.closable, self.minimizable, self.maximizable)
     }
 
     pub(crate) fn to_window_attributes(&self) -> WindowAttributes {
@@ -275,6 +233,28 @@ fn try_logical_size(width: Option<f64>, height: Option<f64>) -> Option<LogicalSi
             Some(LogicalSize::new(width, height))
         }
         _ => None,
+    }
+}
+
+fn window_buttons(closable: bool, minimizable: bool, maximizable: bool) -> WindowButtons {
+    let mut buttons = WindowButtons::empty();
+    if closable {
+        buttons |= WindowButtons::CLOSE;
+    }
+    if minimizable {
+        buttons |= WindowButtons::MINIMIZE;
+    }
+    if maximizable {
+        buttons |= WindowButtons::MAXIMIZE;
+    }
+    buttons
+}
+
+fn set_window_button(buttons: &mut WindowButtons, button: WindowButtons, enabled: bool) {
+    if enabled {
+        *buttons |= button;
+    } else {
+        *buttons &= !button;
     }
 }
 
@@ -447,6 +427,27 @@ impl CoreWindow {
             entry.window_level = level;
             if let Some(handle) = entry.handle.as_ref() {
                 handle.winit_window.set_window_level(level);
+            }
+        })
+        .is_some()
+    }
+
+    fn has_window_button(&self, state: &OpState, button: WindowButtons) -> Option<bool> {
+        self.with_window_entry(state, |entry| entry.enabled_buttons.contains(button))
+    }
+
+    fn set_window_button_state(
+        &self,
+        state: &OpState,
+        button: WindowButtons,
+        enabled: bool,
+    ) -> bool {
+        self.with_window_entry_mut(state, |entry| {
+            set_window_button(&mut entry.enabled_buttons, button, enabled);
+            if let Some(handle) = entry.handle.as_ref() {
+                handle
+                    .winit_window
+                    .set_enabled_buttons(entry.enabled_buttons);
             }
         })
         .is_some()
@@ -713,26 +714,33 @@ impl CoreWindow {
     }
 
     #[getter]
-    #[serde]
-    pub fn enabledButtons(&self, state: &OpState) -> Option<EnabledWindowButtons> {
-        self.with_window_entry(state, |entry| {
-            EnabledWindowButtons::from_winit(entry.enabled_buttons)
-        })
+    pub fn closable(&self, state: &OpState) -> Option<bool> {
+        self.has_window_button(state, WindowButtons::CLOSE)
     }
 
-    pub fn setEnabledButtons(
-        &self,
-        state: &OpState,
-        #[serde] buttons: EnabledWindowButtons,
-    ) -> bool {
-        let buttons = buttons.to_winit();
-        self.with_window_entry_mut(state, |entry| {
-            entry.enabled_buttons = buttons;
-            if let Some(handle) = entry.handle.as_ref() {
-                handle.winit_window.set_enabled_buttons(buttons);
-            }
-        })
-        .is_some()
+    #[fast]
+    pub fn setClosable(&self, state: &OpState, closable: bool) -> bool {
+        self.set_window_button_state(state, WindowButtons::CLOSE, closable)
+    }
+
+    #[getter]
+    pub fn minimizable(&self, state: &OpState) -> Option<bool> {
+        self.has_window_button(state, WindowButtons::MINIMIZE)
+    }
+
+    #[fast]
+    pub fn setMinimizable(&self, state: &OpState, minimizable: bool) -> bool {
+        self.set_window_button_state(state, WindowButtons::MINIMIZE, minimizable)
+    }
+
+    #[getter]
+    pub fn maximizable(&self, state: &OpState) -> Option<bool> {
+        self.has_window_button(state, WindowButtons::MAXIMIZE)
+    }
+
+    #[fast]
+    pub fn setMaximizable(&self, state: &OpState, maximizable: bool) -> bool {
+        self.set_window_button_state(state, WindowButtons::MAXIMIZE, maximizable)
     }
 
     #[getter]
@@ -876,19 +884,17 @@ mod tests {
     }
 
     #[test]
-    fn enabled_buttons_default_missing_fields_to_enabled() {
+    fn flat_button_options_map_to_enabled_buttons() {
         let mut options = base_options();
-        options.enabled_buttons = super::EnabledWindowButtons {
-            close: Some(false),
-            minimize: None,
-            maximize: Some(true),
-        };
+        options.closable = false;
+        options.minimizable = true;
+        options.maximizable = false;
 
         let buttons = options.enabled_buttons();
 
         assert!(!buttons.contains(winit::window::WindowButtons::CLOSE));
         assert!(buttons.contains(winit::window::WindowButtons::MINIMIZE));
-        assert!(buttons.contains(winit::window::WindowButtons::MAXIMIZE));
+        assert!(!buttons.contains(winit::window::WindowButtons::MAXIMIZE));
         assert_eq!(options.to_window_attributes().enabled_buttons, buttons);
     }
 

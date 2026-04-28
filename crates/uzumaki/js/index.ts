@@ -3,7 +3,6 @@ import { disposeWindow, Window } from './window';
 
 export { getWindow, Window } from './window';
 export type {
-  EnabledWindowButtons,
   WindowAttributes,
   WindowLevel,
   WindowPosition,
