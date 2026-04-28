@@ -37,6 +37,10 @@ export class InputElement extends BaseElement<Record<string, any>> {
         continue;
       const value = props[key];
       if (value == null) continue;
+      if (key === 'id') {
+        this.setElementIdProp(value);
+        continue;
+      }
       if (isEventProp(key)) {
         const { name, capture } = parseEventProp(key);
         this.eventListeners.set(listenerKey(name, capture), {
@@ -90,11 +94,13 @@ export class InputElement extends BaseElement<Record<string, any>> {
     const newInputAttrs: Record<string, any> = {};
     const newEvents: Map<string, ListenerEntry> = new Map();
 
+    this.setElementIdProp(newProps.id);
     for (const key in newProps) {
       if (
         key === 'children' ||
         key === 'key' ||
         key === 'ref' ||
+        key === 'id' ||
         key === 'onChangeText'
       )
         continue;

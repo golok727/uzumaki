@@ -1,5 +1,6 @@
 import core, { clearNativeProp, setNativeProp } from '../core';
 import { eventManager } from '../events';
+import { registerNode, unregisterNode } from '../registry';
 import { ListenerEntry } from '../types';
 import { Window } from '../window';
 
@@ -10,6 +11,8 @@ export abstract class BaseElement<
   readonly type: string;
   readonly window: Window;
   readonly windowId: number;
+  /** User-supplied string id from the `id` prop, or null. */
+  elementId: string | null = null;
   styles: Record<string, any> = {};
   /** Keyed by stable event identity (name + phase). */
   eventListeners: Map<string, ListenerEntry> = new Map();
@@ -21,6 +24,12 @@ export abstract class BaseElement<
     this.type = type;
     this.window = window;
     this.windowId = window.id;
+    registerNode(this);
+  }
+
+  setElementIdProp(value: any): void {
+    this.elementId =
+      typeof value === 'string' && value.length > 0 ? value : null;
   }
 
   abstract commitUpdate(newProps: TProps, oldProps: TProps): void;
@@ -106,6 +115,7 @@ export abstract class BaseElement<
       child.destroy();
     }
     eventManager.clearNode(this.id);
+    unregisterNode(this.id);
     this.eventListeners.clear();
     this.children = [];
   }

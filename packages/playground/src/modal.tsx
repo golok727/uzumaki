@@ -47,6 +47,7 @@ function ModalCounter() {
 export function Modal({ onClose }: { onClose: () => void }) {
   return (
     <view
+      id="modal_backdrop"
       position="absolute"
       top={0}
       left={0}
@@ -56,6 +57,9 @@ export function Modal({ onClose }: { onClose: () => void }) {
       display="flex"
       items="center"
       justify="center"
+      onClick={(ev) => {
+        if (ev.target?.elementId === 'modal_backdrop') onClose();
+      }}
     >
       <view
         w={420}

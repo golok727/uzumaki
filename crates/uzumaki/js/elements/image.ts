@@ -16,6 +16,7 @@ const LIFECYCLE_PROPS = new Set([
   'children',
   'key',
   'ref',
+  'id',
   'src',
   'onLoad',
   'onLoadStart',
@@ -97,6 +98,7 @@ export class ImageElement extends BaseElement<Record<string, any>> {
   }
 
   private parseProps(props: Record<string, any>): void {
+    this.setElementIdProp(props.id);
     this.onLoad = typeof props.onLoad === 'function' ? props.onLoad : undefined;
     this.onLoadStart =
       typeof props.onLoadStart === 'function' ? props.onLoadStart : undefined;
@@ -197,6 +199,7 @@ export class ImageElement extends BaseElement<Record<string, any>> {
     newProps: Record<string, any>,
     _oldProps: Record<string, any>,
   ): void {
+    this.setElementIdProp(newProps.id);
     this.onLoad =
       typeof newProps.onLoad === 'function' ? newProps.onLoad : undefined;
     this.onLoadStart =

@@ -126,21 +126,25 @@ export namespace JSX {
       EventProps & {
         children?: any;
         key?: string | number;
+        id?: string;
       };
     text: ElementAttributes &
       EventProps & {
         children?: any;
         key?: string | number;
+        id?: string;
       };
     p: ElementAttributes &
       EventProps & {
         children?: any;
         key?: string | number;
+        id?: string;
       };
     button: ElementAttributes &
       EventProps & {
         children?: any;
         key?: string | number;
+        id?: string;
       };
     input: ElementAttributes &
       EventProps & {
@@ -156,6 +160,7 @@ export namespace JSX {
         onBlur?: (ev: UzumakiFocusEvent) => void;
         children?: any;
         key?: string | number;
+        id?: string;
       };
     checkbox: ElementAttributes &
       EventProps & {
@@ -166,6 +171,7 @@ export namespace JSX {
         onBlur?: (ev: UzumakiFocusEvent) => void;
         children?: any;
         key?: string | number;
+        id?: string;
       };
     image: ElementAttributes &
       EventProps & {
@@ -175,6 +181,7 @@ export namespace JSX {
         onError?: (ev: { src: string; message: string }) => void;
         children?: any;
         key?: string | number;
+        id?: string;
       };
   }
 }
