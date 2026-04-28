@@ -206,7 +206,6 @@ function Field({
       rounded={8}
       border={1}
       borderColor={C.border}
-      flex={1}
     />
   );
 }
