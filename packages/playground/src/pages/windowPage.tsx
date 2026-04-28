@@ -62,8 +62,8 @@ function readSnapshot(): WindowSnapshot {
 
   return {
     title: playgroundWindow.title,
-    width: playgroundWindow.width,
-    height: playgroundWindow.height,
+    width: playgroundWindow.innerWidth,
+    height: playgroundWindow.innerHeight,
     visible: playgroundWindow.visible,
     transparent: playgroundWindow.transparent,
     resizable: playgroundWindow.resizable,

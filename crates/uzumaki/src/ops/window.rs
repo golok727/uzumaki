@@ -1,4 +1,5 @@
 use deno_core::*;
+use refineable::Refineable;
 use winit::dpi::{LogicalPosition, LogicalSize};
 use winit::event_loop::EventLoopProxy;
 use winit::window::{
@@ -14,20 +15,21 @@ use crate::ui::UIState;
 const DEFAULT_MIN_WINDOW_WIDTH: f64 = 400.0;
 const DEFAULT_MIN_WINDOW_HEIGHT: f64 = 300.0;
 
-#[derive(Clone, Debug, serde::Serialize, serde::Deserialize)]
+#[derive(Clone, Debug, PartialEq, Refineable, serde::Deserialize)]
+#[refineable(Debug, serde::Deserialize)]
 #[serde(rename_all = "camelCase")]
-pub(crate) struct CreateWindowOptions {
+pub(crate) struct WindowOptions {
     width: u32,
     height: u32,
     title: String,
-    visible: Option<bool>,
-    resizable: Option<bool>,
-    decorations: Option<bool>,
-    transparent: Option<bool>,
-    maximized: Option<bool>,
-    minimized: Option<bool>,
-    fullscreen: Option<bool>,
-    always_on_top: Option<bool>,
+    visible: bool,
+    resizable: bool,
+    decorations: bool,
+    transparent: bool,
+    maximized: bool,
+    minimized: bool,
+    fullscreen: bool,
+    always_on_top: bool,
     window_level: Option<UzWindowLevel>,
     min_width: Option<f64>,
     min_height: Option<f64>,
@@ -36,9 +38,11 @@ pub(crate) struct CreateWindowOptions {
     position: Option<WindowPosition>,
     theme: Option<WindowTheme>,
     active: Option<bool>,
-    content_protected: Option<bool>,
-    enabled_buttons: Option<EnabledWindowButtons>,
+    content_protected: bool,
+    enabled_buttons: EnabledWindowButtons,
 }
+
+pub(crate) type CreateWindowOptions = WindowOptionsRefinement;
 
 #[derive(Clone, Copy, Debug, PartialEq, serde::Serialize, serde::Deserialize)]
 #[serde(rename_all = "camelCase")]
@@ -151,6 +155,12 @@ impl EnabledWindowButtons {
     }
 }
 
+impl Default for EnabledWindowButtons {
+    fn default() -> Self {
+        Self::all_enabled()
+    }
+}
+
 impl WindowSize {
     fn from_physical_size(size: winit::dpi::PhysicalSize<u32>, scale_factor: f64) -> Self {
         let size: LogicalSize<u32> = size.to_logical(scale_factor);
@@ -161,55 +171,69 @@ impl WindowSize {
     }
 }
 
-impl CreateWindowOptions {
+impl Default for WindowOptions {
+    fn default() -> Self {
+        Self {
+            width: 800,
+            height: 600,
+            title: "uzumaki".to_string(),
+            visible: true,
+            resizable: true,
+            decorations: true,
+            transparent: false,
+            maximized: false,
+            minimized: false,
+            fullscreen: false,
+            always_on_top: false,
+            window_level: None,
+            min_width: None,
+            min_height: None,
+            max_width: None,
+            max_height: None,
+            position: None,
+            theme: None,
+            active: None,
+            content_protected: false,
+            enabled_buttons: EnabledWindowButtons::default(),
+        }
+    }
+}
+
+impl WindowOptions {
     pub(crate) fn transparent(&self) -> bool {
-        self.transparent.unwrap_or(false)
+        self.transparent
     }
 
     pub(crate) fn minimized(&self) -> bool {
-        self.minimized.unwrap_or(false)
-    }
-
-    pub(crate) fn content_protected(&self) -> bool {
-        self.content_protected.unwrap_or(false)
+        self.minimized
     }
 
     pub(crate) fn window_level(&self) -> WindowLevel {
         match (self.window_level, self.always_on_top) {
             (Some(level), _) => level.to_winit(),
-            (None, Some(true)) => WindowLevel::AlwaysOnTop,
-            (None, Some(false)) | (None, None) => WindowLevel::Normal,
+            (None, true) => WindowLevel::AlwaysOnTop,
+            (None, false) => WindowLevel::Normal,
         }
     }
 
     pub(crate) fn enabled_buttons(&self) -> WindowButtons {
-        self.enabled_buttons
-            .unwrap_or_else(EnabledWindowButtons::all_enabled)
-            .to_winit()
+        self.enabled_buttons.to_winit()
     }
 
     pub(crate) fn to_window_attributes(&self) -> WindowAttributes {
         let mut attributes = WindowAttributes::default()
             .with_title(self.title.clone())
-            .with_inner_size(LogicalSize::new(self.width as f64, self.height as f64));
+            .with_inner_size(LogicalSize::new(self.width as f64, self.height as f64))
+            .with_visible(self.visible)
+            .with_resizable(self.resizable)
+            .with_decorations(self.decorations)
+            .with_transparent(self.transparent)
+            .with_maximized(self.maximized)
+            .with_window_level(self.window_level())
+            .with_content_protected(self.content_protected)
+            .with_enabled_buttons(self.enabled_buttons());
 
-        if let Some(visible) = self.visible {
-            attributes = attributes.with_visible(visible);
-        }
-        if let Some(resizable) = self.resizable {
-            attributes = attributes.with_resizable(resizable);
-        }
-        if let Some(decorations) = self.decorations {
-            attributes = attributes.with_decorations(decorations);
-        }
-        if let Some(transparent) = self.transparent {
-            attributes = attributes.with_transparent(transparent);
-        }
-        if let Some(maximized) = self.maximized {
-            attributes = attributes.with_maximized(maximized);
-        }
-        attributes = attributes.with_window_level(self.window_level());
-        if self.fullscreen == Some(true) {
+        if self.fullscreen {
             attributes = attributes.with_fullscreen(Some(Fullscreen::Borderless(None)));
         }
         let default_min_size =
@@ -231,13 +255,6 @@ impl CreateWindowOptions {
         if let Some(active) = self.active {
             attributes = attributes.with_active(active);
         }
-        if let Some(content_protected) = self.content_protected {
-            attributes = attributes.with_content_protected(content_protected);
-        }
-        if let Some(enabled_buttons) = self.enabled_buttons {
-            attributes = attributes.with_enabled_buttons(enabled_buttons.to_winit());
-        }
-
         attributes
     }
 }
@@ -261,6 +278,7 @@ pub fn op_create_window(
 ) -> Result<CoreWindow, deno_error::JsErrorBox> {
     static NEXT_WINDOW_ID: std::sync::atomic::AtomicU32 = std::sync::atomic::AtomicU32::new(1);
     let id = NEXT_WINDOW_ID.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
+    let options = WindowOptions::default().refined(options);
 
     let app_state = state.borrow::<SharedAppState>().clone();
     with_state(&app_state, |s| {
@@ -277,7 +295,7 @@ pub fn op_create_window(
                 cursor_blink_generation: 0,
                 transparent: options.transparent(),
                 window_level: options.window_level(),
-                content_protected: options.content_protected(),
+                content_protected: options.content_protected,
                 enabled_buttons: options.enabled_buttons(),
             },
         );
@@ -727,47 +745,30 @@ impl CoreWindow {
 
 #[cfg(test)]
 mod tests {
-    use super::{CreateWindowOptions, WindowPosition, WindowTheme};
+    use super::{WindowOptions, WindowPosition, WindowTheme};
     use winit::window::{Fullscreen, Theme};
 
-    fn base_options() -> CreateWindowOptions {
-        CreateWindowOptions {
+    fn base_options() -> WindowOptions {
+        WindowOptions {
             width: 800,
             height: 600,
             title: "demo".to_string(),
-            visible: None,
-            resizable: None,
-            decorations: None,
-            transparent: None,
-            maximized: None,
-            minimized: None,
-            fullscreen: None,
-            always_on_top: None,
-            window_level: None,
-            min_width: None,
-            min_height: None,
-            max_width: None,
-            max_height: None,
-            position: None,
-            theme: None,
-            active: None,
-            content_protected: None,
-            enabled_buttons: None,
+            ..WindowOptions::default()
         }
     }
 
     #[test]
     fn create_options_map_common_attributes() {
         let mut options = base_options();
-        options.visible = Some(false);
-        options.resizable = Some(false);
-        options.decorations = Some(false);
-        options.transparent = Some(true);
-        options.maximized = Some(true);
-        options.fullscreen = Some(true);
+        options.visible = false;
+        options.resizable = false;
+        options.decorations = false;
+        options.transparent = true;
+        options.maximized = true;
+        options.fullscreen = true;
         options.theme = Some(WindowTheme::Dark);
         options.active = Some(true);
-        options.content_protected = Some(true);
+        options.content_protected = true;
 
         let attributes = options.to_window_attributes();
 
@@ -835,7 +836,7 @@ mod tests {
     #[test]
     fn always_on_top_maps_to_window_level_when_no_explicit_level() {
         let mut options = base_options();
-        options.always_on_top = Some(true);
+        options.always_on_top = true;
 
         assert_eq!(
             options.window_level(),
@@ -850,7 +851,7 @@ mod tests {
     #[test]
     fn explicit_window_level_wins_over_always_on_top() {
         let mut options = base_options();
-        options.always_on_top = Some(true);
+        options.always_on_top = true;
         options.window_level = Some(super::UzWindowLevel::AlwaysOnBottom);
 
         assert_eq!(
@@ -862,11 +863,11 @@ mod tests {
     #[test]
     fn enabled_buttons_default_missing_fields_to_enabled() {
         let mut options = base_options();
-        options.enabled_buttons = Some(super::EnabledWindowButtons {
+        options.enabled_buttons = super::EnabledWindowButtons {
             close: Some(false),
             minimize: None,
             maximize: Some(true),
-        });
+        };
 
         let buttons = options.enabled_buttons();
 
@@ -879,7 +880,7 @@ mod tests {
     #[test]
     fn minimized_is_post_create_state() {
         let mut options = base_options();
-        options.minimized = Some(true);
+        options.minimized = true;
 
         assert!(options.minimized());
     }

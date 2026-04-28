@@ -1,9 +1,6 @@
-import { Window } from 'uzumaki-ui';
+import { getWindow, Window } from 'uzumaki-ui';
 import { render } from 'uzumaki-ui/react';
 import { C } from './theme';
-
-const openWindows = new Map<string, Window>();
-let hiddenWindow: Window | null = null;
 
 function WindowPreview({
   title,
@@ -36,21 +33,26 @@ function WindowPreview({
   );
 }
 
-function createAuxWindow(
-  labelPrefix: string,
+function getOrCreateWindow(
+  label: string,
   title: string,
   detail: string,
   attrs: ConstructorParameters<typeof Window>[1],
   bg = '#18181b',
 ) {
-  const label = `${labelPrefix}-${Date.now()}`;
+  const existing = getWindow(label);
+  if (existing) {
+    existing.setVisible(true);
+    existing.focus();
+    return existing;
+  }
+
   const window = new Window(label, {
     width: 440,
     height: 280,
     ...attrs,
     title,
   });
-  openWindows.set(label, window);
   render(window, <WindowPreview title={title} detail={detail} bg={bg} />);
   return window;
 }
@@ -78,7 +80,7 @@ playgroundWindow.on('windowload', () => {
 });
 
 export function openTransparentPreview() {
-  createAuxWindow(
+  getOrCreateWindow(
     'transparent-preview',
     'Transparent Preview',
     'Created with transparent=true. If your compositor supports it, the background should punch through.',
@@ -93,7 +95,7 @@ export function openTransparentPreview() {
 }
 
 export function openFramelessPreview() {
-  createAuxWindow(
+  getOrCreateWindow(
     'frameless-preview',
     'Frameless Fixed Window',
     'Created with decorations=false, resizable=false, and explicit min/max size constraints.',
@@ -111,7 +113,7 @@ export function openFramelessPreview() {
 }
 
 export function openPositionedThemePreview() {
-  createAuxWindow(
+  getOrCreateWindow(
     'theme-preview',
     'Positioned Theme Preview',
     'Created with explicit position, dark theme, and maximized=false.',
@@ -126,7 +128,7 @@ export function openPositionedThemePreview() {
 }
 
 export function openMinimizedPreview() {
-  createAuxWindow(
+  getOrCreateWindow(
     'minimized-preview',
     'Minimized Preview',
     'Created with minimized=true. Restore it from your taskbar or window overview.',
@@ -139,7 +141,7 @@ export function openMinimizedPreview() {
 }
 
 export function openWindowLevelPreview() {
-  createAuxWindow(
+  getOrCreateWindow(
     'level-preview',
     'Window Level Preview',
     'Created with windowLevel=alwaysOnTop.',
@@ -152,7 +154,7 @@ export function openWindowLevelPreview() {
 }
 
 export function openContentProtectedPreview() {
-  createAuxWindow(
+  getOrCreateWindow(
     'protected-preview',
     'Content Protected Preview',
     'Created with contentProtected=true. Support depends on the OS and window manager.',
@@ -165,7 +167,7 @@ export function openContentProtectedPreview() {
 }
 
 export function openDisabledButtonsPreview() {
-  createAuxWindow(
+  getOrCreateWindow(
     'buttons-preview',
     'Disabled Buttons Preview',
     'Created with close and maximize titlebar buttons disabled where supported.',
@@ -182,7 +184,7 @@ export function openDisabledButtonsPreview() {
 }
 
 export function openActivePreview() {
-  createAuxWindow(
+  getOrCreateWindow(
     'active-preview',
     'Active Preview',
     'Created with active=true as a best-effort focus hint.',
@@ -195,7 +197,7 @@ export function openActivePreview() {
 }
 
 export function createHiddenPreview() {
-  hiddenWindow = createAuxWindow(
+  getOrCreateWindow(
     'hidden-preview',
     'Hidden Preview',
     'This window was created hidden and can be shown from the Window Lab page.',
@@ -208,5 +210,7 @@ export function createHiddenPreview() {
 }
 
 export function showHiddenPreview() {
+  const hiddenWindow = getWindow('hidden-preview');
   hiddenWindow?.setVisible(true);
+  hiddenWindow?.focus();
 }

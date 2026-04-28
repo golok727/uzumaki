@@ -64,9 +64,9 @@ export interface NativeWindow {
 
 interface Core {
   createWindow(options: {
-    width: number;
-    height: number;
-    title: string;
+    width?: number;
+    height?: number;
+    title?: string;
     visible?: boolean;
     resizable?: boolean;
     decorations?: boolean;

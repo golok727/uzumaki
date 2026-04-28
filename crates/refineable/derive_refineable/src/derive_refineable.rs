@@ -383,6 +383,11 @@ pub fn derive_refineable(input: TokenStream) -> TokenStream {
         })
         .collect();
 
+    let forwarded_attrs: Vec<_> = attrs
+        .iter()
+        .filter(|attr| attr.path().is_ident("serde"))
+        .collect();
+
     let mut derive_stream = quote! {};
     for trait_to_derive in refinement_traits_to_derive {
         derive_stream.extend(quote! { #[derive(#trait_to_derive)] })
@@ -392,6 +397,7 @@ pub fn derive_refineable(input: TokenStream) -> TokenStream {
         /// A refinable version of [`#ident`], see that documentation for details.
         #[derive(Clone)]
         #derive_stream
+        #( #forwarded_attrs )*
         pub struct #refinement_ident #impl_generics {
             #(
                 #[allow(missing_docs)]

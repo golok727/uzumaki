@@ -1,7 +1,7 @@
 import { eventManager, EventType } from './events';
 import { disposeWindow, Window } from './window';
 
-export { Window } from './window';
+export { getWindow, Window } from './window';
 export type {
   EnabledWindowButtons,
   WindowAttributes,

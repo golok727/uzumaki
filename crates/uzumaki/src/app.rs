@@ -131,7 +131,7 @@ pub(crate) fn with_state_ref<R>(state: &SharedAppState, f: impl FnOnce(&AppState
 pub(crate) enum UserEvent {
     CreateWindow {
         id: u32,
-        options: crate::ops::window::CreateWindowOptions,
+        options: crate::ops::window::WindowOptions,
     },
     CloseWindow {
         id: u32,

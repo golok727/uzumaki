@@ -60,6 +60,7 @@ render(window, <App />);
 | `enabledButtons`         | `{ close?: boolean; minimize?: boolean; maximize?: boolean }` | Enabled native titlebar buttons                     |
 
 The first argument to `new Window()` is a window identifier string (e.g. `'main'`).
+Use `getWindow(label)` to retrieve an existing window when you want to reuse or focus it instead of creating a duplicate.
 
 ## Runtime APIs
 

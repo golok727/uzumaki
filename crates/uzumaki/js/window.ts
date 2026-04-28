@@ -24,6 +24,16 @@ export type {
 
 const windowsByLabel = new Map<string, Window>();
 const windowsById = new Map<number, Window>();
+const DEFAULT_WINDOW_WIDTH = 800;
+const DEFAULT_WINDOW_HEIGHT = 600;
+const DEFAULT_WINDOW_TITLE = 'uzumaki';
+const DEFAULT_WINDOW_LEVEL: WindowLevel = 'normal';
+const DEFAULT_WINDOW_THEME: WindowTheme | null = null;
+const DEFAULT_ENABLED_BUTTONS: Required<EnabledWindowButtons> = {
+  close: true,
+  minimize: true,
+  maximize: true,
+};
 
 export interface WindowAttributes {
   width?: number;
@@ -50,87 +60,13 @@ export interface WindowAttributes {
   rootStyles?: Record<string, unknown>;
 }
 
-interface WindowState {
-  width: number;
-  height: number;
-  title: string;
-  visible: boolean;
-  resizable: boolean;
-  decorations: boolean;
-  transparent: boolean;
-  maximized: boolean;
-  minimized: boolean;
-  fullscreen: boolean;
-  alwaysOnTop: boolean;
-  windowLevel: WindowLevel;
-  minWidth?: number;
-  minHeight?: number;
-  maxWidth?: number;
-  maxHeight?: number;
-  position?: WindowPosition;
-  theme?: WindowTheme;
-  active?: boolean;
-  contentProtected: boolean;
-  enabledButtons: Required<EnabledWindowButtons>;
-}
-
 function normalizeEnabledButtons(
-  buttons: EnabledWindowButtons = {},
+  buttons: EnabledWindowButtons | null | undefined,
 ): Required<EnabledWindowButtons> {
   return {
-    close: buttons.close ?? true,
-    minimize: buttons.minimize ?? true,
-    maximize: buttons.maximize ?? true,
-  };
-}
-
-function createWindowState(attributes: WindowAttributes): WindowState {
-  const {
-    width = 800,
-    height = 600,
-    title = 'uzumaki',
-    visible = true,
-    resizable = true,
-    decorations = true,
-    transparent = false,
-    maximized = false,
-    minimized = false,
-    fullscreen = false,
-    alwaysOnTop = false,
-    windowLevel = alwaysOnTop ? 'alwaysOnTop' : 'normal',
-    minWidth,
-    minHeight,
-    maxWidth,
-    maxHeight,
-    position,
-    theme,
-    active,
-    contentProtected = false,
-    enabledButtons,
-  } = attributes;
-
-  return {
-    width,
-    height,
-    title,
-    visible,
-    resizable,
-    decorations,
-    transparent,
-    maximized,
-    minimized,
-    fullscreen,
-    alwaysOnTop: windowLevel === 'alwaysOnTop',
-    windowLevel,
-    minWidth,
-    minHeight,
-    maxWidth,
-    maxHeight,
-    position,
-    theme,
-    active,
-    contentProtected,
-    enabledButtons: normalizeEnabledButtons(enabledButtons),
+    close: buttons?.close ?? DEFAULT_ENABLED_BUTTONS.close,
+    minimize: buttons?.minimize ?? DEFAULT_ENABLED_BUTTONS.minimize,
+    maximize: buttons?.maximize ?? DEFAULT_ENABLED_BUTTONS.maximize,
   };
 }
 
@@ -138,7 +74,6 @@ export class Window {
   private _id: number;
   private _native: NativeWindow;
   private _label: string;
-  private _state: WindowState;
   private _remBase: number = 16;
   private _disposed: boolean = false;
   private _disposables: (() => void)[] = [];
@@ -149,10 +84,8 @@ export class Window {
       throw new Error(`Window with label ${label} already exists`);
     }
 
-    const { rootStyles } = attributes;
-    const createOptions = createWindowState(attributes);
+    const { rootStyles, ...createOptions } = attributes;
 
-    this._state = createOptions;
     this._label = label;
     this._native = core.createWindow(createOptions);
     this._id = this._native.id;
@@ -185,74 +118,43 @@ export class Window {
     return windowsById.get(id);
   }
 
-  private setState<K extends keyof WindowState>(
-    key: K,
-    value: WindowState[K],
-  ): void {
-    this._state[key] = value;
-  }
-
-  private getStateValue<K extends keyof WindowState>(
-    key: K,
-    value: WindowState[K] | null | undefined,
-  ): WindowState[K] {
-    return value ?? this._state[key];
-  }
-
-  setSize(width: number, height: number): void {
-    this.setState('width', width);
-    this.setState('height', height);
-  }
-
   setTitle(title: string): void {
-    this.setState('title', title);
     this._native.setTitle(title);
   }
 
   setVisible(visible: boolean): void {
-    this.setState('visible', visible);
     this._native.setVisible(visible);
   }
 
   setTransparent(transparent: boolean): void {
-    this.setState('transparent', transparent);
     this._native.setTransparent(transparent);
   }
 
   setResizable(resizable: boolean): void {
-    this.setState('resizable', resizable);
     this._native.setResizable(resizable);
   }
 
   setDecorations(decorations: boolean): void {
-    this.setState('decorations', decorations);
     this._native.setDecorations(decorations);
   }
 
   setMaximized(maximized: boolean): void {
-    this.setState('maximized', maximized);
     this._native.setMaximized(maximized);
   }
 
   setMinimized(minimized: boolean): void {
-    this.setState('minimized', minimized);
     this._native.setMinimized(minimized);
   }
 
   setFullscreen(fullscreen: boolean): void {
-    this.setState('fullscreen', fullscreen);
     this._native.setFullscreen(fullscreen);
   }
 
   setAlwaysOnTop(alwaysOnTop: boolean): void {
-    this.setState('alwaysOnTop', alwaysOnTop);
-    this.setState('windowLevel', alwaysOnTop ? 'alwaysOnTop' : 'normal');
     this._native.setAlwaysOnTop(alwaysOnTop);
   }
 
   setWindowLevel(windowLevel: WindowLevel): void {
-    this.setState('windowLevel', windowLevel);
-    this.setState('alwaysOnTop', windowLevel === 'alwaysOnTop');
     this._native.setWindowLevel(windowLevel);
   }
 
@@ -265,12 +167,10 @@ export class Window {
   }
 
   setPosition(x: number, y: number): void {
-    this.setState('position', { x, y });
     this._native.setPosition(x, y);
   }
 
   setTheme(theme: WindowTheme): void {
-    this.setState('theme', theme);
     this._native.setTheme(theme);
   }
 
@@ -279,17 +179,11 @@ export class Window {
   }
 
   setContentProtected(contentProtected: boolean): void {
-    this.setState('contentProtected', contentProtected);
     this._native.setContentProtected(contentProtected);
   }
 
   setEnabledButtons(buttons: EnabledWindowButtons): void {
-    const normalized = normalizeEnabledButtons({
-      ...this._state.enabledButtons,
-      ...buttons,
-    });
-    this.setState('enabledButtons', normalized);
-    this._native.setEnabledButtons(normalized);
+    this._native.setEnabledButtons(buttons);
   }
 
   get scaleFactor(): number {
@@ -297,59 +191,51 @@ export class Window {
   }
 
   get innerWidth(): number {
-    return this.getStateValue('width', this._native.innerWidth);
+    return this._native.innerWidth ?? DEFAULT_WINDOW_WIDTH;
   }
 
   get innerHeight(): number {
-    return this.getStateValue('height', this._native.innerHeight);
-  }
-
-  get width(): number {
-    return this.innerWidth;
-  }
-
-  get height(): number {
-    return this.innerHeight;
+    return this._native.innerHeight ?? DEFAULT_WINDOW_HEIGHT;
   }
 
   get title(): string {
-    return this.getStateValue('title', this._native.title);
+    return this._native.title ?? DEFAULT_WINDOW_TITLE;
   }
 
   get visible(): boolean {
-    return this.getStateValue('visible', this._native.visible);
+    return this._native.visible ?? true;
   }
 
   get transparent(): boolean {
-    return this.getStateValue('transparent', this._native.transparent);
+    return this._native.transparent ?? false;
   }
 
   get resizable(): boolean {
-    return this.getStateValue('resizable', this._native.resizable);
+    return this._native.resizable ?? true;
   }
 
   get decorated(): boolean {
-    return this.getStateValue('decorations', this._native.decorated);
+    return this._native.decorated ?? true;
   }
 
   get maximized(): boolean {
-    return this.getStateValue('maximized', this._native.maximized);
+    return this._native.maximized ?? false;
   }
 
   get minimized(): boolean {
-    return this.getStateValue('minimized', this._native.minimized);
+    return this._native.minimized ?? false;
   }
 
   get fullscreen(): boolean {
-    return this.getStateValue('fullscreen', this._native.fullscreen);
+    return this._native.fullscreen ?? false;
   }
 
   get alwaysOnTop(): boolean {
-    return this.getStateValue('alwaysOnTop', this._native.alwaysOnTop);
+    return this._native.alwaysOnTop ?? false;
   }
 
   get windowLevel(): WindowLevel {
-    return this.getStateValue('windowLevel', this._native.windowLevel);
+    return this._native.windowLevel ?? DEFAULT_WINDOW_LEVEL;
   }
 
   get innerSize(): WindowSize | null {
@@ -361,26 +247,23 @@ export class Window {
   }
 
   get position(): WindowPosition | null {
-    return this._native.position ?? this._state.position ?? null;
+    return this._native.position;
   }
 
   get theme(): WindowTheme | null {
-    return this._native.theme ?? this._state.theme ?? null;
+    return this._native.theme ?? DEFAULT_WINDOW_THEME;
   }
 
   get active(): boolean | null {
-    return this._native.active ?? this._state.active ?? null;
+    return this._native.active;
   }
 
   get contentProtected(): boolean {
-    return this.getStateValue(
-      'contentProtected',
-      this._native.contentProtected,
-    );
+    return this._native.contentProtected ?? false;
   }
 
   get enabledButtons(): Required<EnabledWindowButtons> {
-    return this._native.enabledButtons ?? this._state.enabledButtons;
+    return normalizeEnabledButtons(this._native.enabledButtons);
   }
 
   get label(): string {
@@ -435,6 +318,10 @@ export class Window {
       );
     }
   }
+}
+
+export function getWindow(label: string): Window | undefined {
+  return windowsByLabel.get(label);
 }
 
 /** @internal Called when the native window is destroyed. */
