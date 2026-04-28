@@ -1094,6 +1094,121 @@ pub fn handle_key_for_checkbox(
     )
 }
 
+/// Handle Enter/Space on a focused button-like element (focusable view that's
+/// not a text input or checkbox). Fires a synthetic click, mirroring browser
+/// behavior on `<button>`.
+pub fn handle_key_for_button(
+    dom: &mut UIState,
+    wid: u32,
+    key_event: &winit::event::KeyEvent,
+) -> (bool, Vec<AppEvent>) {
+    use winit::event::ElementState;
+
+    if key_event.state != ElementState::Pressed {
+        return (false, Vec::new());
+    }
+    if !matches!(
+        &key_event.logical_key,
+        Key::Named(NamedKey::Enter) | Key::Named(NamedKey::Space)
+    ) {
+        return (false, Vec::new());
+    }
+
+    let Some(focused_id) = dom.focused_node else {
+        return (false, Vec::new());
+    };
+    let Some(node) = dom.nodes.get(focused_id) else {
+        return (false, Vec::new());
+    };
+    if node.is_text_input() || node.is_checkbox_input() || !node.is_focusable() {
+        return (false, Vec::new());
+    }
+
+    // Synthetic click: use the element's bounds center if we have a hitbox,
+    // otherwise (0, 0). The JS handler usually doesn't depend on coords for
+    // keyboard activations.
+    let (x, y) = node
+        .interactivity
+        .hitbox_id
+        .and_then(|hid| dom.hitbox_store.get(hid))
+        .map(|hb| {
+            (
+                (hb.bounds.x + hb.bounds.width / 2.0) as f32,
+                (hb.bounds.y + hb.bounds.height / 2.0) as f32,
+            )
+        })
+        .unwrap_or((0.0, 0.0));
+
+    dom.dispatch_click(x as f64, y as f64, crate::interactivity::MouseButton::Left);
+
+    (
+        true,
+        vec![AppEvent::Click(MouseEventData {
+            window_id: wid,
+            node_id: focused_id,
+            x,
+            y,
+            screen_x: x,
+            screen_y: y,
+            button: 0,
+            buttons: 0,
+        })],
+    )
+}
+
+pub struct TabFocusOutcome {
+    pub consumed: bool,
+    pub needs_redraw: bool,
+    pub events: Vec<AppEvent>,
+}
+
+/// Handle Tab/Shift-Tab to advance focus to the next/previous focusable
+/// element. Tab is always consumed (never inserts a tab character).
+pub fn handle_tab_focus(
+    dom: &mut UIState,
+    wid: u32,
+    key_event: &winit::event::KeyEvent,
+    modifiers: u32,
+) -> TabFocusOutcome {
+    use winit::event::ElementState;
+
+    let mut outcome = TabFocusOutcome {
+        consumed: false,
+        needs_redraw: false,
+        events: Vec::new(),
+    };
+
+    if key_event.state != ElementState::Pressed
+        || !matches!(&key_event.logical_key, Key::Named(NamedKey::Tab))
+    {
+        return outcome;
+    }
+
+    outcome.consumed = true;
+
+    let shift = modifiers & 4 != 0;
+    let change = if shift {
+        dom.focus_prev_node()
+    } else {
+        dom.focus_next_node()
+    };
+    if let Some(change) = change {
+        if let Some(old) = change.old {
+            outcome.events.push(AppEvent::Blur(FocusEventData {
+                window_id: wid,
+                node_id: old,
+            }));
+        }
+        outcome.events.push(AppEvent::Focus(FocusEventData {
+            window_id: wid,
+            node_id: change.new,
+        }));
+        outcome.needs_redraw = true;
+    }
+
+    outcome
+}
+
 /// Handle keyboard shortcuts for view text selection (Shift+Arrows, Ctrl+A, etc.)
 /// Called after input-level processing, only when there's no focused input.
 /// Returns true if a redraw is needed.

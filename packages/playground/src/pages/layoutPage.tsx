@@ -128,9 +128,6 @@ export function LayoutPage() {
   const [showDisplay, setShowDisplay] = useState(false);
   const [gap, setGap] = useState(8);
   const [padding, setPadding] = useState(12);
-  const [noRounding, setNoRounding] = useState(false);
-  const [rounded, setRounded] = useState(true);
-  const [circle, setCircle] = useState(false);
 
   return (
     <view display="flex" flexDir="col" gap={0} h="full" scrollable>
@@ -721,70 +718,6 @@ export function LayoutPage() {
               </view>
 
               <view flex={1} />
-            </view>
-          </view>
-        </view>
-
-        <Divider />
-
-        <view display="flex" flexDir="col" gap={12}>
-          <text fontSize={14} fontWeight={700} color={C.text}>
-            Checkboxes
-          </text>
-          <view
-            display="flex"
-            flexDir="col"
-            p={16}
-            gap={14}
-            bg={C.surface2}
-            rounded={8}
-            border={1}
-            borderColor={C.border}
-          >
-            <view display="flex" items="center" gap={12}>
-              <checkbox
-                checked={noRounding}
-                onChange={setNoRounding}
-                bg={C.accent}
-                borderColor={noRounding ? C.accent : C.border}
-                color="#ffffff"
-                w={20}
-                h={20}
-                hover:opacity={0.9}
-              />
-              <text fontSize={14} color={C.text}>
-                Square checkbox{noRounding ? ' [selected]' : ''}
-              </text>
-            </view>
-            <view display="flex" items="center" gap={12}>
-              <checkbox
-                checked={rounded}
-                onChange={setRounded}
-                bg={C.success}
-                borderColor={rounded ? C.success : C.border}
-                color="#08110a"
-                rounded={4}
-                w={20}
-                h={20}
-              />
-              <text fontSize={14} color={C.text}>
-                Rounded checkbox{rounded ? ' [selected]' : ''}
-              </text>
-            </view>
-            <view display="flex" items="center" gap={12}>
-              <checkbox
-                checked={circle}
-                onChange={setCircle}
-                bg={C.warning}
-                borderColor={circle ? C.warning : C.border}
-                color="#1b1104"
-                rounded={10}
-                w={20}
-                h={20}
-              />
-              <text fontSize={14} color={C.text}>
-                Circular checkbox{circle ? ' [selected]' : ''}
-              </text>
             </view>
           </view>
         </view>

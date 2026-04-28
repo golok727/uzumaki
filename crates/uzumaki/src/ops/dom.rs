@@ -33,14 +33,23 @@ pub fn op_create_element(
         let Some(entry) = s.windows.get_mut(&window_id) else {
             return Err(window_not_found());
         };
+        let style = UzStyle::default_for_element(&element_type);
         let id = if element_type == "input" {
-            entry.dom.create_input(UzStyle::default())
+            entry.dom.create_input(style)
         } else if element_type == "checkbox" {
-            entry.dom.create_checkbox(UzStyle::default())
+            entry.dom.create_checkbox(style)
         } else if element_type == "image" {
-            entry.dom.create_image(UzStyle::default())
+            entry.dom.create_image(style)
+        } else if element_type == "text" {
+            entry.dom.create_text(String::new(), style)
         } else {
-            entry.dom.create_view(UzStyle::default())
+            let id = entry.dom.create_view(style);
+            if element_type == "button"
+                && let Some(el) = entry.dom.nodes[id].as_element_mut()
+            {
+                el.set_focussable(true);
+            }
+            id
         };
         Ok(id as u32)
     })
@@ -57,7 +66,9 @@ pub fn op_create_text_node(
         let Some(entry) = s.windows.get_mut(&window_id) else {
             return Err(window_not_found());
         };
-        Ok(entry.dom.create_text(text, UzStyle::default()) as u32)
+        Ok(entry
+            .dom
+            .create_text(text, UzStyle::default_for_element("#text")) as u32)
     })
 }
 

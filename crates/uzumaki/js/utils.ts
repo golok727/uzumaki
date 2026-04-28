@@ -1,9 +1,3 @@
-import {
-  CHECKBOX_ATTR_NAMES,
-  INPUT_ATTR_NAMES,
-  STYLE_ATTRIBUTE_NAMES,
-} from './constants';
-
 export function splitVariantProp(key: string): {
   prefix: string;
   name: string;
@@ -74,12 +68,4 @@ export function parseEventProp(key: string): {
     return { name: raw.slice(0, -7).toLowerCase(), capture: true };
   }
   return { name: raw.toLowerCase(), capture: false };
-}
-
-export function isNativeAttribute(key: string): boolean {
-  return (
-    STYLE_ATTRIBUTE_NAMES.has(key) ||
-    INPUT_ATTR_NAMES.has(key) ||
-    CHECKBOX_ATTR_NAMES.has(key)
-  );
 }

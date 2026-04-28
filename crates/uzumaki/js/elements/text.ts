@@ -3,7 +3,6 @@ import { ListenerEntry } from '../types';
 import {
   assignNativeStyle,
   isEventProp,
-  isNativeAttribute,
   listenerKey,
   parseEventProp,
 } from '../utils';
@@ -33,6 +32,10 @@ export class TextElement extends BaseElement<Record<string, any>> {
       if (key === 'children' || key === 'key' || key === 'ref') continue;
       const value = props[key];
       if (value == null) continue;
+      if (key === 'id') {
+        this.setElementIdProp(value);
+        continue;
+      }
       if (isEventProp(key)) {
         const { name, capture } = parseEventProp(key);
         this.eventListeners.set(listenerKey(name, capture), {
@@ -40,7 +43,7 @@ export class TextElement extends BaseElement<Record<string, any>> {
           handler: value,
           capture,
         });
-      } else if (isNativeAttribute(key)) {
+      } else {
         assignNativeStyle(this.styles, key, value);
       }
     }
@@ -60,8 +63,10 @@ export class TextElement extends BaseElement<Record<string, any>> {
     const newStyles: Record<string, any> = {};
     const newEvents: Map<string, ListenerEntry> = new Map();
 
+    this.setElementIdProp(newProps.id);
     for (const key in newProps) {
-      if (key === 'children' || key === 'key' || key === 'ref') continue;
+      if (key === 'children' || key === 'key' || key === 'ref' || key === 'id')
+        continue;
       const value = newProps[key];
       if (value == null) continue;
       if (isEventProp(key)) {
@@ -71,7 +76,7 @@ export class TextElement extends BaseElement<Record<string, any>> {
           handler: value,
           capture,
         });
-      } else if (isNativeAttribute(key)) {
+      } else {
         assignNativeStyle(newStyles, key, value);
       }
     }

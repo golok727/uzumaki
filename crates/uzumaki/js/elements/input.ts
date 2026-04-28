@@ -7,7 +7,6 @@ import {
   isEventProp,
   listenerKey,
   parseEventProp,
-  isNativeAttribute,
 } from '../utils';
 import { Window } from '../window';
 import { BaseElement } from './base';
@@ -38,6 +37,10 @@ export class InputElement extends BaseElement<Record<string, any>> {
         continue;
       const value = props[key];
       if (value == null) continue;
+      if (key === 'id') {
+        this.setElementIdProp(value);
+        continue;
+      }
       if (isEventProp(key)) {
         const { name, capture } = parseEventProp(key);
         this.eventListeners.set(listenerKey(name, capture), {
@@ -47,7 +50,7 @@ export class InputElement extends BaseElement<Record<string, any>> {
         });
       } else if (INPUT_ATTR_NAMES.has(key)) {
         this.inputAttrs[key] = value;
-      } else if (isNativeAttribute(key)) {
+      } else {
         assignNativeStyle(this.styles, key, value);
       }
     }
@@ -91,11 +94,13 @@ export class InputElement extends BaseElement<Record<string, any>> {
     const newInputAttrs: Record<string, any> = {};
     const newEvents: Map<string, ListenerEntry> = new Map();
 
+    this.setElementIdProp(newProps.id);
     for (const key in newProps) {
       if (
         key === 'children' ||
         key === 'key' ||
         key === 'ref' ||
+        key === 'id' ||
         key === 'onChangeText'
       )
         continue;
@@ -110,7 +115,7 @@ export class InputElement extends BaseElement<Record<string, any>> {
         });
       } else if (INPUT_ATTR_NAMES.has(key)) {
         newInputAttrs[key] = value;
-      } else if (isNativeAttribute(key)) {
+      } else {
         assignNativeStyle(newStyles, key, value);
       }
     }

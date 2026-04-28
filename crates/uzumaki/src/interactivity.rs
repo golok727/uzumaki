@@ -181,6 +181,8 @@ pub struct Interactivity {
     pub hover_style: Option<Box<UzStyleRefinement>>,
     /// Applied when the element's hitbox is active (mouse pressed on it).
     pub active_style: Option<Box<UzStyleRefinement>>,
+    /// Applied when the element has keyboard focus.
+    pub focus_style: Option<Box<UzStyleRefinement>>,
 
     /// The hitbox ID assigned to this element during paint. None if not interactive.
     pub hitbox_id: Option<HitboxId>,
@@ -205,18 +207,21 @@ impl Interactivity {
         self.js_interactive
             || self.hover_style.is_some()
             || self.active_style.is_some()
+            || self.focus_style.is_some()
             || !self.mouse_down_listeners.is_empty()
             || !self.mouse_up_listeners.is_empty()
             || !self.click_listeners.is_empty()
     }
 
     /// Compute the final Style for this element by starting with the base style
-    /// and refining with hover/active styles based on the current hit test state.
+    /// and refining with hover/active/focus styles based on interaction state.
+    /// `focused` should be true iff this node currently holds keyboard focus.
     pub fn compute_style(
         &self,
         base: &UzStyle,
         node_id: UzNodeId,
         hit_state: &HitTestState,
+        focused: bool,
     ) -> UzStyle {
         let mut style = base.clone();
 
@@ -237,6 +242,51 @@ impl Interactivity {
             style.refine(active);
         }
 
+        if focused && let Some(focus) = &self.focus_style {
+            style.refine(focus);
+        }
+
+        // Default focus ring when focused and no explicit outline was set
+        // anywhere in the cascade.
+        if focused && style.outline.is_none() {
+            style.outline = Some(crate::style::Outline::FOCUS_RING);
+        }
+
+        style
+    }
+
+    pub fn compute_style_inherited(
+        &self,
+        base: &UzStyle,
+        parent: &UzStyle,
+        node_id: UzNodeId,
+        hit_state: &HitTestState,
+        focused: bool,
+    ) -> UzStyle {
+        let mut style = base.clone();
+        style.inherit_from(parent);
+        style.refine(&self.base_style);
+
+        if hit_state.is_hovered(node_id)
+            && let Some(hover) = &self.hover_style
+        {
+            style.refine(hover);
+        }
+
+        if hit_state.is_active(node_id)
+            && let Some(active) = &self.active_style
+        {
+            style.refine(active);
+        }
+
+        if focused && let Some(focus) = &self.focus_style {
+            style.refine(focus);
+        }
+
+        if focused && style.outline.is_none() {
+            style.outline = Some(crate::style::Outline::FOCUS_RING);
+        }
+
         style
     }
 
@@ -248,6 +298,11 @@ impl Interactivity {
     /// Set the active (pressed) style refinement.
     pub fn on_active(&mut self, style: UzStyleRefinement) {
         self.active_style = Some(Box::new(style));
+    }
+
+    /// Set the focus style refinement.
+    pub fn on_focus(&mut self, style: UzStyleRefinement) {
+        self.focus_style = Some(Box::new(style));
     }
 
     /// Add a click listener.

@@ -5,6 +5,7 @@ pub(crate) enum StyleVariant {
     Base,
     Hover,
     Active,
+    Focus,
 }
 
 #[derive(Copy, Clone, Debug, Eq, PartialEq)]
@@ -49,6 +50,9 @@ pub(crate) enum StyleProp {
     BorderBottom,
     BorderLeft,
     BorderColor,
+    Outline,
+    OutlineColor,
+    OutlineOffset,
     Opacity,
     Display,
     Cursor,
@@ -56,7 +60,7 @@ pub(crate) enum StyleProp {
     Visibility,
     Scrollable,
     TextSelect,
-    OverflowWrap,
+    TextWrap,
     WordBreak,
     Position,
     Top,
@@ -105,6 +109,11 @@ impl FromStr for AttributeKind {
             return rest
                 .parse::<StyleProp>()
                 .map(|p| AttributeKind::Style(p, StyleVariant::Active));
+        }
+        if let Some(rest) = value.strip_prefix("focus:") {
+            return rest
+                .parse::<StyleProp>()
+                .map(|p| AttributeKind::Style(p, StyleVariant::Focus));
         }
 
         value
@@ -158,6 +167,9 @@ impl FromStr for StyleProp {
             "borderBottom" => Self::BorderBottom,
             "borderLeft" => Self::BorderLeft,
             "borderColor" => Self::BorderColor,
+            "outline" => Self::Outline,
+            "outlineColor" => Self::OutlineColor,
+            "outlineOffset" => Self::OutlineOffset,
             "opacity" => Self::Opacity,
             "display" => Self::Display,
             "cursor" => Self::Cursor,
@@ -165,7 +177,7 @@ impl FromStr for StyleProp {
             "visibility" => Self::Visibility,
             "scrollable" => Self::Scrollable,
             "selectable" => Self::TextSelect,
-            "overflowWrap" => Self::OverflowWrap,
+            "textWrap" => Self::TextWrap,
             "wordBreak" => Self::WordBreak,
             "position" => Self::Position,
             "top" => Self::Top,

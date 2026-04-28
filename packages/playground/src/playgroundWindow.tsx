@@ -1,5 +1,6 @@
 import { Window } from 'uzumaki-ui';
 import { render } from 'uzumaki-ui/react';
+import { C } from './theme';
 
 const openWindows = new Map<string, Window>();
 let hiddenWindow: Window | null = null;
@@ -57,7 +58,12 @@ function createAuxWindow(
 export const playgroundWindow = new Window('main', {
   width: 1100,
   height: 700,
-  title: 'uzumaki — playground',
+  title: 'Uzumaki - playground',
+  rootStyles: {
+    bg: C.bg,
+    color: C.text,
+    fontSize: 14,
+  },
 });
 
 export function openTransparentPreview() {

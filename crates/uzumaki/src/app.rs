@@ -1,7 +1,7 @@
 use std::cell::RefCell;
 use std::collections::HashMap;
 use std::path::PathBuf;
-use std::rc::{Rc, Weak};
+use std::rc::Rc;
 use std::sync::Arc;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::task::{Context, Poll};
@@ -43,16 +43,17 @@ pub struct WindowEntry {
 }
 
 impl WindowEntry {
-    pub fn width(&self) -> Option<u32> {
-        self.handle
-            .as_ref()
-            .map(|handle| handle.winit_window.inner_size().width)
-    }
+    /*
+     * Inner size in logicl pixels
+     */
+    pub fn inner_size(&self) -> Option<(u32, u32)> {
+        self.handle.as_ref().map(|handle| {
+            let scale_factor = handle.winit_window.scale_factor();
+            let size: winit::dpi::LogicalSize<u32> =
+                handle.winit_window.inner_size().to_logical(scale_factor);
 
-    pub fn height(&self) -> Option<u32> {
-        self.handle
-            .as_ref()
-            .map(|handle| handle.winit_window.inner_size().height)
+            (size.width, size.height)
+        })
     }
 
     pub fn scale_factor(&self) -> Option<f32> {
@@ -113,10 +114,13 @@ unsafe impl Send for AppState {}
 unsafe impl Sync for AppState {}
 
 pub(crate) type SharedAppState = Rc<RefCell<AppState>>;
-pub(crate) type WeakAppState = Weak<RefCell<AppState>>;
 
 pub(crate) fn with_state<R>(state: &SharedAppState, f: impl FnOnce(&mut AppState) -> R) -> R {
     f(&mut state.borrow_mut())
+}
+
+pub(crate) fn with_state_ref<R>(state: &SharedAppState, f: impl FnOnce(&AppState) -> R) -> R {
+    f(&state.borrow())
 }
 
 #[derive(Debug, Clone)]
@@ -747,7 +751,31 @@ impl ApplicationHandler<UserEvent> for Application {
                     if let Some(event_dispatch::AppEvent::HotReload) = raw_event {
                         // todo hotreload :3
                     } else {
-                        // 2a. Check for clipboard shortcuts (Ctrl+C/X/V)
+                        // 2a. Tab: switch focus to next focusable element
+                        let tab_outcome = {
+                            let mut state = self.app_state.borrow_mut();
+                            state.windows.get_mut(&wid).map(|entry| {
+                                event_dispatch::handle_tab_focus(
+                                    &mut entry.dom,
+                                    wid,
+                                    &key_event,
+                                    modifiers,
+                                )
+                            })
+                        };
+                        let tab_consumed = if let Some(outcome) = tab_outcome {
+                            if outcome.needs_redraw {
+                                needs_redraw = true;
+                            }
+                            for event in &outcome.events {
+                                self.dispatch_event_to_js(event);
+                            }
+                            outcome.consumed
+                        } else {
+                            false
+                        };
+
+                        // 2b. Check for clipboard shortcuts (Ctrl+C/X/V)
                         let clipboard_cmd = {
                             let state = self.app_state.borrow();
 
@@ -759,7 +787,9 @@ impl ApplicationHandler<UserEvent> for Application {
                             })
                         };
 
-                        let clipboard_consumed = if let Some(cmd) = clipboard_cmd {
+                        let clipboard_consumed = if tab_consumed {
+                            true
+                        } else if let Some(cmd) = clipboard_cmd {
                             // Dispatch clipboard event to JS
                             let clipboard_event =
                                 event_dispatch::clipboard_command_to_event(&cmd, wid);
@@ -836,14 +866,24 @@ impl ApplicationHandler<UserEvent> for Application {
                                             wid,
                                             &key_event,
                                         );
+                                    let (button_redraw, button_events) =
+                                        event_dispatch::handle_key_for_button(
+                                            &mut entry.dom,
+                                            wid,
+                                            &key_event,
+                                        );
                                     if redraw {
                                         needs_redraw = true;
                                     }
                                     if checkbox_redraw {
                                         needs_redraw = true;
                                     }
+                                    if button_redraw {
+                                        needs_redraw = true;
+                                    }
                                     let mut all_events = events;
                                     all_events.extend(checkbox_events);
+                                    all_events.extend(button_events);
                                     all_events
                                 })
                             };

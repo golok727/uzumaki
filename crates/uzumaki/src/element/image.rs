@@ -7,7 +7,7 @@ use vello::peniko::{ImageAlphaType, ImageData as VelloImageData, ImageFormat};
 
 use crate::element::ImageData;
 use crate::element::svg::render_svg_tree;
-use crate::style::{Bounds, UzStyle};
+use crate::style::{Bounds, Color, UzStyle};
 
 #[derive(Clone)]
 pub struct ImageRenderInfo {
@@ -39,8 +39,17 @@ pub fn paint_image(
 ) {
     style.paint(bounds, scene, transform, |scene| match &image.data {
         ImageData::Raster(raster) => paint_raster(scene, bounds, raster, transform),
-        ImageData::Svg(tree) => paint_svg(scene, bounds, tree, transform),
-        ImageData::None => paint_svg(scene, bounds, fallback_tree(), transform),
+        ImageData::Svg {
+            tree,
+            uses_current_color,
+        } => paint_svg(
+            scene,
+            bounds,
+            tree,
+            transform,
+            uses_current_color.then_some(style.text.color),
+        ),
+        ImageData::None => paint_svg(scene, bounds, fallback_tree(), transform, None),
     });
 }
 
@@ -66,7 +75,13 @@ fn paint_raster(
     scene.draw_image(&vello_image, image_transform);
 }
 
-fn paint_svg(scene: &mut Scene, bounds: Bounds, tree: &usvg::Tree, transform: Affine) {
+fn paint_svg(
+    scene: &mut Scene,
+    bounds: Bounds,
+    tree: &usvg::Tree,
+    transform: Affine,
+    current_color: Option<Color>,
+) {
     let size = tree.size();
     if size.width() <= 0.0 || size.height() <= 0.0 {
         return;
@@ -74,5 +89,5 @@ fn paint_svg(scene: &mut Scene, bounds: Bounds, tree: &usvg::Tree, transform: Af
     let scale_x = bounds.width / size.width() as f64;
     let scale_y = bounds.height / size.height() as f64;
     let svg_transform = transform * Affine::scale_non_uniform(scale_x, scale_y);
-    render_svg_tree(scene, tree, svg_transform);
+    render_svg_tree(scene, tree, svg_transform, current_color);
 }

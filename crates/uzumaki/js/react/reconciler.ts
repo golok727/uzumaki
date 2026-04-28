@@ -13,6 +13,7 @@ import type { JSX } from './jsx/runtime';
 
 import core from '../core';
 import { eventManager } from '../events';
+import { clearNodeRegistry } from '../registry';
 import type { NodeId } from '../types';
 import { Window } from '../window';
 
@@ -342,4 +343,5 @@ export function disposeAllRoots() {
 
 export function clearEventRegistry() {
   eventManager.clear();
+  clearNodeRegistry();
 }

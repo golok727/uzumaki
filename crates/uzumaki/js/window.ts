@@ -1,4 +1,5 @@
 import core, {
+  setNativeProp,
   type NativeWindow,
   type WindowPosition,
   type WindowSize,
@@ -30,6 +31,7 @@ export interface WindowAttributes {
   maxHeight?: number;
   position?: WindowPosition;
   theme?: WindowTheme;
+  rootStyles?: Record<string, unknown>;
 }
 
 interface NormalizedWindowAttributes {
@@ -48,6 +50,7 @@ interface NormalizedWindowAttributes {
   maxHeight?: number;
   position?: WindowPosition;
   theme?: WindowTheme;
+  rootStyles?: Record<string, unknown>;
 }
 
 interface WindowFallbackState {
@@ -83,6 +86,7 @@ function normalizeWindowAttributes(
     maxHeight,
     position,
     theme,
+    rootStyles,
   } = attributes;
 
   return {
@@ -101,6 +105,7 @@ function normalizeWindowAttributes(
     maxHeight,
     position,
     theme,
+    rootStyles,
   };
 }
 
@@ -138,11 +143,22 @@ export class Window {
     }
 
     const normalizedAttributes = normalizeWindowAttributes(attributes);
+    const { rootStyles, ...createOptions } = normalizedAttributes;
 
     this._fallbackState = createFallbackState(normalizedAttributes);
     this._label = label;
-    this._native = core.createWindow(normalizedAttributes);
+    this._native = core.createWindow(createOptions);
     this._id = this._native.id;
+
+    if (rootStyles) {
+      const root = core.getRootNodeId(this._id);
+      for (const [key, value] of Object.entries(rootStyles)) {
+        if (value != null) {
+          setNativeProp(this._id, root, key, value);
+        }
+      }
+    }
+
     windowsByLabel.set(label, this);
     windowsById.set(this._id, this);
   }
@@ -234,12 +250,24 @@ export class Window {
     this._native.setTheme(theme);
   }
 
+  get scaleFactor(): number {
+    return this._native.scaleFactor ?? 1;
+  }
+
+  get innerWidth(): number {
+    return this.getFallbackValue('width', this._native.innerWidth);
+  }
+
+  get innerHeight(): number {
+    return this.getFallbackValue('height', this._native.innerHeight);
+  }
+
   get width(): number {
-    return this.getFallbackValue('width', this._native.width);
+    return this.innerWidth;
   }
 
   get height(): number {
-    return this.getFallbackValue('height', this._native.height);
+    return this.innerHeight;
   }
 
   get title(): string {
@@ -262,7 +290,7 @@ export class Window {
     return this.getFallbackValue('maximized', this._native.maximized);
   }
 
-  get minimized(): boolean | null {
+  get minimized(): boolean {
     return this.getFallbackValue('minimized', this._native.minimized);
   }
 
@@ -280,10 +308,6 @@ export class Window {
 
   get position(): WindowPosition | null {
     return this.getFallbackValue('position', this._native.position);
-  }
-
-  get scaleFactor(): number | null {
-    return this._native.scaleFactor;
   }
 
   get theme(): WindowTheme | null {

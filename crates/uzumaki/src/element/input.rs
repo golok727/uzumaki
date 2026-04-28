@@ -52,18 +52,12 @@ pub fn paint_input(
     let content_w = (bounds.width - pad_l - pad_r).max(0.0);
     let content_h = (bounds.height - pad_t - pad_b).max(0.0);
 
-    // Paint background with focus-aware border
     let mut paint_style = style.clone();
-    if input.focused {
-        paint_style.border_widths = Edges::all(2.0);
-        paint_style.border_color = Some(Color::rgba(86, 156, 214, 255));
-    } else {
-        if !paint_style.border_widths.any_nonzero() {
-            paint_style.border_widths = Edges::all(1.0);
-        }
-        if paint_style.border_color.is_none() {
-            paint_style.border_color = Some(Color::rgba(60, 60, 60, 255));
-        }
+    if !paint_style.border_widths.any_nonzero() {
+        paint_style.border_widths = Edges::all(1.0);
+    }
+    if paint_style.border_color.is_none() {
+        paint_style.border_color = Some(Color::rgba(60, 60, 60, 255));
     }
     if paint_style.background.is_none() {
         paint_style.background = Some(Color::rgba(30, 30, 30, 255));

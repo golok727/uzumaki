@@ -111,7 +111,13 @@ impl UIState {
             return UzCursorIcon::Default;
         };
 
-        if let Some(c) = node.style.cursor {
+        let style = node.interactivity.compute_style(
+            &node.style,
+            node_id,
+            &self.hit_state,
+            self.focused_node == Some(node_id),
+        );
+        if let Some(c) = style.cursor {
             return c;
         }
 
@@ -126,7 +132,13 @@ impl UIState {
         let mut cur = node.parent;
         while let Some(id) = cur {
             let n = &self.nodes[id];
-            if let Some(c) = n.style.cursor {
+            let style = n.interactivity.compute_style(
+                &n.style,
+                id,
+                &self.hit_state,
+                self.focused_node == Some(id),
+            );
+            if let Some(c) = style.cursor {
                 return c;
             }
             cur = n.parent;
@@ -213,6 +225,10 @@ impl UIState {
             .unwrap();
         // Input always needs a hitbox for click-to-focus
         self.nodes[node_id].interactivity.js_interactive = true;
+        self.nodes[node_id]
+            .as_element_mut()
+            .expect("input should be an element")
+            .set_focussable(true);
         node_id
     }
 
@@ -534,6 +550,16 @@ impl UIState {
         let Some(root) = self.root else { return };
         let taffy_root = self.nodes[root].taffy_node;
 
+        let mut computed_styles = Vec::new();
+        self.collect_computed_styles(root, None, &mut computed_styles);
+
+        for (taffy_node, taffy_style, text_style) in computed_styles {
+            self.taffy.set_style(taffy_node, taffy_style).unwrap();
+            if let Some(ctx) = self.taffy.get_node_context_mut(taffy_node) {
+                ctx.text_style = text_style;
+            }
+        }
+
         self.taffy
             .compute_layout_with_measure(
                 taffy_root,
@@ -551,6 +577,35 @@ impl UIState {
                 },
             )
             .unwrap();
+    }
+
+    pub(crate) fn computed_style(&self, node_id: UzNodeId, parent: Option<&UzStyle>) -> UzStyle {
+        let node = &self.nodes[node_id];
+        let parent = parent.unwrap_or(&node.style);
+        node.interactivity.compute_style_inherited(
+            &node.style,
+            parent,
+            node_id,
+            &self.hit_state,
+            self.focused_node == Some(node_id),
+        )
+    }
+
+    fn collect_computed_styles(
+        &self,
+        node_id: UzNodeId,
+        parent: Option<&UzStyle>,
+        out: &mut Vec<(taffy::NodeId, taffy::Style, TextStyle)>,
+    ) {
+        let style = self.computed_style(node_id, parent);
+        let node = &self.nodes[node_id];
+        out.push((node.taffy_node, style.to_taffy(), style.text.clone()));
+
+        let mut child = node.first_child;
+        while let Some(child_id) = child {
+            self.collect_computed_styles(child_id, Some(&style), out);
+            child = self.nodes[child_id].next_sibling;
+        }
     }
 
     /// Run hit test at the given mouse position and update hit_state.
