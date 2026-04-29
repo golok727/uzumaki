@@ -51,7 +51,7 @@ interface Core {
   applyCachedImage(windowId: number, nodeId: NodeId, cacheKey: string): boolean;
   clearImageData(windowId: number, nodeId: NodeId): void;
   resetDom(windowId: number): void;
-  focusInput(windowId: number, nodeId: NodeId): void;
+  focusElement(windowId: number, nodeId: NodeId): void;
   getAncestorPath(windowId: number, nodeId: NodeId): NodeId[];
   getSelection(windowId: number): SelectionState | null;
   getSelectedText(windowId: number): string;

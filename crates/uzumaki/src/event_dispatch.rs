@@ -689,7 +689,7 @@ pub fn handle_mouse_input(
                         };
                         let relative_y = (my - hb.y) as f32 + scroll_offset_y - top_pad;
 
-                        dom.focus_input(nid);
+                        dom.focus_element(nid);
 
                         // Apply styles/width so hit-testing accounts for wrapping
                         if let Some(meta) = input_layout_meta(dom, nid)

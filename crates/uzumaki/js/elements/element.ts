@@ -7,6 +7,10 @@ export class Element extends UzNode {
     super(window, native);
   }
 
+  focus(): void {
+    core.focusElement(this._window.id, this._native.id);
+  }
+
   setAttribute(name: string, value: unknown): void {
     if (value == null) {
       this.removeAttribute(name);

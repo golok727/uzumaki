@@ -104,7 +104,9 @@ type ActiveStyles = PrefixedStyles<'active'>;
 type FocusStyles = PrefixedStyles<'focus'>;
 
 interface ElementAttributes
-  extends ElementStyles, HoverStyles, ActiveStyles, FocusStyles {}
+  extends ElementStyles, HoverStyles, ActiveStyles, FocusStyles {
+  focusable?: boolean;
+}
 
 interface EventProps {
   onClick?: (ev: UzumakiMouseEvent) => void;
