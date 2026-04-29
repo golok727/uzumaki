@@ -2,6 +2,7 @@
   "compilerOptions": {
     "target": "ESNext",
     "lib": ["ESNext"],
-    "types": ["uzumaki-types"]
+    "types": ["uzumaki-types"],
+    "allowSyntheticDefaultImports": true
   }
 }

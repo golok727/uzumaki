@@ -1,17 +1,16 @@
-import core, { type NativeWindow } from './core';
+import core, { type CoreWindow } from './core';
+import { UzTextNode } from './node';
+import { Element } from './elements/element';
 import { UzElement } from './elements/base';
-import {
-  Element,
-  createNativeElement,
-  createNativeTextNode,
-  getNativeRootElement,
-} from './elements/element';
+import { UzRootElement } from './elements/root';
+import { UzImageElement } from './elements/image';
 import {
   eventManager,
   EVENT_NAME_TO_TYPE,
   type EventName,
   type EventHandler,
 } from './events';
+import { clearWindowNodes } from './registry';
 
 const windowsByLabel = new Map<string, Window>();
 const windowsById = new Map<number, Window>();
@@ -25,7 +24,7 @@ export interface WindowAttributes {
 
 export class Window {
   private _id: number;
-  private _native: NativeWindow;
+  private _native: CoreWindow;
   private _label: string;
   private _title: string;
   private _width: number;
@@ -33,7 +32,7 @@ export class Window {
   private _remBase: number = 16;
   private _disposed: boolean = false;
   private _disposables: (() => void)[] = [];
-  private _root: Element | null = null;
+  private _root: UzRootElement | null = null;
 
   constructor(
     label: string,
@@ -109,22 +108,22 @@ export class Window {
     return this._id;
   }
 
-  get root(): Element {
+  get root(): UzRootElement {
     if (!this._root) {
-      this._root = new Element("root", getNativeRootElement(this), '#root');
+      this._root = new UzRootElement(this);
     }
     return this._root;
   }
 
   createElement(type: string): Element {
+    if (type === 'image') {
+      return new UzImageElement(this);
+    }
     return new UzElement(type, this);
   }
 
-  createTextNode(text: string): UzElement {
-    // we should separate this
-    const node = new UzElement('#text', this);
-    node.textContent = text;
-    return node
+  createTextNode(text: string): UzTextNode {
+    return new UzTextNode(this, text);
   }
 
   get isDisposed(): boolean {
@@ -187,6 +186,8 @@ export function disposeWindow(_window: Window) {
     cb();
   }
   window._disposables = [];
+  clearWindowNodes(window.id);
+  eventManager.clearWindowHandlers(window.id);
   windowsByLabel.delete(window.label);
   windowsById.delete(window.id);
 }

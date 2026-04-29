@@ -18,13 +18,13 @@ fn invalid_child() -> deno_error::JsErrorBox {
 }
 
 #[derive(Clone, Debug)]
-pub struct CoreElement {
+pub struct CoreNode {
     window_id: u32,
     node_id: UzNodeId,
     node_name: String,
 }
 
-impl CoreElement {
+impl CoreNode {
     pub fn new(window_id: u32, node_id: UzNodeId, node_name: impl Into<String>) -> Self {
         Self {
             window_id,
@@ -37,7 +37,7 @@ impl CoreElement {
         &self,
         state: &mut OpState,
         read: impl FnOnce(&crate::element::Node) -> Option<UzNodeId>,
-    ) -> Result<Option<CoreElement>, deno_error::JsErrorBox> {
+    ) -> Result<Option<CoreNode>, deno_error::JsErrorBox> {
         let app_state = state.borrow::<SharedAppState>().clone();
         with_state(&app_state, |s| {
             let Some(entry) = s.windows.get(&self.window_id) else {
@@ -46,48 +46,63 @@ impl CoreElement {
             let Some(node) = entry.dom.nodes.get(self.node_id) else {
                 return Ok(None);
             };
-            Ok(read(node).map(|id| CoreElement::new(self.window_id, id, "#node")))
+            let Some(related_id) = read(node) else {
+                return Ok(None);
+            };
+            let Some(related) = entry.dom.nodes.get(related_id) else {
+                return Ok(None);
+            };
+            Ok(Some(CoreNode::new(
+                self.window_id,
+                related_id,
+                node_kind_name(related),
+            )))
         })
     }
 }
 
-unsafe impl GarbageCollected for CoreElement {
+fn node_kind_name(node: &crate::element::Node) -> &'static str {
+    use crate::element::NodeData;
+    match &node.data {
+        NodeData::Root => "#root",
+        NodeData::Text(_) => "#text",
+        NodeData::Element(_) => "#element",
+    }
+}
+
+unsafe impl GarbageCollected for CoreNode {
     fn trace(&self, _visitor: &mut deno_core::v8::cppgc::Visitor) {}
 
     fn get_name(&self) -> &'static std::ffi::CStr {
-        c"CoreElement"
+        c"CoreNode"
     }
 }
 
 #[op2]
 #[cppgc]
-pub fn op_get_root_element(
+pub fn op_get_root_node(
     state: &mut OpState,
     #[smi] window_id: u32,
-) -> Result<CoreElement, deno_error::JsErrorBox> {
+) -> Result<CoreNode, deno_error::JsErrorBox> {
     let app_state = state.borrow::<SharedAppState>().clone();
     with_state(&app_state, |s| {
         let Some(entry) = s.windows.get(&window_id) else {
             return Err(window_not_found());
         };
         let root = entry.dom.root.expect("no root node");
-        Ok(CoreElement::new(window_id, root, "#root"))
+        Ok(CoreNode::new(window_id, root, "#root"))
     })
 }
 
 #[op2]
 #[cppgc]
-pub fn op_create_core_element(
+pub fn op_create_core_element_node(
     state: &mut OpState,
     #[smi] window_id: u32,
     #[string] element_type: String,
-) -> Result<CoreElement, deno_error::JsErrorBox> {
+) -> Result<CoreNode, deno_error::JsErrorBox> {
     let node_id = create_element(state, window_id, &element_type)?;
-    Ok(CoreElement::new(
-        window_id,
-        node_id as UzNodeId,
-        element_type,
-    ))
+    Ok(CoreNode::new(window_id, node_id as UzNodeId, element_type))
 }
 
 #[op2]
@@ -96,13 +111,13 @@ pub fn op_create_core_text_node(
     state: &mut OpState,
     #[smi] window_id: u32,
     #[string] text: String,
-) -> Result<CoreElement, deno_error::JsErrorBox> {
+) -> Result<CoreNode, deno_error::JsErrorBox> {
     let node_id = create_text_node(state, window_id, text)?;
-    Ok(CoreElement::new(window_id, node_id as UzNodeId, "#text"))
+    Ok(CoreNode::new(window_id, node_id as UzNodeId, "#text"))
 }
 
 #[op2]
-impl CoreElement {
+impl CoreNode {
     #[getter]
     #[smi]
     pub fn id(&self) -> u32 {
@@ -136,7 +151,7 @@ impl CoreElement {
     pub fn parentNode(
         &self,
         state: &mut OpState,
-    ) -> Result<Option<CoreElement>, deno_error::JsErrorBox> {
+    ) -> Result<Option<CoreNode>, deno_error::JsErrorBox> {
         self.related_node(state, |node| node.parent)
     }
 
@@ -146,7 +161,7 @@ impl CoreElement {
     pub fn firstChild(
         &self,
         state: &mut OpState,
-    ) -> Result<Option<CoreElement>, deno_error::JsErrorBox> {
+    ) -> Result<Option<CoreNode>, deno_error::JsErrorBox> {
         self.related_node(state, |node| node.first_child)
     }
 
@@ -156,7 +171,7 @@ impl CoreElement {
     pub fn lastChild(
         &self,
         state: &mut OpState,
-    ) -> Result<Option<CoreElement>, deno_error::JsErrorBox> {
+    ) -> Result<Option<CoreNode>, deno_error::JsErrorBox> {
         self.related_node(state, |node| node.last_child)
     }
 
@@ -166,7 +181,7 @@ impl CoreElement {
     pub fn nextSibling(
         &self,
         state: &mut OpState,
-    ) -> Result<Option<CoreElement>, deno_error::JsErrorBox> {
+    ) -> Result<Option<CoreNode>, deno_error::JsErrorBox> {
         self.related_node(state, |node| node.next_sibling)
     }
 
@@ -176,7 +191,7 @@ impl CoreElement {
     pub fn previousSibling(
         &self,
         state: &mut OpState,
-    ) -> Result<Option<CoreElement>, deno_error::JsErrorBox> {
+    ) -> Result<Option<CoreNode>, deno_error::JsErrorBox> {
         self.related_node(state, |node| node.prev_sibling)
     }
 
@@ -185,7 +200,7 @@ impl CoreElement {
     pub fn appendChild(
         &self,
         state: &mut OpState,
-        #[cppgc] child: &CoreElement,
+        #[cppgc] child: &CoreNode,
     ) -> Result<(), deno_error::JsErrorBox> {
         if child.window_id != self.window_id {
             return Err(invalid_child());
@@ -203,8 +218,8 @@ impl CoreElement {
     pub fn insertBefore(
         &self,
         state: &mut OpState,
-        #[cppgc] child: &CoreElement,
-        #[cppgc] before: Option<&CoreElement>,
+        #[cppgc] child: &CoreNode,
+        #[cppgc] before: Option<&CoreNode>,
     ) -> Result<(), deno_error::JsErrorBox> {
         if child.window_id != self.window_id
             || before.is_some_and(|b| b.window_id != self.window_id)
@@ -234,7 +249,7 @@ impl CoreElement {
     pub fn removeChild(
         &self,
         state: &mut OpState,
-        #[cppgc] child: &CoreElement,
+        #[cppgc] child: &CoreNode,
     ) -> Result<(), deno_error::JsErrorBox> {
         if child.window_id != self.window_id {
             return Err(invalid_child());
@@ -491,79 +506,6 @@ fn get_attribute(
         };
         Ok(entry.get_attribute(nid, name))
     })
-}
-
-#[op2(fast)]
-pub fn op_get_root_node_id(
-    state: &mut OpState,
-    #[smi] window_id: u32,
-) -> Result<u32, deno_error::JsErrorBox> {
-    let app_state = state.borrow::<SharedAppState>().clone();
-    with_state(&app_state, |s| {
-        let Some(entry) = s.windows.get(&window_id) else {
-            return Err(window_not_found());
-        };
-        Ok(entry.dom.root.expect("no root node") as u32)
-    })
-}
-
-#[op2(fast)]
-pub fn op_create_element(
-    state: &mut OpState,
-    #[smi] window_id: u32,
-    #[string] element_type: String,
-) -> Result<u32, deno_error::JsErrorBox> {
-    create_element(state, window_id, &element_type)
-}
-
-#[op2(fast)]
-pub fn op_create_text_node(
-    state: &mut OpState,
-    #[smi] window_id: u32,
-    #[string] text: String,
-) -> Result<u32, deno_error::JsErrorBox> {
-    create_text_node(state, window_id, text)
-}
-
-#[op2(fast)]
-pub fn op_append_child(
-    state: &mut OpState,
-    #[smi] window_id: u32,
-    #[smi] parent_id: u32,
-    #[smi] child_id: u32,
-) -> Result<(), deno_error::JsErrorBox> {
-    append_child(state, window_id, parent_id, child_id)
-}
-
-#[op2(fast)]
-pub fn op_insert_before(
-    state: &mut OpState,
-    #[smi] window_id: u32,
-    #[smi] parent_id: u32,
-    #[smi] child_id: u32,
-    #[smi] before_id: u32,
-) -> Result<(), deno_error::JsErrorBox> {
-    insert_before(state, window_id, parent_id, child_id, before_id)
-}
-
-#[op2(fast)]
-pub fn op_remove_child(
-    state: &mut OpState,
-    #[smi] window_id: u32,
-    #[smi] parent_id: u32,
-    #[smi] child_id: u32,
-) -> Result<(), deno_error::JsErrorBox> {
-    remove_child(state, window_id, parent_id, child_id)
-}
-
-#[op2(fast)]
-pub fn op_set_text(
-    state: &mut OpState,
-    #[smi] window_id: u32,
-    #[smi] node_id: u32,
-    #[string] text: String,
-) -> Result<(), deno_error::JsErrorBox> {
-    set_text(state, window_id, node_id, text)
 }
 
 #[op2(fast)]

@@ -1,15 +1,15 @@
 import { isValidElement as isReactElement } from 'react';
 import ReactReconciler, { type EventPriority } from 'react-reconciler';
-import { DefaultEventPriority } from 'react-reconciler/constants.js'; // fixme our runtime doesnt do probing for imports
+import { DefaultEventPriority } from 'react-reconciler/constants.js';
 
 import { INTRINSIC_ELEMENTS, __DEV__ } from '../constants';
 
 import type { JSX } from './jsx/runtime';
 
 import core from '../core';
-import { Element } from '../elements/element';
+import { UzNode } from '../node';
 import { eventManager } from '../events';
-import { clearElementRegistry } from '../registry';
+import { clearNodeRegistry } from '../registry';
 import { Window } from '../window';
 import {
   appendChild as appendHostChild,
@@ -30,7 +30,7 @@ import {
 
 type Container = {
   window: Window;
-  rootNode: Element;
+  rootNode: UzNode;
 };
 
 function getWindowId(container: Container): number {
@@ -66,7 +66,7 @@ function getTextContent(children: any): string {
   return String(children);
 }
 
-function isTextType(type: string): boolean {
+function isTextElementType(type: string): boolean {
   return type === 'text';
 }
 
@@ -80,7 +80,7 @@ function createElementInstance(
       `[uzumaki] Unknown intrinsic element: <${type}>. Did you mean <view>?`,
     );
   }
-  const normalizedProps = isTextType(type)
+  const normalizedProps = isTextElementType(type)
     ? { ...props, children: getTextContent(props.children) }
     : props;
   return createHostInstance(window, type, normalizedProps);
@@ -93,7 +93,7 @@ type TextInstance = HostInstance;
 type SuspenseInstance = any;
 type HydratableInstance = any;
 type FormInstance = any;
-type PublicInstance = Element;
+type PublicInstance = UzNode;
 type HostContext = {};
 type ChildSet = any;
 type TimeoutHandle = ReturnType<typeof setTimeout>;
@@ -129,7 +129,7 @@ const reconciler = ReactReconciler<
   },
 
   shouldSetTextContent(type) {
-    return isTextType(type);
+    return isTextElementType(type);
   },
 
   appendInitialChild(parent, child) {
@@ -172,10 +172,10 @@ const reconciler = ReactReconciler<
 
   commitUpdate(instance, _type, oldProps, newProps, _internalHandle) {
     if (instance.node._window.isDisposed) return;
-    const normalizedNewProps = isTextType(instance.type)
+    const normalizedNewProps = isTextElementType(instance.type)
       ? { ...newProps, children: getTextContent(newProps.children) }
       : newProps;
-    const normalizedOldProps = isTextType(instance.type)
+    const normalizedOldProps = isTextElementType(instance.type)
       ? { ...oldProps, children: getTextContent(oldProps.children) }
       : oldProps;
     applyReactProps(instance, normalizedNewProps, normalizedOldProps);
@@ -309,5 +309,5 @@ export function disposeAllRoots() {
 
 export function clearEventRegistry() {
   eventManager.clear();
-  clearElementRegistry();
+  clearNodeRegistry();
 }

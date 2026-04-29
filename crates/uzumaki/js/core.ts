@@ -1,6 +1,6 @@
 import { NodeId } from './types';
 
-export interface NativeWindow {
+export interface CoreWindow {
   close(): void;
   readonly id: number;
   readonly innerWidth: number | null;
@@ -36,15 +36,12 @@ interface Core {
     width: number;
     height: number;
     title: string;
-  }): NativeWindow;
+  }): CoreWindow;
   requestQuit(): void;
   requestRedraw(windowId: number): void;
-  getRootElement(windowId: number): CoreNode;
-  getRootNodeId(windowId: number): NodeId;
-  createCoreElement(windowId: number, elementType: string): CoreNode;
-  createElement(windowId: number, elementType: string): NodeId;
+  getRootNode(windowId: number): CoreNode;
+  createCoreElementNode(windowId: number, elementType: string): CoreNode;
   createCoreTextNode(windowId: number, text: string): CoreNode;
-  createTextNode(windowId: number, text: string): NodeId;
   setEncodedImageData(
     windowId: number,
     nodeId: NodeId,
@@ -53,36 +50,7 @@ interface Core {
   ): void;
   applyCachedImage(windowId: number, nodeId: NodeId, cacheKey: string): boolean;
   clearImageData(windowId: number, nodeId: NodeId): void;
-  appendChild(windowId: number, parentId: NodeId, childId: NodeId): void;
-  insertBefore(
-    windowId: number,
-    parentId: NodeId,
-    childId: NodeId,
-    beforeId: NodeId,
-  ): void;
-  removeChild(windowId: number, parentId: NodeId, childId: NodeId): void;
-  setText(windowId: number, nodeId: NodeId, text: string): void;
   resetDom(windowId: number): void;
-  setStrAttribute(
-    windowId: number,
-    nodeId: NodeId,
-    name: string,
-    value: string,
-  ): void;
-  setNumberAttribute(
-    windowId: number,
-    nodeId: NodeId,
-    name: string,
-    value: number,
-  ): void;
-  setBoolAttribute(
-    windowId: number,
-    nodeId: NodeId,
-    name: string,
-    value: boolean,
-  ): void;
-  clearAttribute(windowId: number, nodeId: NodeId, name: string): void;
-  getAttribute(windowId: number, nodeId: NodeId, name: string): unknown;
   focusInput(windowId: number, nodeId: NodeId): void;
   getAncestorPath(windowId: number, nodeId: NodeId): NodeId[];
   getSelection(windowId: number): SelectionState | null;
@@ -115,26 +83,3 @@ const core: Core = (globalThis as unknown as any)
   .__uzumaki_ops_dont_touch_this__;
 
 export default core;
-
-export function setNativeProp(
-  windowId: number,
-  nodeId: any,
-  propName: string,
-  value: any,
-): void {
-  if (typeof value === 'boolean') {
-    core.setBoolAttribute(windowId, nodeId, propName, value);
-  } else if (typeof value === 'number') {
-    core.setNumberAttribute(windowId, nodeId, propName, value);
-  } else {
-    core.setStrAttribute(windowId, nodeId, propName, String(value));
-  }
-}
-
-export function clearNativeProp(
-  windowId: number,
-  nodeId: any,
-  propName: string,
-): void {
-  core.clearAttribute(windowId, nodeId, propName);
-}

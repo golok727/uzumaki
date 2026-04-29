@@ -1,23 +1,21 @@
-import { Element } from './element';
-import { Window } from '../window';
+import type { Window } from '../window';
+import { Element, createNativeElement } from './element';
 
 export class UzElement extends Element {
-  _elementId: string | null = null;
+  readonly type: string;
+  private _elementId: string | null = null;
 
   constructor(type: string, window: Window) {
-    super(type, window);
+    super(window, createNativeElement(window, type));
+    this.type = type;
   }
 
-  get id() {
+  get id(): string | null {
     return this._elementId;
   }
 
   set id(value: string | null) {
     this._elementId =
       typeof value === 'string' && value.length > 0 ? value : null;
-  }
-
-  destroy(): void {
-    super.destroy();
   }
 }
