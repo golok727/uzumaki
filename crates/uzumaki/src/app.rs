@@ -22,7 +22,7 @@ use deno_runtime::deno_web::{BlobStore, InMemoryBroadcastChannel};
 use deno_runtime::worker::{MainWorker, WorkerOptions, WorkerServiceOptions};
 use node_resolver::analyze::{CjsModuleExportAnalyzer, NodeCodeTranslator, NodeCodeTranslatorMode};
 use node_resolver::cache::NodeResolutionSys;
-use winit::window::{WindowButtons, WindowId, WindowLevel};
+use winit::window::{WindowAttributes, WindowButtons, WindowId, WindowLevel};
 use winit::{application::ApplicationHandler, event::WindowEvent};
 
 use crate::clipboard;
@@ -64,6 +64,14 @@ impl WindowEntry {
         self.handle
             .as_ref()
             .map(|handle| handle.winit_window.scale_factor() as f32)
+    }
+
+    pub fn apply_cached_window_state(&self, attributes: WindowAttributes) -> WindowAttributes {
+        attributes
+            .with_transparent(self.transparent)
+            .with_window_level(self.window_level)
+            .with_content_protected(self.content_protected)
+            .with_enabled_buttons(self.enabled_buttons)
     }
 }
 
@@ -527,7 +535,14 @@ impl ApplicationHandler<UserEvent> for Application {
     fn user_event(&mut self, event_loop: &winit::event_loop::ActiveEventLoop, event: UserEvent) {
         match event {
             UserEvent::CreateWindow { id, options } => {
-                let attributes = options.to_window_attributes();
+                let Some(attributes) =
+                    self.app_state.borrow().windows.get(&id).map(|entry| {
+                        entry.apply_cached_window_state(options.to_window_attributes())
+                    })
+                else {
+                    eprintln!("Window entry '{id}' missing before creating handle");
+                    return;
+                };
                 let is_visible = attributes.visible;
                 let transparent = attributes.transparent;
 
