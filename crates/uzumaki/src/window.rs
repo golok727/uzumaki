@@ -254,28 +254,20 @@ fn choose_alpha_mode(
     modes: &[wgpu::CompositeAlphaMode],
     transparent: bool,
 ) -> wgpu::CompositeAlphaMode {
-    if transparent {
-        modes
-            .iter()
-            .copied()
-            .find(|mode| {
-                matches!(
-                    mode,
-                    wgpu::CompositeAlphaMode::PreMultiplied
-                        | wgpu::CompositeAlphaMode::PostMultiplied
-                        | wgpu::CompositeAlphaMode::Inherit
-                )
-            })
-            .or_else(|| modes.first().copied())
-            .unwrap_or(wgpu::CompositeAlphaMode::Auto)
+    use wgpu::CompositeAlphaMode::*;
+
+    let preferred: &[wgpu::CompositeAlphaMode] = if transparent {
+        &[PreMultiplied, PostMultiplied, Inherit]
     } else {
-        modes
-            .iter()
-            .copied()
-            .find(|mode| *mode == wgpu::CompositeAlphaMode::Opaque)
-            .or_else(|| modes.first().copied())
-            .unwrap_or(wgpu::CompositeAlphaMode::Auto)
-    }
+        &[Opaque]
+    };
+
+    preferred
+        .iter()
+        .find(|mode| modes.contains(mode))
+        .or_else(|| modes.first())
+        .copied()
+        .unwrap_or(Auto)
 }
 
 #[cfg(test)]
