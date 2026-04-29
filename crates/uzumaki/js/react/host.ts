@@ -1,6 +1,6 @@
 import { CHECKBOX_ATTR_NAMES, INPUT_ATTR_NAMES } from '../constants';
 import core from '../core';
-import { CoreElement } from '../core/element';
+import { Element } from '../elements/element';
 import { eventManager } from '../events';
 import type { ListenerEntry } from '../types';
 import {
@@ -31,7 +31,7 @@ interface ImageState {
 }
 
 export interface HostInstance {
-  node: CoreElement;
+  node: Element;
   type: string;
   onChangeTextListener?: (ev: any) => void;
   onChangeListener?: (ev: any) => void;
@@ -82,14 +82,14 @@ export function removeChild(parent: HostInstance, child: HostInstance): void {
 }
 
 export function appendChildToContainer(
-  container: CoreElement,
+  container: Element,
   child: HostInstance,
 ): void {
   container.appendChild(child.node);
 }
 
 export function insertInContainerBefore(
-  container: CoreElement,
+  container: Element,
   child: HostInstance,
   before: HostInstance,
 ): void {
@@ -97,7 +97,7 @@ export function insertInContainerBefore(
 }
 
 export function removeChildFromContainer(
-  container: CoreElement,
+  container: Element,
   child: HostInstance,
 ): void {
   disposeHostInstance(child);
@@ -202,7 +202,7 @@ function attrNamesForType(type: string): Set<string> {
 }
 
 function updateAttributes(
-  node: CoreElement,
+  node: Element,
   oldAttrs: Record<string, any>,
   newAttrs: Record<string, any>,
 ): void {
@@ -232,14 +232,14 @@ function updateEvents(
     ) {
       if (old) {
         eventManager.removeHandlerByName(
-          instance.node.id,
+          instance.node.nodeId,
           old.name,
           old.handler,
           old.capture,
         );
       }
       eventManager.addHandlerByName(
-        instance.node.id,
+        instance.node.nodeId,
         newEntry.name,
         newEntry.handler,
         newEntry.capture,
@@ -250,7 +250,7 @@ function updateEvents(
   for (const [key, old] of oldListeners) {
     if (!newListeners.has(key)) {
       eventManager.removeHandlerByName(
-        instance.node.id,
+        instance.node.nodeId,
         old.name,
         old.handler,
         old.capture,
@@ -275,7 +275,7 @@ function updateSpecialEvents(
         onChangeText(ev.value);
       };
       eventManager.addHandlerByName(
-        instance.node.id,
+        instance.node.nodeId,
         'input',
         instance.onChangeTextListener,
       );
@@ -290,7 +290,7 @@ function updateSpecialEvents(
         onChange(ev.value === 'true');
       };
       eventManager.addHandlerByName(
-        instance.node.id,
+        instance.node.nodeId,
         'input',
         instance.onChangeListener,
       );
@@ -306,7 +306,7 @@ function unbindSpecialEvents(instance: HostInstance): void {
 function unbindOnChangeText(instance: HostInstance): void {
   if (instance.onChangeTextListener) {
     eventManager.removeHandlerByName(
-      instance.node.id,
+      instance.node.nodeId,
       'input',
       instance.onChangeTextListener,
     );
@@ -317,7 +317,7 @@ function unbindOnChangeText(instance: HostInstance): void {
 function unbindOnChange(instance: HostInstance): void {
   if (instance.onChangeListener) {
     eventManager.removeHandlerByName(
-      instance.node.id,
+      instance.node.nodeId,
       'input',
       instance.onChangeListener,
     );
@@ -397,7 +397,7 @@ async function updateImageSource(
   if (src === oldSrc) return;
 
   const generation = ++image.generation;
-  core.clearImageData(instance.node.windowId, instance.node.id);
+  core.clearImageData(instance.node.windowId, instance.node.nodeId);
   core.requestRedraw(instance.node.windowId);
 
   if (!src) {
@@ -406,7 +406,9 @@ async function updateImageSource(
 
   callImageHandler(newProps, 'onLoadStart', { src });
 
-  if (core.applyCachedImage(instance.node.windowId, instance.node.id, src)) {
+  if (
+    core.applyCachedImage(instance.node.windowId, instance.node.nodeId, src)
+  ) {
     if (!isImageLoadCurrent(instance, generation)) return;
     core.requestRedraw(instance.node.windowId);
     callImageHandler(newProps, 'onLoad', { src });
@@ -418,7 +420,7 @@ async function updateImageSource(
     if (!isImageLoadCurrent(instance, generation)) return;
     core.setEncodedImageData(
       instance.node.windowId,
-      instance.node.id,
+      instance.node.nodeId,
       src,
       data,
     );
@@ -426,7 +428,7 @@ async function updateImageSource(
     callImageHandler(newProps, 'onLoad', { src });
   } catch (error) {
     if (!isImageLoadCurrent(instance, generation)) return;
-    core.clearImageData(instance.node.windowId, instance.node.id);
+    core.clearImageData(instance.node.windowId, instance.node.nodeId);
     core.requestRedraw(instance.node.windowId);
     const message = error instanceof Error ? error.message : String(error);
     if (typeof newProps.onError === 'function') {
@@ -443,7 +445,7 @@ function isImageLoadCurrent(
 ): boolean {
   return (
     !instance.image?.disposed &&
-    !instance.node.window.isDisposed &&
+    !instance.node._window.isDisposed &&
     generation === instance.image?.generation
   );
 }

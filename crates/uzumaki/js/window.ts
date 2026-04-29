@@ -1,10 +1,11 @@
 import core, { type NativeWindow } from './core';
+import { UzElement } from './elements/base';
 import {
-  CoreElement,
+  Element,
   createNativeElement,
   createNativeTextNode,
   getNativeRootElement,
-} from './core/element';
+} from './elements/element';
 import {
   eventManager,
   EVENT_NAME_TO_TYPE,
@@ -32,7 +33,7 @@ export class Window {
   private _remBase: number = 16;
   private _disposed: boolean = false;
   private _disposables: (() => void)[] = [];
-  private _root: CoreElement | null = null;
+  private _root: Element | null = null;
 
   constructor(
     label: string,
@@ -108,19 +109,22 @@ export class Window {
     return this._id;
   }
 
-  get root(): CoreElement {
+  get root(): Element {
     if (!this._root) {
-      this._root = new CoreElement(this, getNativeRootElement(this), '#root');
+      this._root = new Element("root", getNativeRootElement(this), '#root');
     }
     return this._root;
   }
 
-  createElement(type: string): CoreElement {
-    return new CoreElement(this, createNativeElement(this, type), type);
+  createElement(type: string): Element {
+    return new UzElement(type, this);
   }
 
-  createTextNode(text: string): CoreElement {
-    return new CoreElement(this, createNativeTextNode(this, text), '#text');
+  createTextNode(text: string): UzElement {
+    // we should separate this
+    const node = new UzElement('#text', this);
+    node.textContent = text;
+    return node
   }
 
   get isDisposed(): boolean {

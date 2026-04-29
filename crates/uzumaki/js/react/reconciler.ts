@@ -7,9 +7,9 @@ import { INTRINSIC_ELEMENTS, __DEV__ } from '../constants';
 import type { JSX } from './jsx/runtime';
 
 import core from '../core';
-import { CoreElement } from '../core/element';
+import { Element } from '../elements/element';
 import { eventManager } from '../events';
-import { clearNodeRegistry } from '../registry';
+import { clearElementRegistry } from '../registry';
 import { Window } from '../window';
 import {
   appendChild as appendHostChild,
@@ -30,7 +30,7 @@ import {
 
 type Container = {
   window: Window;
-  rootNode: CoreElement;
+  rootNode: Element;
 };
 
 function getWindowId(container: Container): number {
@@ -93,7 +93,7 @@ type TextInstance = HostInstance;
 type SuspenseInstance = any;
 type HydratableInstance = any;
 type FormInstance = any;
-type PublicInstance = CoreElement;
+type PublicInstance = Element;
 type HostContext = {};
 type ChildSet = any;
 type TimeoutHandle = ReturnType<typeof setTimeout>;
@@ -159,7 +159,7 @@ const reconciler = ReactReconciler<
   },
 
   removeChild(parent, child) {
-    if (!parent.node.window.isDisposed) {
+    if (!parent.node._window.isDisposed) {
       removeHostChild(parent, child);
     }
   },
@@ -171,7 +171,7 @@ const reconciler = ReactReconciler<
   },
 
   commitUpdate(instance, _type, oldProps, newProps, _internalHandle) {
-    if (instance.node.window.isDisposed) return;
+    if (instance.node._window.isDisposed) return;
     const normalizedNewProps = isTextType(instance.type)
       ? { ...newProps, children: getTextContent(newProps.children) }
       : newProps;
@@ -182,7 +182,7 @@ const reconciler = ReactReconciler<
   },
 
   commitTextUpdate(instance, _oldText, newText) {
-    if (instance.node.window.isDisposed) return;
+    if (instance.node._window.isDisposed) return;
     commitTextUpdate(instance, newText);
   },
 
@@ -309,5 +309,5 @@ export function disposeAllRoots() {
 
 export function clearEventRegistry() {
   eventManager.clear();
-  clearNodeRegistry();
+  clearElementRegistry();
 }

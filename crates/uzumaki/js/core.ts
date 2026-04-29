@@ -10,20 +10,20 @@ export interface NativeWindow {
   remBase: number;
 }
 
-export interface NativeElement {
+export interface CoreNode {
   readonly id: NodeId;
   readonly windowId: number;
   readonly nodeType: number;
   readonly nodeName: string;
-  readonly parentNode: NativeElement | null;
-  readonly firstChild: NativeElement | null;
-  readonly lastChild: NativeElement | null;
-  readonly nextSibling: NativeElement | null;
-  readonly previousSibling: NativeElement | null;
+  readonly parentNode: CoreNode | null;
+  readonly firstChild: CoreNode | null;
+  readonly lastChild: CoreNode | null;
+  readonly nextSibling: CoreNode | null;
+  readonly previousSibling: CoreNode | null;
   textContent: string | null;
-  appendChild(child: NativeElement): void;
-  insertBefore(child: NativeElement, before: NativeElement | null): void;
-  removeChild(child: NativeElement): void;
+  appendChild(child: CoreNode): void;
+  insertBefore(child: CoreNode, before: CoreNode | null): void;
+  removeChild(child: CoreNode): void;
   setStrAttribute(name: string, value: string): void;
   setNumberAttribute(name: string, value: number): void;
   setBoolAttribute(name: string, value: boolean): void;
@@ -39,11 +39,11 @@ interface Core {
   }): NativeWindow;
   requestQuit(): void;
   requestRedraw(windowId: number): void;
-  getRootElement(windowId: number): NativeElement;
+  getRootElement(windowId: number): CoreNode;
   getRootNodeId(windowId: number): NodeId;
-  createCoreElement(windowId: number, elementType: string): NativeElement;
+  createCoreElement(windowId: number, elementType: string): CoreNode;
   createElement(windowId: number, elementType: string): NodeId;
-  createCoreTextNode(windowId: number, text: string): NativeElement;
+  createCoreTextNode(windowId: number, text: string): CoreNode;
   createTextNode(windowId: number, text: string): NodeId;
   setEncodedImageData(
     windowId: number,

@@ -1,20 +1,20 @@
-import type { CoreElement } from './core/element';
+import type { Element } from './elements/element';
 import type { NodeId } from './types';
 
-const nodeRegistry = new Map<NodeId, CoreElement>();
+const elementRegistry = new Map<NodeId, Element>(); // todo split by window
 
-export function registerNode(node: CoreElement): void {
-  nodeRegistry.set(node.id, node);
+export function registerElement(node: Element): void {
+  elementRegistry.set(node.nodeId, node);
 }
 
-export function unregisterNode(nodeId: NodeId): void {
-  nodeRegistry.delete(nodeId);
+export function unregisterElement(nodeId: NodeId): void {
+  elementRegistry.delete(nodeId);
 }
 
-export function getNode(nodeId: NodeId): CoreElement | undefined {
-  return nodeRegistry.get(nodeId);
+export function getElement(nodeId: NodeId): Element | undefined {
+  return elementRegistry.get(nodeId);
 }
 
-export function clearNodeRegistry(): void {
-  nodeRegistry.clear();
+export function clearElementRegistry(): void {
+  elementRegistry.clear();
 }
