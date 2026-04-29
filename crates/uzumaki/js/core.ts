@@ -1,17 +1,11 @@
-import { NodeId } from './types';
-
-export interface WindowPosition {
-  x: number;
-  y: number;
-}
-
-export interface WindowSize {
-  width: number;
-  height: number;
-}
-
-export type WindowTheme = 'light' | 'dark' | 'system';
-export type WindowLevel = 'normal' | 'alwaysOnTop' | 'alwaysOnBottom';
+import type {
+  NodeId,
+  WindowAttributes,
+  WindowLevel,
+  WindowPosition,
+  WindowSize,
+  WindowTheme,
+} from './types';
 
 export interface CoreWindow {
   close(): void;
@@ -82,31 +76,7 @@ export interface CoreNode {
 }
 
 interface Core {
-  createWindow(options: {
-    width?: number;
-    height?: number;
-    title?: string;
-    visible?: boolean;
-    resizable?: boolean;
-    decorations?: boolean;
-    transparent?: boolean;
-    maximized?: boolean;
-    minimized?: boolean;
-    fullscreen?: boolean;
-    alwaysOnTop?: boolean;
-    windowLevel?: WindowLevel;
-    minWidth?: number;
-    minHeight?: number;
-    maxWidth?: number;
-    maxHeight?: number;
-    position?: WindowPosition;
-    theme?: WindowTheme;
-    active?: boolean;
-    contentProtected?: boolean;
-    closable?: boolean;
-    minimizable?: boolean;
-    maximizable?: boolean;
-  }): CoreWindow;
+  createWindow(options: WindowAttributes): CoreWindow;
   requestQuit(): void;
   requestRedraw(windowId: number): void;
   getRootNode(windowId: number): CoreNode;

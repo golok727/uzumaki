@@ -18,6 +18,7 @@ pub struct Window {
     pub(crate) renderer: vello::Renderer,
     pub(crate) scene: Scene,
     pub(crate) text_renderer: TextRenderer,
+    alpha_modes: Vec<wgpu::CompositeAlphaMode>,
     current_cursor: UzCursorIcon,
     transparent: bool,
     valid_surface: bool,
@@ -52,6 +53,7 @@ impl Window {
             })
             .unwrap_or(wgpu::TextureFormat::Bgra8Unorm);
         let alpha_mode = choose_alpha_mode(&surface_caps.alpha_modes, transparent);
+        let alpha_modes = surface_caps.alpha_modes;
 
         let surface_config = wgpu::SurfaceConfiguration {
             usage: wgpu::TextureUsages::RENDER_ATTACHMENT,
@@ -84,6 +86,7 @@ impl Window {
             surface_config,
             scene,
             text_renderer: TextRenderer::new(),
+            alpha_modes,
             current_cursor: UzCursorIcon::Default,
             transparent,
             valid_surface,
@@ -99,11 +102,15 @@ impl Window {
         self.winit_window.scale_factor()
     }
 
-    pub fn set_transparent(&mut self, transparent: bool) {
+    pub fn set_transparent(&mut self, device: &wgpu::Device, transparent: bool) {
         if self.transparent == transparent {
             return;
         }
         self.transparent = transparent;
+        self.surface_config.alpha_mode = choose_alpha_mode(&self.alpha_modes, transparent);
+        if self.valid_surface {
+            self.surface.configure(device, &self.surface_config);
+        }
         self.winit_window.set_transparent(transparent);
         self.winit_window.request_redraw();
     }

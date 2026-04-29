@@ -1,10 +1,11 @@
-import core, {
-  type CoreWindow,
-  type WindowLevel,
-  type WindowPosition,
-  type WindowSize,
-  type WindowTheme,
-} from './core';
+import core, { type CoreWindow } from './core';
+import type {
+  WindowAttributes,
+  WindowLevel,
+  WindowPosition,
+  WindowSize,
+  WindowTheme,
+} from './types';
 import { UzTextNode } from './node';
 import { Element } from './elements/element';
 import { UzElement } from './elements/base';
@@ -19,11 +20,12 @@ import {
 import { clearWindowNodes } from './registry';
 
 export type {
+  WindowAttributes,
   WindowLevel,
   WindowPosition,
   WindowSize,
   WindowTheme,
-} from './core';
+} from './types';
 
 const windowsByLabel = new Map<string, Window>();
 const windowsById = new Map<number, Window>();
@@ -32,33 +34,6 @@ const DEFAULT_WINDOW_HEIGHT = 600;
 const DEFAULT_WINDOW_TITLE = 'uzumaki';
 const DEFAULT_WINDOW_LEVEL: WindowLevel = 'normal';
 const DEFAULT_WINDOW_THEME: WindowTheme | null = null;
-
-export interface WindowAttributes {
-  width?: number;
-  height?: number;
-  title?: string;
-  visible?: boolean;
-  resizable?: boolean;
-  decorations?: boolean;
-  transparent?: boolean;
-  maximized?: boolean;
-  minimized?: boolean;
-  fullscreen?: boolean;
-  alwaysOnTop?: boolean;
-  windowLevel?: WindowLevel;
-  minWidth?: number;
-  minHeight?: number;
-  maxWidth?: number;
-  maxHeight?: number;
-  position?: WindowPosition;
-  theme?: WindowTheme;
-  active?: boolean;
-  contentProtected?: boolean;
-  closable?: boolean;
-  minimizable?: boolean;
-  maximizable?: boolean;
-  rootStyles?: Record<string, unknown>;
-}
 
 export class Window {
   private _id: number;
