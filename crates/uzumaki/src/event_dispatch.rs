@@ -101,13 +101,8 @@ fn checkbox_value_string(checked: bool) -> String {
     checked.to_string()
 }
 
-pub fn handle_redraw(
-    dom: &mut UIState,
-    handle: &mut Window,
-    device: &wgpu::Device,
-    queue: &wgpu::Queue,
-) {
-    handle.paint_and_present(device, queue, dom);
+pub fn handle_redraw(dom: &mut UIState, handle: &mut Window) {
+    handle.paint_and_present(dom);
 }
 
 pub struct FocusedInputLayoutMeta {

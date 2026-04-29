@@ -529,19 +529,13 @@ impl CoreWindow {
 
     #[fast]
     pub fn setTransparent(&self, state: &OpState, transparent: bool) -> bool {
-        let app = state.borrow::<SharedAppState>().clone();
-        with_state(&app, |state| {
-            let device = state.gpu.device.clone();
-            if let Some(entry) = state.windows.get_mut(&self.id) {
-                entry.transparent = transparent;
-                if let Some(handle) = entry.handle.as_mut() {
-                    handle.set_transparent(&device, transparent);
-                }
-                true
-            } else {
-                false
+        self.with_window_entry_mut(state, |entry| {
+            entry.transparent = transparent;
+            if let Some(handle) = entry.handle.as_mut() {
+                handle.set_transparent(transparent);
             }
         })
+        .is_some()
     }
 
     #[getter]

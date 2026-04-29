@@ -88,7 +88,7 @@ impl AppState {
         if let Some(window) = self.windows.get_mut(id)
             && let Some(handle) = &mut window.handle
         {
-            handle.paint_and_present(&self.gpu.device, &self.gpu.queue, &mut window.dom);
+            handle.paint_and_present(&mut window.dom);
         }
     }
 
@@ -96,7 +96,7 @@ impl AppState {
         if let Some(entry) = self.windows.get_mut(wid) {
             let WindowEntry { handle, dom, .. } = entry;
             if let Some(handle) = handle {
-                event_dispatch::handle_redraw(dom, handle, &self.gpu.device, &self.gpu.queue);
+                event_dispatch::handle_redraw(dom, handle);
                 // handle.winit_window.request_redraw();
             }
         }
@@ -104,7 +104,7 @@ impl AppState {
     pub fn on_resize(&mut self, id: &WindowEntryId, width: u32, height: u32) -> bool {
         if let Some(window) = self.windows.get_mut(id)
             && let Some(handle) = &mut window.handle
-            && handle.on_resize(&self.gpu.device, width, height)
+            && handle.on_resize(width, height)
         {
             handle.winit_window.request_redraw();
             return true;
