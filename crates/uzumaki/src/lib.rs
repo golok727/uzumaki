@@ -65,7 +65,7 @@ extension!(
     op_apply_cached_image,
     op_clear_image_data,
     op_reset_dom,
-    op_focus_input,
+    op_focus_element,
     op_get_ancestor_path,
     op_get_selection,
     op_get_selected_text,

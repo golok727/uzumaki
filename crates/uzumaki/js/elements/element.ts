@@ -3,8 +3,23 @@ import { UzNode } from '../node';
 import type { Window } from '../window';
 
 export class Element extends UzNode {
+  private _elementId: string | null = null;
+
   constructor(window: Window, native: CoreNode) {
     super(window, native);
+  }
+
+  get id(): string | null {
+    return this._elementId;
+  }
+
+  set id(value: string | null) {
+    this._elementId =
+      typeof value === 'string' && value.length > 0 ? value : null;
+  }
+
+  focus(): void {
+    core.focusElement(this._window.id, this._native.id);
   }
 
   setAttribute(name: string, value: unknown): void {

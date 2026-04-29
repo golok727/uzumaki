@@ -11,7 +11,7 @@ import {
   op_clear_image_data,
   /** end image */
   op_reset_dom,
-  op_focus_input,
+  op_focus_element,
   op_get_ancestor_path,
   op_read_clipboard_text,
   op_write_clipboard_text,
@@ -30,7 +30,7 @@ Object.defineProperty(globalThis, '__uzumaki_ops_dont_touch_this__', {
     applyCachedImage: op_apply_cached_image,
     clearImageData: op_clear_image_data,
     resetDom: op_reset_dom,
-    focusInput: op_focus_input,
+    focusElement: op_focus_element,
     getAncestorPath: op_get_ancestor_path,
     readClipboardText: op_read_clipboard_text,
     writeClipboardText: op_write_clipboard_text,

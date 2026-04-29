@@ -165,7 +165,8 @@ fn set_element_str(node: &mut Node, prop: ElementProp, value: &str, _rem_base: f
         ElementProp::Disabled
         | ElementProp::Multiline
         | ElementProp::Secure
-        | ElementProp::Checked => {
+        | ElementProp::Checked
+        | ElementProp::Focusable => {
             return set_element_bool(node, prop, parse_bool(value));
         }
     }
@@ -183,7 +184,8 @@ fn set_element_number(node: &mut Node, prop: ElementProp, value: f32) -> StyleEf
         ElementProp::Disabled
         | ElementProp::Multiline
         | ElementProp::Secure
-        | ElementProp::Checked => {
+        | ElementProp::Checked
+        | ElementProp::Focusable => {
             return set_element_bool(node, prop, value > 0.5);
         }
         _ => {}
@@ -214,6 +216,12 @@ fn set_element_bool(node: &mut Node, prop: ElementProp, value: bool) -> StyleEff
         ElementProp::Checked => {
             if let Some(checked) = node.as_checkbox_input_mut() {
                 *checked = value;
+                return StyleEffect::Applied;
+            }
+        }
+        ElementProp::Focusable => {
+            if let Some(element) = node.as_element_mut() {
+                element.set_focussable(value);
                 return StyleEffect::Applied;
             }
         }
@@ -266,6 +274,12 @@ fn clear_element_prop(node: &mut Node, prop: ElementProp) -> StyleEffect {
                 return StyleEffect::Applied;
             }
         }
+        ElementProp::Focusable => {
+            if let Some(element) = node.as_element_mut() {
+                element.set_focussable(false);
+                return StyleEffect::Applied;
+            }
+        }
     }
     StyleEffect::Ignored
 }
@@ -299,6 +313,10 @@ fn get_element_prop(node: &Node, prop: ElementProp) -> Value {
         ElementProp::Checked => node
             .as_checkbox_input()
             .map(|v| json!(v))
+            .unwrap_or(Value::Null),
+        ElementProp::Focusable => node
+            .as_element()
+            .map(|v| json!(v.is_focussable()))
             .unwrap_or(Value::Null),
     }
 }

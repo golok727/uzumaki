@@ -84,6 +84,7 @@ pub(crate) enum ElementProp {
     Multiline,
     Secure,
     Checked,
+    Focusable,
 }
 
 #[derive(Copy, Clone, Debug, Eq, PartialEq)]
@@ -207,6 +208,7 @@ impl FromStr for ElementProp {
             "multiline" => Self::Multiline,
             "secure" => Self::Secure,
             "checked" => Self::Checked,
+            "focusable" => Self::Focusable,
             _ => return Err(()),
         })
     }

@@ -525,7 +525,7 @@ pub fn op_reset_dom(
 }
 
 #[op2(fast)]
-pub fn op_focus_input(
+pub fn op_focus_element(
     state: &mut OpState,
     #[smi] window_id: u32,
     #[smi] node_id: u32,
@@ -536,7 +536,7 @@ pub fn op_focus_input(
         let Some(entry) = s.windows.get_mut(&window_id) else {
             return Err(window_not_found());
         };
-        entry.dom.focus_input(nid);
+        entry.dom.focus_element(nid);
         Ok(())
     })
 }

@@ -152,9 +152,9 @@ impl UIState {
         self.text_selection = selection;
     }
 
-    /// Focus an input node. Clears any active view selection and blurs the
+    /// Focus an element node. Clears any active view selection and blurs the
     /// previously focused input.
-    pub fn focus_input(&mut self, node_id: UzNodeId) {
+    pub fn focus_element(&mut self, node_id: UzNodeId) {
         self.text_selection.clear();
         if let Some(old_id) = self.focused_node
             && old_id != node_id
@@ -288,7 +288,7 @@ impl UIState {
             .map(|n| n.is_text_input())
             .unwrap_or(false);
         if is_input {
-            self.focus_input(new_id);
+            self.focus_element(new_id);
         } else {
             self.clear_selection();
             self.focused_node = Some(new_id);
