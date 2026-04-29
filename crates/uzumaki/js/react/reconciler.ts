@@ -3,11 +3,6 @@ import ReactReconciler, { type EventPriority } from 'react-reconciler';
 import { DefaultEventPriority } from 'react-reconciler/constants.js'; // fixme our runtime doesnt do probing for imports
 
 import { INTRINSIC_ELEMENTS, __DEV__ } from '../constants';
-import { BaseElement, ImageElement, ViewElement } from '../elements';
-
-import { InputElement } from '../elements/input';
-import { CheckboxElement } from '../elements/checkbox';
-import { TextElement } from '../elements/text';
 
 import type { JSX } from './jsx/runtime';
 
@@ -16,6 +11,22 @@ import { CoreElement } from '../core/element';
 import { eventManager } from '../events';
 import { clearNodeRegistry } from '../registry';
 import { Window } from '../window';
+import {
+  appendChild as appendHostChild,
+  appendChildToContainer as appendHostChildToContainer,
+  applyReactProps,
+  commitTextUpdate,
+  createHostInstance,
+  disposeHostInstance,
+  hideInstance as hideHostInstance,
+  insertBefore as insertHostBefore,
+  insertInContainerBefore as insertHostInContainerBefore,
+  removeChild as removeHostChild,
+  removeChildFromContainer as removeHostChildFromContainer,
+  resetTextContent as resetHostTextContent,
+  type HostInstance,
+  unhideInstance as unhideHostInstance,
+} from './host';
 
 type Container = {
   window: Window;
@@ -63,45 +74,26 @@ function createElementInstance(
   type: string,
   props: Record<string, any>,
   window: Window,
-): BaseElement {
+): HostInstance {
   if (!INTRINSIC_ELEMENTS.has(type)) {
     throw new Error(
       `[uzumaki] Unknown intrinsic element: <${type}>. Did you mean <view>?`,
     );
   }
-
-  if (type === 'input') {
-    return new InputElement(window, props);
-  }
-
-  if (type === 'checkbox') {
-    return new CheckboxElement(window, props);
-  }
-
-  if (type === 'image') {
-    return new ImageElement(window, props);
-  }
-
-  if (isTextType(type)) {
-    return new TextElement(
-      window,
-      type,
-      getTextContent(props.children),
-      props,
-      getTextContent,
-    );
-  }
-  return new ViewElement(window, type, props);
+  const normalizedProps = isTextType(type)
+    ? { ...props, children: getTextContent(props.children) }
+    : props;
+  return createHostInstance(window, type, normalizedProps);
 }
 
 type Type = string;
 type Props = Record<string, any>;
-type Instance = BaseElement;
-type TextInstance = TextElement;
+type Instance = HostInstance;
+type TextInstance = HostInstance;
 type SuspenseInstance = any;
 type HydratableInstance = any;
 type FormInstance = any;
-type PublicInstance = BaseElement;
+type PublicInstance = CoreElement;
 type HostContext = {};
 type ChildSet = any;
 type TimeoutHandle = ReturnType<typeof setTimeout>;
@@ -133,13 +125,7 @@ const reconciler = ReactReconciler<
   },
 
   createTextInstance(text, rootContainer) {
-    return new TextElement(
-      rootContainer.window,
-      '#text',
-      text,
-      {},
-      getTextContent,
-    );
+    return createHostInstance(rootContainer.window, '#text', {}, text);
   },
 
   shouldSetTextContent(type) {
@@ -147,7 +133,7 @@ const reconciler = ReactReconciler<
   },
 
   appendInitialChild(parent, child) {
-    parent.appendChild(child);
+    appendHostChild(parent, child);
   },
 
   finalizeInitialChildren() {
@@ -156,68 +142,72 @@ const reconciler = ReactReconciler<
 
   appendChildToContainer(container, child) {
     if (container.window.isDisposed) return;
-    container.rootNode.appendChild(child);
+    appendHostChildToContainer(container.rootNode, child);
   },
 
   appendChild(parent, child) {
-    parent.appendChild(child);
+    appendHostChild(parent, child);
   },
 
   insertBefore(parent, child, before) {
-    parent.insertBefore(child, before);
+    insertHostBefore(parent, child, before);
   },
 
   insertInContainerBefore(container, child, before) {
     if (container.window.isDisposed) return;
-    container.rootNode.insertBefore(child, before);
+    insertHostInContainerBefore(container.rootNode, child, before);
   },
 
   removeChild(parent, child) {
-    child.destroy();
-    if (!parent.window.isDisposed) {
-      parent.removeChild(child);
+    if (!parent.node.window.isDisposed) {
+      removeHostChild(parent, child);
     }
   },
 
   removeChildFromContainer(container, child) {
-    child.destroy();
     if (!container.window.isDisposed) {
-      container.rootNode.removeChild(child);
+      removeHostChildFromContainer(container.rootNode, child);
     }
   },
 
   commitUpdate(instance, _type, oldProps, newProps, _internalHandle) {
-    if (instance.window.isDisposed) return;
-    instance.commitUpdate(newProps, oldProps);
+    if (instance.node.window.isDisposed) return;
+    const normalizedNewProps = isTextType(instance.type)
+      ? { ...newProps, children: getTextContent(newProps.children) }
+      : newProps;
+    const normalizedOldProps = isTextType(instance.type)
+      ? { ...oldProps, children: getTextContent(oldProps.children) }
+      : oldProps;
+    applyReactProps(instance, normalizedNewProps, normalizedOldProps);
   },
 
   commitTextUpdate(instance, _oldText, newText) {
-    if (instance.window.isDisposed) return;
-    instance.setText(newText);
+    if (instance.node.window.isDisposed) return;
+    commitTextUpdate(instance, newText);
   },
 
   detachDeletedInstance(instance) {
-    instance.destroy();
+    disposeHostInstance(instance);
   },
 
   hideInstance(instance) {
-    instance.setAttribute('visibility', false);
+    hideHostInstance(instance);
   },
 
   unhideInstance(instance) {
-    instance.setAttribute('visibility', true);
+    unhideHostInstance(instance);
   },
 
   hideTextInstance(instance) {
-    instance.setAttribute('visibility', false);
+    hideHostInstance(instance);
   },
 
   unhideTextInstance(instance) {
-    instance.setAttribute('visibility', true);
+    unhideHostInstance(instance);
   },
 
   resetTextContent(instance) {
-    instance.textContent = '';
+    resetHostTextContent(instance);
   },
 
   clearContainer(container) {
@@ -227,7 +217,7 @@ const reconciler = ReactReconciler<
 
   getRootHostContext: () => ({}),
   getChildHostContext: (parentHostContext) => parentHostContext,
-  getPublicInstance: (instance) => instance,
+  getPublicInstance: (instance) => instance.node,
 
   prepareForCommit(_container) {
     return null;
