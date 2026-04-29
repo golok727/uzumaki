@@ -1,4 +1,5 @@
 import { useId, useState } from 'react';
+import { UzElement } from 'uzumaki-ui';
 import { C } from './theme';
 
 function ModalCounter() {
@@ -59,7 +60,8 @@ export function Modal({ onClose }: { onClose: () => void }) {
       items="center"
       justify="center"
       onClick={(ev) => {
-        if (ev.target?.elementId === modalId) onClose();
+        if (ev.target instanceof UzElement && ev.target.id === modalId)
+          onClose();
       }}
     >
       <view

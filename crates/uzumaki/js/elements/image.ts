@@ -1,42 +1,13 @@
 import core from '../core';
-import { ListenerEntry } from '../types';
-import {
-  assignNativeStyle,
-  isEventProp,
-  listenerKey,
-  parseEventProp,
-} from '../utils';
-import { Window } from '../window';
-import { BaseElement } from './base';
+import type { Window } from '../window';
+import { UzElement } from './base';
 
 const WINDOWS_DRIVE_PATH = /^[A-Za-z]:[\\/]/;
 const URL_SCHEME = /^[A-Za-z][A-Za-z\d+\-.]*:/;
 
-const LIFECYCLE_PROPS = new Set([
-  'children',
-  'key',
-  'ref',
-  'id',
-  'src',
-  'onLoad',
-  'onLoadStart',
-  'onError',
-]);
+const inflightBytes = new Map<string, Promise<Uint8Array>>();
 
-type ImageStatus = 'idle' | 'loading' | 'loaded' | 'error';
-
-export interface ImageLoadEvent {
-  src: string;
-  width?: number;
-  height?: number;
-}
-
-export interface ImageErrorEvent {
-  src: string;
-  message: string;
-}
-
-function isFilePath(source: string) {
+function isFilePath(source: string): boolean {
   return (
     WINDOWS_DRIVE_PATH.test(source) ||
     source.startsWith('/') ||
@@ -50,192 +21,124 @@ async function fetchImageBytes(source: string): Promise<Uint8Array> {
   if (isFilePath(source)) {
     return Deno.readFile(source);
   }
-
   if (URL_SCHEME.test(source)) {
     const url = new URL(source);
     if (url.protocol === 'file:') {
       return Deno.readFile(url);
     }
-    const response = await fetch(url);
+    const response = (await fetch(url)) as any; // fixme types
     if (!response.ok) {
       throw new Error(`HTTP ${response.status} while loading ${source}`);
     }
     return new Uint8Array(await response.arrayBuffer());
   }
-
   return Deno.readFile(source);
 }
 
-const inflightBytes = new Map<string, Promise<Uint8Array>>();
-
 function loadImageBytes(source: string): Promise<Uint8Array> {
-  let p = inflightBytes.get(source);
-  if (p) return p;
-  p = fetchImageBytes(source).catch((error) => {
+  let promise = inflightBytes.get(source);
+  if (promise) return promise;
+  promise = fetchImageBytes(source).catch((error) => {
     inflightBytes.delete(source);
     throw error;
   });
-  inflightBytes.set(source, p);
-  return p;
+  inflightBytes.set(source, promise);
+  return promise;
 }
 
-export class ImageElement extends BaseElement<Record<string, any>> {
-  private src: string | undefined;
-  private loadGeneration = 0;
-  private disposed = false;
-  private status: ImageStatus = 'idle';
-  private onLoad: ((ev: ImageLoadEvent) => void) | undefined;
-  private onLoadStart: ((ev: { src: string }) => void) | undefined;
-  private onError: ((ev: ImageErrorEvent) => void) | undefined;
+export type ImageLoadEvent = { src: string };
+export type ImageErrorEvent = { src: string; message: string };
 
-  constructor(window: Window, props: Record<string, any>) {
-    const id = core.createElement(window.id, 'image');
-    super(id, 'image', window);
-    this.parseProps(props);
-    this.applyStyles();
-    this.applyEvents();
-    void this.updateSource(props.src);
+export class UzImageElement extends UzElement {
+  /** Called once a load is kicked off (after `src` is set, before bytes resolve). */
+  onLoadStart?: (event: ImageLoadEvent) => void;
+  /** Called when bytes are decoded and uploaded to the GPU. */
+  onLoad?: (event: ImageLoadEvent) => void;
+  /** Called when the load fails. If unset, errors log to console. */
+  onError?: (event: ImageErrorEvent) => void;
+
+  private _generation = 0;
+  private _disposed = false;
+  private _src: string | undefined;
+
+  constructor(window: Window) {
+    super('image', window);
   }
 
-  private parseProps(props: Record<string, any>): void {
-    this.setElementIdProp(props.id);
-    this.onLoad = typeof props.onLoad === 'function' ? props.onLoad : undefined;
-    this.onLoadStart =
-      typeof props.onLoadStart === 'function' ? props.onLoadStart : undefined;
-    this.onError =
-      typeof props.onError === 'function' ? props.onError : undefined;
-
-    for (const key in props) {
-      if (LIFECYCLE_PROPS.has(key)) continue;
-      const value = props[key];
-      if (value == null) continue;
-      if (isEventProp(key)) {
-        const { name, capture } = parseEventProp(key);
-        this.eventListeners.set(listenerKey(name, capture), {
-          name,
-          handler: value,
-          capture,
-        });
-      } else {
-        assignNativeStyle(this.styles, key, value);
-      }
-    }
+  get src(): string | undefined {
+    return this._src;
   }
 
-  private async updateSource(src: string | undefined): Promise<void> {
-    if (typeof src !== 'string' || src.length === 0) {
-      src = undefined;
-    }
+  set src(value: string | undefined | null) {
+    const next =
+      typeof value === 'string' && value.length > 0 ? value : undefined;
+    if (next === this._src) return;
+    this._src = next;
+    this._load(next);
+  }
 
-    if (src === this.src) return;
-
-    this.src = src;
-    const generation = ++this.loadGeneration;
-    core.clearImageData(this.windowId, this.id);
+  private _load(src: string | undefined): void {
+    const generation = ++this._generation;
+    core.clearImageData(this.windowId, this.nodeId);
     core.requestRedraw(this.windowId);
 
-    if (!src) {
-      this.status = 'idle';
-      return;
-    }
+    if (!src) return;
 
-    this.status = 'loading';
-    try {
-      this.onLoadStart?.({ src });
-    } catch (error) {
-      console.error('[uzumaki] onLoadStart handler threw:', error);
-    }
+    callHandler(this.onLoadStart, { src });
 
-    if (core.applyCachedImage(this.windowId, this.id, src)) {
-      if (!this.isLoadCurrent(generation)) return;
+    if (core.applyCachedImage(this.windowId, this.nodeId, src)) {
+      if (!this._isCurrent(generation)) return;
       core.requestRedraw(this.windowId);
-      this.status = 'loaded';
-      try {
-        this.onLoad?.({ src });
-      } catch (error) {
-        console.error('[uzumaki] onLoad handler threw:', error);
-      }
+      callHandler(this.onLoad, { src });
       return;
     }
 
+    void this._loadAsync(src, generation);
+  }
+
+  private async _loadAsync(src: string, generation: number): Promise<void> {
     try {
       const data = await loadImageBytes(src);
-      if (!this.isLoadCurrent(generation)) return;
-      core.setEncodedImageData(this.windowId, this.id, src, data);
+      if (!this._isCurrent(generation)) return;
+      core.setEncodedImageData(this.windowId, this.nodeId, src, data);
       core.requestRedraw(this.windowId);
-      this.status = 'loaded';
-      try {
-        this.onLoad?.({ src });
-      } catch (error) {
-        console.error('[uzumaki] onLoad handler threw:', error);
-      }
+      callHandler(this.onLoad, { src });
     } catch (error) {
-      if (!this.isLoadCurrent(generation)) return;
-      core.clearImageData(this.windowId, this.id);
+      if (!this._isCurrent(generation)) return;
+      core.clearImageData(this.windowId, this.nodeId);
       core.requestRedraw(this.windowId);
-      this.status = 'error';
       const message = error instanceof Error ? error.message : String(error);
       if (this.onError) {
-        try {
-          this.onError({ src, message });
-        } catch (error) {
-          console.error('[uzumaki] onError handler threw:', error);
-        }
+        callHandler(this.onError, { src, message });
       } else {
         console.error(`[uzumaki] Failed to load image "${src}": ${message}`);
       }
     }
   }
 
-  private isLoadCurrent(generation: number): boolean {
+  private _isCurrent(generation: number): boolean {
     return (
-      !this.disposed &&
-      !this.window.isDisposed &&
-      generation === this.loadGeneration
+      !this._disposed &&
+      !this._window.isDisposed &&
+      generation === this._generation
     );
   }
 
-  commitUpdate(
-    newProps: Record<string, any>,
-    _oldProps: Record<string, any>,
-  ): void {
-    this.setElementIdProp(newProps.id);
-    this.onLoad =
-      typeof newProps.onLoad === 'function' ? newProps.onLoad : undefined;
-    this.onLoadStart =
-      typeof newProps.onLoadStart === 'function'
-        ? newProps.onLoadStart
-        : undefined;
-    this.onError =
-      typeof newProps.onError === 'function' ? newProps.onError : undefined;
-
-    const newStyles: Record<string, any> = {};
-    const newEvents: Map<string, ListenerEntry> = new Map();
-
-    for (const key in newProps) {
-      if (LIFECYCLE_PROPS.has(key)) continue;
-      const value = newProps[key];
-      if (value == null) continue;
-      if (isEventProp(key)) {
-        const { name, capture } = parseEventProp(key);
-        newEvents.set(listenerKey(name, capture), {
-          name,
-          handler: value,
-          capture,
-        });
-      } else {
-        assignNativeStyle(newStyles, key, value);
-      }
-    }
-
-    this.updateStyles(newStyles);
-    this.updateEvents(newEvents);
-    void this.updateSource(newProps.src);
-  }
-
   override destroy(): void {
-    this.disposed = true;
-    this.loadGeneration += 1;
+    this._disposed = true;
+    this._generation++;
     super.destroy();
+  }
+}
+
+function callHandler<T>(
+  handler: ((event: T) => void) | undefined,
+  event: T,
+): void {
+  if (!handler) return;
+  try {
+    handler(event);
+  } catch (error) {
+    console.error('[uzumaki] image handler threw:', error);
   }
 }

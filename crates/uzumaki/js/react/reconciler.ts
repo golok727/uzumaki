@@ -1,25 +1,36 @@
 import { isValidElement as isReactElement } from 'react';
 import ReactReconciler, { type EventPriority } from 'react-reconciler';
-import { DefaultEventPriority } from 'react-reconciler/constants.js'; // fixme our runtime doesnt do probing for imports
+import { DefaultEventPriority } from 'react-reconciler/constants.js';
 
 import { INTRINSIC_ELEMENTS, __DEV__ } from '../constants';
-import { BaseElement, ImageElement, ViewElement } from '../elements';
-
-import { InputElement } from '../elements/input';
-import { CheckboxElement } from '../elements/checkbox';
-import { TextElement } from '../elements/text';
 
 import type { JSX } from './jsx/runtime';
 
 import core from '../core';
+import { UzNode } from '../node';
 import { eventManager } from '../events';
 import { clearNodeRegistry } from '../registry';
-import type { NodeId } from '../types';
 import { Window } from '../window';
+import {
+  appendChild as appendHostChild,
+  appendChildToContainer as appendHostChildToContainer,
+  applyReactProps,
+  commitTextUpdate,
+  createHostInstance,
+  disposeHostInstance,
+  hideInstance as hideHostInstance,
+  insertBefore as insertHostBefore,
+  insertInContainerBefore as insertHostInContainerBefore,
+  removeChild as removeHostChild,
+  removeChildFromContainer as removeHostChildFromContainer,
+  resetTextContent as resetHostTextContent,
+  type HostInstance,
+  unhideInstance as unhideHostInstance,
+} from './host';
 
 type Container = {
   window: Window;
-  rootNodeId: NodeId;
+  rootNode: UzNode;
 };
 
 function getWindowId(container: Container): number {
@@ -55,7 +66,7 @@ function getTextContent(children: any): string {
   return String(children);
 }
 
-function isTextType(type: string): boolean {
+function isTextElementType(type: string): boolean {
   return type === 'text';
 }
 
@@ -63,45 +74,26 @@ function createElementInstance(
   type: string,
   props: Record<string, any>,
   window: Window,
-): BaseElement {
+): HostInstance {
   if (!INTRINSIC_ELEMENTS.has(type)) {
     throw new Error(
       `[uzumaki] Unknown intrinsic element: <${type}>. Did you mean <view>?`,
     );
   }
-
-  if (type === 'input') {
-    return new InputElement(window, props);
-  }
-
-  if (type === 'checkbox') {
-    return new CheckboxElement(window, props);
-  }
-
-  if (type === 'image') {
-    return new ImageElement(window, props);
-  }
-
-  if (isTextType(type)) {
-    return new TextElement(
-      window,
-      type,
-      getTextContent(props.children),
-      props,
-      getTextContent,
-    );
-  }
-  return new ViewElement(window, type, props);
+  const normalizedProps = isTextElementType(type)
+    ? { ...props, children: getTextContent(props.children) }
+    : props;
+  return createHostInstance(window, type, normalizedProps);
 }
 
 type Type = string;
 type Props = Record<string, any>;
-type Instance = BaseElement;
-type TextInstance = TextElement;
+type Instance = HostInstance;
+type TextInstance = HostInstance;
 type SuspenseInstance = any;
 type HydratableInstance = any;
 type FormInstance = any;
-type PublicInstance = BaseElement;
+type PublicInstance = UzNode;
 type HostContext = {};
 type ChildSet = any;
 type TimeoutHandle = ReturnType<typeof setTimeout>;
@@ -133,24 +125,15 @@ const reconciler = ReactReconciler<
   },
 
   createTextInstance(text, rootContainer) {
-    return new TextElement(
-      rootContainer.window,
-      '#text',
-      text,
-      {},
-      getTextContent,
-    );
+    return createHostInstance(rootContainer.window, '#text', {}, text);
   },
 
   shouldSetTextContent(type) {
-    return isTextType(type);
+    return isTextElementType(type);
   },
 
   appendInitialChild(parent, child) {
-    parent.children.push(child);
-    child.parent = parent;
-    if (parent.window.isDisposed) return;
-    core.appendChild(parent.windowId, parent.id, child.id);
+    appendHostChild(parent, child);
   },
 
   finalizeInitialChildren() {
@@ -158,89 +141,73 @@ const reconciler = ReactReconciler<
   },
 
   appendChildToContainer(container, child) {
-    child.parent = null;
     if (container.window.isDisposed) return;
-    const windowId = getWindowId(container);
-    core.appendChild(windowId, container.rootNodeId, child.id);
+    appendHostChildToContainer(container.rootNode, child);
   },
 
   appendChild(parent, child) {
-    parent.children.push(child);
-    child.parent = parent;
-    if (parent.window.isDisposed) return;
-    core.appendChild(parent.windowId, parent.id, child.id);
+    appendHostChild(parent, child);
   },
 
   insertBefore(parent, child, before) {
-    const idx = parent.children.indexOf(before);
-    if (idx === -1) {
-      parent.children.push(child);
-    } else {
-      parent.children.splice(idx, 0, child);
-    }
-    child.parent = parent;
-    if (parent.window.isDisposed) return;
-    core.insertBefore(parent.windowId, parent.id, child.id, before.id);
+    insertHostBefore(parent, child, before);
   },
 
   insertInContainerBefore(container, child, before) {
-    child.parent = null;
     if (container.window.isDisposed) return;
-    const windowId = getWindowId(container);
-    core.insertBefore(windowId, container.rootNodeId, child.id, before.id);
+    insertHostInContainerBefore(container.rootNode, child, before);
   },
 
   removeChild(parent, child) {
-    const idx = parent.children.indexOf(child);
-    if (idx !== -1) parent.children.splice(idx, 1);
-    child.parent = null;
-    if (!parent.window.isDisposed) {
-      core.removeChild(parent.windowId, parent.id, child.id);
+    if (!parent.node._window.isDisposed) {
+      removeHostChild(parent, child);
     }
-    child.destroy();
   },
 
   removeChildFromContainer(container, child) {
-    child.parent = null;
     if (!container.window.isDisposed) {
-      const windowId = getWindowId(container);
-      core.removeChild(windowId, container.rootNodeId, child.id);
+      removeHostChildFromContainer(container.rootNode, child);
     }
-    child.destroy();
   },
 
   commitUpdate(instance, _type, oldProps, newProps, _internalHandle) {
-    if (instance.window.isDisposed) return;
-    instance.commitUpdate(newProps, oldProps);
+    if (instance.node._window.isDisposed) return;
+    const normalizedNewProps = isTextElementType(instance.type)
+      ? { ...newProps, children: getTextContent(newProps.children) }
+      : newProps;
+    const normalizedOldProps = isTextElementType(instance.type)
+      ? { ...oldProps, children: getTextContent(oldProps.children) }
+      : oldProps;
+    applyReactProps(instance, normalizedNewProps, normalizedOldProps);
   },
 
   commitTextUpdate(instance, _oldText, newText) {
-    if (instance.window.isDisposed) return;
-    instance.setText(newText);
+    if (instance.node._window.isDisposed) return;
+    commitTextUpdate(instance, newText);
   },
 
   detachDeletedInstance(instance) {
-    instance.destroy();
+    disposeHostInstance(instance);
   },
 
   hideInstance(instance) {
-    core.setBoolAttribute(instance.windowId, instance.id, 'visibility', false);
+    hideHostInstance(instance);
   },
 
   unhideInstance(instance) {
-    core.setBoolAttribute(instance.windowId, instance.id, 'visibility', true);
+    unhideHostInstance(instance);
   },
 
   hideTextInstance(instance) {
-    core.setBoolAttribute(instance.windowId, instance.id, 'visibility', false);
+    hideHostInstance(instance);
   },
 
   unhideTextInstance(instance) {
-    core.setBoolAttribute(instance.windowId, instance.id, 'visibility', true);
+    unhideHostInstance(instance);
   },
 
   resetTextContent(instance) {
-    core.setText(instance.windowId, instance.id, '');
+    resetHostTextContent(instance);
   },
 
   clearContainer(container) {
@@ -250,7 +217,7 @@ const reconciler = ReactReconciler<
 
   getRootHostContext: () => ({}),
   getChildHostContext: (parentHostContext) => parentHostContext,
-  getPublicInstance: (instance) => instance,
+  getPublicInstance: (instance) => instance.node,
 
   prepareForCommit(_container) {
     return null;
@@ -298,8 +265,7 @@ const reconciler = ReactReconciler<
 const roots = new Map<string, { root: any; container: Container }>();
 
 export function render(window: Window, element: JSX.Element) {
-  const rootNodeId = core.getRootNodeId(window.id);
-  const container: Container = { window, rootNodeId };
+  const container: Container = { window, rootNode: window.root };
 
   const root = reconciler.createContainer(
     container,

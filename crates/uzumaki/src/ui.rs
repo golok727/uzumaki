@@ -306,6 +306,11 @@ impl UIState {
     }
 
     pub fn append_child(&mut self, parent_id: UzNodeId, child_id: UzNodeId) {
+        if parent_id == child_id {
+            return;
+        }
+        self.detach_from_parent(child_id);
+
         let parent_taffy = self.nodes[parent_id].taffy_node;
         let child_taffy = self.nodes[child_id].taffy_node;
         self.taffy.add_child(parent_taffy, child_taffy).unwrap();
@@ -324,6 +329,11 @@ impl UIState {
     }
 
     pub fn insert_before(&mut self, parent_id: UzNodeId, child_id: UzNodeId, before_id: UzNodeId) {
+        if child_id == before_id || parent_id == child_id {
+            return;
+        }
+        self.detach_from_parent(child_id);
+
         let parent_taffy = self.nodes[parent_id].taffy_node;
         let child_taffy = self.nodes[child_id].taffy_node;
         let before_taffy = self.nodes[before_id].taffy_node;
@@ -348,6 +358,35 @@ impl UIState {
         } else {
             self.nodes[parent_id].first_child = Some(child_id);
         }
+    }
+
+    fn detach_from_parent(&mut self, child_id: UzNodeId) {
+        let Some(parent_id) = self.nodes[child_id].parent else {
+            return;
+        };
+
+        let parent_taffy = self.nodes[parent_id].taffy_node;
+        let child_taffy = self.nodes[child_id].taffy_node;
+        let _ = self.taffy.remove_child(parent_taffy, child_taffy);
+
+        let prev = self.nodes[child_id].prev_sibling;
+        let next = self.nodes[child_id].next_sibling;
+
+        if let Some(prev_id) = prev {
+            self.nodes[prev_id].next_sibling = next;
+        } else {
+            self.nodes[parent_id].first_child = next;
+        }
+
+        if let Some(next_id) = next {
+            self.nodes[next_id].prev_sibling = prev;
+        } else {
+            self.nodes[parent_id].last_child = prev;
+        }
+
+        self.nodes[child_id].parent = None;
+        self.nodes[child_id].prev_sibling = None;
+        self.nodes[child_id].next_sibling = None;
     }
 
     /// Single source of truth for clearing stale NodeId references when a node

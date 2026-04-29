@@ -9,6 +9,11 @@ export type {
   WindowSize,
   WindowTheme,
 } from './window';
+export { UzNode, UzTextNode } from './node';
+export { Element } from './elements/element';
+export { UzElement } from './elements/base';
+export { UzRootElement } from './elements/root';
+export { UzImageElement } from './elements/image';
 export { Clipboard } from './clipboard';
 export { eventManager, EventType } from './events';
 export type {

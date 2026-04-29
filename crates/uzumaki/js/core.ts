@@ -13,7 +13,7 @@ export interface WindowSize {
 export type WindowTheme = 'light' | 'dark' | 'system';
 export type WindowLevel = 'normal' | 'alwaysOnTop' | 'alwaysOnBottom';
 
-export interface NativeWindow {
+export interface CoreWindow {
   close(): void;
   readonly id: number;
   readonly innerWidth: number | null;
@@ -60,6 +60,27 @@ export interface NativeWindow {
   remBase: number;
 }
 
+export interface CoreNode {
+  readonly id: NodeId;
+  readonly windowId: number;
+  readonly nodeType: number;
+  readonly nodeName: string;
+  readonly parentNode: CoreNode | null;
+  readonly firstChild: CoreNode | null;
+  readonly lastChild: CoreNode | null;
+  readonly nextSibling: CoreNode | null;
+  readonly previousSibling: CoreNode | null;
+  textContent: string | null;
+  appendChild(child: CoreNode): void;
+  insertBefore(child: CoreNode, before: CoreNode | null): void;
+  removeChild(child: CoreNode): void;
+  setStrAttribute(name: string, value: string): void;
+  setNumberAttribute(name: string, value: number): void;
+  setBoolAttribute(name: string, value: boolean): void;
+  removeAttribute(name: string): void;
+  getAttribute(name: string): unknown;
+}
+
 interface Core {
   createWindow(options: {
     width?: number;
@@ -85,12 +106,12 @@ interface Core {
     closable?: boolean;
     minimizable?: boolean;
     maximizable?: boolean;
-  }): NativeWindow;
+  }): CoreWindow;
   requestQuit(): void;
   requestRedraw(windowId: number): void;
-  getRootNodeId(windowId: number): NodeId;
-  createElement(windowId: number, elementType: string): NodeId;
-  createTextNode(windowId: number, text: string): NodeId;
+  getRootNode(windowId: number): CoreNode;
+  createCoreElementNode(windowId: number, elementType: string): CoreNode;
+  createCoreTextNode(windowId: number, text: string): CoreNode;
   setEncodedImageData(
     windowId: number,
     nodeId: NodeId,
@@ -99,36 +120,7 @@ interface Core {
   ): void;
   applyCachedImage(windowId: number, nodeId: NodeId, cacheKey: string): boolean;
   clearImageData(windowId: number, nodeId: NodeId): void;
-  appendChild(windowId: number, parentId: NodeId, childId: NodeId): void;
-  insertBefore(
-    windowId: number,
-    parentId: NodeId,
-    childId: NodeId,
-    beforeId: NodeId,
-  ): void;
-  removeChild(windowId: number, parentId: NodeId, childId: NodeId): void;
-  setText(windowId: number, nodeId: NodeId, text: string): void;
   resetDom(windowId: number): void;
-  setStrAttribute(
-    windowId: number,
-    nodeId: NodeId,
-    name: string,
-    value: string,
-  ): void;
-  setNumberAttribute(
-    windowId: number,
-    nodeId: NodeId,
-    name: string,
-    value: number,
-  ): void;
-  setBoolAttribute(
-    windowId: number,
-    nodeId: NodeId,
-    name: string,
-    value: boolean,
-  ): void;
-  clearAttribute(windowId: number, nodeId: NodeId, name: string): void;
-  getAttribute(windowId: number, nodeId: NodeId, name: string): unknown;
   focusInput(windowId: number, nodeId: NodeId): void;
   getAncestorPath(windowId: number, nodeId: NodeId): NodeId[];
   getSelection(windowId: number): SelectionState | null;
@@ -161,26 +153,3 @@ const core: Core = (globalThis as unknown as any)
   .__uzumaki_ops_dont_touch_this__;
 
 export default core;
-
-export function setNativeProp(
-  windowId: number,
-  nodeId: any,
-  propName: string,
-  value: any,
-): void {
-  if (typeof value === 'boolean') {
-    core.setBoolAttribute(windowId, nodeId, propName, value);
-  } else if (typeof value === 'number') {
-    core.setNumberAttribute(windowId, nodeId, propName, value);
-  } else {
-    core.setStrAttribute(windowId, nodeId, propName, String(value));
-  }
-}
-
-export function clearNativeProp(
-  windowId: number,
-  nodeId: any,
-  propName: string,
-): void {
-  core.clearAttribute(windowId, nodeId, propName);
-}

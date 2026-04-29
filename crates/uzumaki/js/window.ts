@@ -1,17 +1,22 @@
 import core, {
-  setNativeProp,
-  type NativeWindow,
+  type CoreWindow,
   type WindowLevel,
   type WindowPosition,
   type WindowSize,
   type WindowTheme,
 } from './core';
+import { UzTextNode } from './node';
+import { Element } from './elements/element';
+import { UzElement } from './elements/base';
+import { UzRootElement } from './elements/root';
+import { UzImageElement } from './elements/image';
 import {
   eventManager,
   EVENT_NAME_TO_TYPE,
   type EventName,
   type EventHandler,
 } from './events';
+import { clearWindowNodes } from './registry';
 
 export type {
   WindowLevel,
@@ -57,11 +62,12 @@ export interface WindowAttributes {
 
 export class Window {
   private _id: number;
-  private _native: NativeWindow;
+  private _native: CoreWindow;
   private _label: string;
   private _remBase: number = 16;
   private _disposed: boolean = false;
   private _disposables: (() => void)[] = [];
+  private _root: UzRootElement | null = null;
 
   constructor(label: string, attributes: WindowAttributes = {}) {
     const existing = windowsByLabel.get(label);
@@ -76,11 +82,9 @@ export class Window {
     this._id = this._native.id;
 
     if (rootStyles) {
-      const root = core.getRootNodeId(this._id);
+      const root = this.root;
       for (const [key, value] of Object.entries(rootStyles)) {
-        if (value != null) {
-          setNativeProp(this._id, root, key, value);
-        }
+        if (value != null) root.setAttribute(key, value);
       }
     }
 
@@ -276,6 +280,24 @@ export class Window {
     return this._id;
   }
 
+  get root(): UzRootElement {
+    if (!this._root) {
+      this._root = new UzRootElement(this);
+    }
+    return this._root;
+  }
+
+  createElement(type: string): Element {
+    if (type === 'image') {
+      return new UzImageElement(this);
+    }
+    return new UzElement(type, this);
+  }
+
+  createTextNode(text: string): UzTextNode {
+    return new UzTextNode(this, text);
+  }
+
   get isDisposed(): boolean {
     return this._disposed;
   }
@@ -340,11 +362,12 @@ export function disposeWindow(_window: Window): void {
   }
 
   window._disposed = true;
-  eventManager.clearWindowHandlers(window.id);
   for (const cb of window._disposables) {
     cb();
   }
   window._disposables = [];
+  clearWindowNodes(window.id);
+  eventManager.clearWindowHandlers(window.id);
   windowsByLabel.delete(window.label);
   windowsById.delete(window.id);
 }

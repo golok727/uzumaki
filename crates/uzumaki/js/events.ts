@@ -1,4 +1,4 @@
-import type { BaseElement } from './elements/base';
+import type { UzNode } from './node';
 import type { NodeId } from './types';
 
 import core from './core';
@@ -29,8 +29,8 @@ export const enum EventPhase {
 
 export interface UzumakiEvent {
   readonly type: EventType;
-  readonly target: BaseElement | null;
-  currentTarget: BaseElement | null;
+  readonly target: UzNode | null;
+  currentTarget: UzNode | null;
   readonly eventPhase: EventPhase;
   readonly bubbles: boolean;
   readonly defaultPrevented: boolean;
@@ -138,9 +138,9 @@ function isClipboardType(t: EventType): boolean {
   return t === EventType.Copy || t === EventType.Cut || t === EventType.Paste;
 }
 
-function nodeOf(id: NodeId | null): BaseElement | null {
+function nodeOf(windowId: number, id: NodeId | null): UzNode | null {
   if (id == null) return null;
-  return getNode(id) ?? null;
+  return getNode(windowId, id) ?? null;
 }
 
 interface HandlerEntry {
@@ -151,20 +151,37 @@ interface HandlerEntry {
 type NodeHandlers = Map<EventType, HandlerEntry[]>;
 
 export class EventManager {
-  private handlers = new Map<number, NodeHandlers>();
+  // (windowId -> nodeId -> handlers) — node ids are scoped to a window.
+  private handlers = new Map<number, Map<NodeId, NodeHandlers>>();
   private windowHandlers = new Map<number, Map<EventType, HandlerEntry[]>>();
 
+  private nodeBucket(
+    windowId: number,
+    nodeId: NodeId,
+    create: boolean,
+  ): NodeHandlers | undefined {
+    let perWindow = this.handlers.get(windowId);
+    if (!perWindow) {
+      if (!create) return undefined;
+      perWindow = new Map();
+      this.handlers.set(windowId, perWindow);
+    }
+    let typeMap = perWindow.get(nodeId);
+    if (!typeMap && create) {
+      typeMap = new Map();
+      perWindow.set(nodeId, typeMap);
+    }
+    return typeMap;
+  }
+
   addHandler(
+    windowId: number,
     nodeId: NodeId,
     eventType: EventType,
     handler: Function,
     capture = false,
   ): void {
-    let typeMap = this.handlers.get(nodeId);
-    if (!typeMap) {
-      typeMap = new Map();
-      this.handlers.set(nodeId, typeMap);
-    }
+    const typeMap = this.nodeBucket(windowId, nodeId, true)!;
     let entries = typeMap.get(eventType);
     if (!entries) {
       entries = [];
@@ -174,12 +191,13 @@ export class EventManager {
   }
 
   removeHandler(
+    windowId: number,
     nodeId: NodeId,
     eventType: EventType,
     handler: Function,
     capture = false,
   ): void {
-    const typeMap = this.handlers.get(nodeId);
+    const typeMap = this.nodeBucket(windowId, nodeId, false);
     if (!typeMap) return;
     const entries = typeMap.get(eventType);
     if (!entries) return;
@@ -188,46 +206,46 @@ export class EventManager {
     );
     if (idx !== -1) entries.splice(idx, 1);
     if (entries.length === 0) typeMap.delete(eventType);
-    if (typeMap.size === 0) this.handlers.delete(nodeId);
+    if (typeMap.size === 0) {
+      const perWindow = this.handlers.get(windowId);
+      perWindow?.delete(nodeId);
+      if (perWindow && perWindow.size === 0) this.handlers.delete(windowId);
+    }
   }
 
-  clearNode(nodeId: NodeId): void {
-    this.handlers.delete(nodeId);
+  clearNode(windowId: number, nodeId: NodeId): void {
+    const perWindow = this.handlers.get(windowId);
+    if (!perWindow) return;
+    perWindow.delete(nodeId);
+    if (perWindow.size === 0) this.handlers.delete(windowId);
   }
 
-  hasHandlers(nodeId: NodeId): boolean {
-    const typeMap = this.handlers.get(nodeId);
+  hasHandlers(windowId: number, nodeId: NodeId): boolean {
+    const typeMap = this.nodeBucket(windowId, nodeId, false);
     return typeMap != null && typeMap.size > 0;
   }
 
   addHandlerByName(
+    windowId: number,
     nodeId: NodeId,
     eventName: string,
     handler: Function,
     capture = false,
   ): void {
     const t = EVENT_NAME_TO_TYPE[eventName];
-    if (t !== undefined) this.addHandler(nodeId, t, handler, capture);
+    if (t !== undefined) this.addHandler(windowId, nodeId, t, handler, capture);
   }
 
   removeHandlerByName(
+    windowId: number,
     nodeId: NodeId,
     eventName: string,
     handler: Function,
     capture = false,
   ): void {
     const t = EVENT_NAME_TO_TYPE[eventName];
-    if (t !== undefined) this.removeHandler(nodeId, t, handler, capture);
-  }
-
-  clearHandlersByName(nodeId: NodeId, eventName: string): void {
-    const typeMap = this.handlers.get(nodeId);
-    if (!typeMap) return;
-    const t = EVENT_NAME_TO_TYPE[eventName];
-    if (t !== undefined) {
-      typeMap.delete(t);
-      if (typeMap.size === 0) this.handlers.delete(nodeId);
-    }
+    if (t !== undefined)
+      this.removeHandler(windowId, nodeId, t, handler, capture);
   }
 
   addWindowHandler(
@@ -269,6 +287,7 @@ export class EventManager {
 
   clearWindowHandlers(windowId: number): void {
     this.windowHandlers.delete(windowId);
+    this.handlers.delete(windowId);
   }
 
   addWindowHandlerByName(
@@ -293,6 +312,7 @@ export class EventManager {
   }
 
   private fireHandlers(
+    windowId: number,
     nodeId: number,
     type: EventType,
     event: UzumakiEvent,
@@ -301,7 +321,7 @@ export class EventManager {
     let stopped = false;
     let stoppedImmediate = false;
 
-    const typeMap = this.handlers.get(nodeId);
+    const typeMap = this.nodeBucket(windowId, nodeId, false);
     if (!typeMap) return { stopped, stoppedImmediate };
     const entries = typeMap.get(type);
     if (!entries) return { stopped, stoppedImmediate };
@@ -379,7 +399,7 @@ export class EventManager {
     let _prevented = false;
     let _eventPhase: EventPhase = EventPhase.None;
 
-    const targetNode = nodeOf(targetNodeId);
+    const targetNode = nodeOf(windowId, targetNodeId);
 
     const base: UzumakiEvent = {
       type,
@@ -467,16 +487,16 @@ export class EventManager {
     }
 
     for (let i = path.length - 1; i > 0 && !_stopped; i--) {
-      event.currentTarget = nodeOf(path[i]);
-      const res = this.fireHandlers(path[i], type, event, true);
+      event.currentTarget = nodeOf(windowId, path[i]);
+      const res = this.fireHandlers(windowId, path[i], type, event, true);
       if (res.stopped) _stopped = true;
     }
 
     // target
     if (!_stopped) {
       _eventPhase = EventPhase.Target;
-      event.currentTarget = nodeOf(path[0]);
-      const res = this.fireHandlers(path[0], type, event, false);
+      event.currentTarget = nodeOf(windowId, path[0]);
+      const res = this.fireHandlers(windowId, path[0], type, event, false);
       if (res.stopped) _stopped = true;
     }
 
@@ -485,8 +505,8 @@ export class EventManager {
       _eventPhase = EventPhase.Bubble;
 
       for (let i = 1; i < path.length && !_stopped; i++) {
-        event.currentTarget = nodeOf(path[i]);
-        const res = this.fireHandlers(path[i], type, event, false);
+        event.currentTarget = nodeOf(windowId, path[i]);
+        const res = this.fireHandlers(windowId, path[i], type, event, false);
         if (res.stopped) _stopped = true;
       }
 

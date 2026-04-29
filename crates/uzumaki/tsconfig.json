@@ -1,8 +1,8 @@
 {
   "compilerOptions": {
     "target": "ESNext",
-    "lib": ["ESNext", "DOM"],
-    "types": ["deno"],
-    "typeRoots": ["./node_modules/@types"]
+    "lib": ["ESNext"],
+    "types": ["uzumaki-types"],
+    "allowSyntheticDefaultImports": true
   }
 }

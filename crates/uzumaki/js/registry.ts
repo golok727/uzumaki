@@ -1,20 +1,39 @@
-import type { BaseElement } from './elements/base';
+import type { UzNode } from './node';
 import type { NodeId } from './types';
 
-const nodeRegistry = new Map<NodeId, BaseElement>();
+const nodes = new Map<number, Map<NodeId, UzNode>>();
 
-export function registerNode(node: BaseElement): void {
-  nodeRegistry.set(node.id, node);
+function bucketFor(
+  windowId: number,
+  create: boolean,
+): Map<NodeId, UzNode> | undefined {
+  let bucket = nodes.get(windowId);
+  if (!bucket && create) {
+    bucket = new Map();
+    nodes.set(windowId, bucket);
+  }
+  return bucket;
 }
 
-export function unregisterNode(nodeId: NodeId): void {
-  nodeRegistry.delete(nodeId);
+export function registerNode(node: UzNode): void {
+  bucketFor(node.windowId, true)!.set(node.nodeId, node);
 }
 
-export function getNode(nodeId: NodeId): BaseElement | undefined {
-  return nodeRegistry.get(nodeId);
+export function unregisterNode(windowId: number, nodeId: NodeId): void {
+  const bucket = nodes.get(windowId);
+  if (!bucket) return;
+  bucket.delete(nodeId);
+  if (bucket.size === 0) nodes.delete(windowId);
+}
+
+export function getNode(windowId: number, nodeId: NodeId): UzNode | undefined {
+  return nodes.get(windowId)?.get(nodeId);
+}
+
+export function clearWindowNodes(windowId: number): void {
+  nodes.delete(windowId);
 }
 
 export function clearNodeRegistry(): void {
-  nodeRegistry.clear();
+  nodes.clear();
 }
