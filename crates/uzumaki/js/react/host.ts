@@ -125,6 +125,9 @@ export function applyReactProps(
   const oldBuckets = collectProps(instance.type, oldProps);
   const newBuckets = collectProps(instance.type, newProps);
 
+  if (newProps.id !== oldProps.id) {
+    node.id = newProps.id ?? null;
+  }
   updateAttributes(node, oldBuckets.styles, newBuckets.styles);
   updateAttributes(node, oldBuckets.attrs, newBuckets.attrs);
   updateEvents(instance, oldBuckets.events, newBuckets.events);
