@@ -1,4 +1,4 @@
-import type { BaseElement } from './elements/base';
+import type { CoreElement } from './core/element';
 import type { NodeId } from './types';
 
 import core from './core';
@@ -29,8 +29,8 @@ export const enum EventPhase {
 
 export interface UzumakiEvent {
   readonly type: EventType;
-  readonly target: BaseElement | null;
-  currentTarget: BaseElement | null;
+  readonly target: CoreElement | null;
+  currentTarget: CoreElement | null;
   readonly eventPhase: EventPhase;
   readonly bubbles: boolean;
   readonly defaultPrevented: boolean;
@@ -138,7 +138,7 @@ function isClipboardType(t: EventType): boolean {
   return t === EventType.Copy || t === EventType.Cut || t === EventType.Paste;
 }
 
-function nodeOf(id: NodeId | null): BaseElement | null {
+function nodeOf(id: NodeId | null): CoreElement | null {
   if (id == null) return null;
   return getNode(id) ?? null;
 }

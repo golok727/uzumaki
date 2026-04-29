@@ -1,4 +1,5 @@
 import core from '../core';
+import { createNativeElement } from '../core/element';
 import { ListenerEntry } from '../types';
 import {
   assignNativeStyle,
@@ -89,8 +90,7 @@ export class ImageElement extends BaseElement<Record<string, any>> {
   private onError: ((ev: ImageErrorEvent) => void) | undefined;
 
   constructor(window: Window, props: Record<string, any>) {
-    const id = core.createElement(window.id, 'image');
-    super(id, 'image', window);
+    super(createNativeElement(window, 'image'), 'image', window);
     this.parseProps(props);
     this.applyStyles();
     this.applyEvents();

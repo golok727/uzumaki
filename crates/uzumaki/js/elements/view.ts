@@ -1,4 +1,4 @@
-import core from '../core';
+import { createNativeElement } from '../core/element';
 import { ListenerEntry } from '../types';
 import {
   assignNativeStyle,
@@ -11,8 +11,7 @@ import { BaseElement } from './base';
 
 export class ViewElement extends BaseElement<Record<string, any>> {
   constructor(window: Window, type: string, props: Record<string, any>) {
-    const id = core.createElement(window.id, type);
-    super(id, type, window);
+    super(createNativeElement(window, type), type, window);
     this.parseProps(props);
     this.applyStyles();
     this.applyEvents();

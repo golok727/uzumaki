@@ -1,5 +1,5 @@
 import { INPUT_ATTR_NAMES } from '../constants';
-import core, { clearNativeProp, setNativeProp } from '../core';
+import { createNativeElement } from '../core/element';
 import { eventManager } from '../events';
 import { ListenerEntry } from '../types';
 import {
@@ -17,8 +17,7 @@ export class InputElement extends BaseElement<Record<string, any>> {
   private onChangeTextListener: ((ev: any) => void) | null = null;
 
   constructor(window: Window, props: Record<string, any>) {
-    const id = core.createElement(window.id, 'input');
-    super(id, 'input', window);
+    super(createNativeElement(window, 'input'), 'input', window);
     this.parseProps(props);
     this.applyStyles();
     this.applyInputAttrs();
@@ -58,7 +57,7 @@ export class InputElement extends BaseElement<Record<string, any>> {
 
   private applyInputAttrs(): void {
     for (const [key, val] of Object.entries(this.inputAttrs)) {
-      setNativeProp(this.windowId, this.id, key, val);
+      this.setAttribute(key, val);
     }
   }
 
@@ -71,7 +70,7 @@ export class InputElement extends BaseElement<Record<string, any>> {
       this.onChangeText?.(ev.value);
     };
     eventManager.addHandlerByName(this.id, 'input', this.onChangeTextListener);
-    core.setBoolAttribute(this.windowId, this.id, 'interactive', true);
+    this.setAttribute('interactive', true);
   }
 
   private unbindOnChangeText(): void {
@@ -131,12 +130,12 @@ export class InputElement extends BaseElement<Record<string, any>> {
 
     for (const [key, val] of Object.entries(newInputAttrs)) {
       if (this.inputAttrs[key] !== val) {
-        setNativeProp(this.windowId, this.id, key, val);
+        this.setAttribute(key, val);
       }
     }
     for (const key of Object.keys(this.inputAttrs)) {
       if (!(key in newInputAttrs)) {
-        clearNativeProp(this.windowId, this.id, key);
+        this.removeAttribute(key);
       }
     }
     this.inputAttrs = newInputAttrs;

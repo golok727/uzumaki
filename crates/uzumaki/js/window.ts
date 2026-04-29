@@ -1,4 +1,10 @@
-import core, { setNativeProp, type NativeWindow } from './core';
+import core, { type NativeWindow } from './core';
+import {
+  CoreElement,
+  createNativeElement,
+  createNativeTextNode,
+  getNativeRootElement,
+} from './core/element';
 import {
   eventManager,
   EVENT_NAME_TO_TYPE,
@@ -26,6 +32,7 @@ export class Window {
   private _remBase: number = 16;
   private _disposed: boolean = false;
   private _disposables: (() => void)[] = [];
+  private _root: CoreElement | null = null;
 
   constructor(
     label: string,
@@ -48,9 +55,9 @@ export class Window {
     this._native = core.createWindow({ width, height, title });
     this._id = this._native.id;
     if (rootStyles) {
-      const root = core.getRootNodeId(this._id);
+      const root = this.root;
       for (const [key, value] of Object.entries(rootStyles)) {
-        if (value != null) setNativeProp(this._id, root, key, value);
+        if (value != null) root.setAttribute(key, value);
       }
     }
     windowsByLabel.set(label, this);
@@ -99,6 +106,21 @@ export class Window {
 
   get id(): number {
     return this._id;
+  }
+
+  get root(): CoreElement {
+    if (!this._root) {
+      this._root = new CoreElement(this, getNativeRootElement(this), '#root');
+    }
+    return this._root;
+  }
+
+  createElement(type: string): CoreElement {
+    return new CoreElement(this, createNativeElement(this, type), type);
+  }
+
+  createTextNode(text: string): CoreElement {
+    return new CoreElement(this, createNativeTextNode(this, text), '#text');
   }
 
   get isDisposed(): boolean {

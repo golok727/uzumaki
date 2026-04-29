@@ -2,6 +2,7 @@ import { eventManager, EventType } from './events';
 import { disposeWindow, Window } from './window';
 
 export { Window } from './window';
+export { CoreElement } from './core/element';
 export { Clipboard } from './clipboard';
 export { eventManager, EventType } from './events';
 export type {

@@ -10,6 +10,27 @@ export interface NativeWindow {
   remBase: number;
 }
 
+export interface NativeElement {
+  readonly id: NodeId;
+  readonly windowId: number;
+  readonly nodeType: number;
+  readonly nodeName: string;
+  readonly parentNode: NativeElement | null;
+  readonly firstChild: NativeElement | null;
+  readonly lastChild: NativeElement | null;
+  readonly nextSibling: NativeElement | null;
+  readonly previousSibling: NativeElement | null;
+  textContent: string | null;
+  appendChild(child: NativeElement): void;
+  insertBefore(child: NativeElement, before: NativeElement | null): void;
+  removeChild(child: NativeElement): void;
+  setStrAttribute(name: string, value: string): void;
+  setNumberAttribute(name: string, value: number): void;
+  setBoolAttribute(name: string, value: boolean): void;
+  removeAttribute(name: string): void;
+  getAttribute(name: string): unknown;
+}
+
 interface Core {
   createWindow(options: {
     width: number;
@@ -18,8 +39,11 @@ interface Core {
   }): NativeWindow;
   requestQuit(): void;
   requestRedraw(windowId: number): void;
+  getRootElement(windowId: number): NativeElement;
   getRootNodeId(windowId: number): NodeId;
+  createCoreElement(windowId: number, elementType: string): NativeElement;
   createElement(windowId: number, elementType: string): NodeId;
+  createCoreTextNode(windowId: number, text: string): NativeElement;
   createTextNode(windowId: number, text: string): NodeId;
   setEncodedImageData(
     windowId: number,

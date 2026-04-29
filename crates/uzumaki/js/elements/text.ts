@@ -1,4 +1,4 @@
-import core from '../core';
+import { createNativeTextNode } from '../core/element';
 import { ListenerEntry } from '../types';
 import {
   assignNativeStyle,
@@ -19,8 +19,7 @@ export class TextElement extends BaseElement<Record<string, any>> {
     props: Record<string, any>,
     public getTextContent: (children: any) => string,
   ) {
-    const id = core.createTextNode(window.id, text);
-    super(id, type, window);
+    super(createNativeTextNode(window, text), type, window);
     this.textContent = text;
     this.parseProps(props);
     this.applyStyles();
@@ -52,7 +51,7 @@ export class TextElement extends BaseElement<Record<string, any>> {
   setText(text: string): void {
     if (this.textContent !== text) {
       this.textContent = text;
-      core.setText(this.windowId, this.id, text);
+      this.native.textContent = text;
     }
   }
 

@@ -1,30 +1,20 @@
-import core, { clearNativeProp, setNativeProp } from '../core';
+import type { NativeElement } from '../core';
+import { CoreElement } from '../core/element';
 import { eventManager } from '../events';
-import { registerNode, unregisterNode } from '../registry';
 import { ListenerEntry } from '../types';
 import { Window } from '../window';
 
 export abstract class BaseElement<
   TProps extends Record<string, any> = Record<string, any>,
-> {
-  readonly id: any;
-  readonly type: string;
-  readonly window: Window;
-  readonly windowId: number;
+> extends CoreElement {
   /** User-supplied string id from the `id` prop, or null. */
   elementId: string | null = null;
   styles: Record<string, any> = {};
   /** Keyed by stable event identity (name + phase). */
   eventListeners: Map<string, ListenerEntry> = new Map();
-  children: BaseElement[] = [];
-  parent: BaseElement | null = null;
 
-  constructor(id: any, type: string, window: Window) {
-    this.id = id;
-    this.type = type;
-    this.window = window;
-    this.windowId = window.id;
-    registerNode(this);
+  constructor(native: NativeElement, type: string, window: Window) {
+    super(window, native, type);
   }
 
   setElementIdProp(value: any): void {
@@ -36,13 +26,13 @@ export abstract class BaseElement<
 
   applyStyles(): void {
     for (const [key, val] of Object.entries(this.styles)) {
-      setNativeProp(this.windowId, this.id, key, val);
+      this.setAttribute(key, val);
     }
   }
 
   applyEvents(): void {
     if (this.eventListeners.size > 0) {
-      core.setBoolAttribute(this.windowId, this.id, 'interactive', true);
+      this.setAttribute('interactive', true);
       for (const entry of this.eventListeners.values()) {
         eventManager.addHandlerByName(
           this.id,
@@ -57,12 +47,12 @@ export abstract class BaseElement<
   updateStyles(newStyles: Record<string, any>): void {
     for (const [key, val] of Object.entries(newStyles)) {
       if (this.styles[key] !== val) {
-        setNativeProp(this.windowId, this.id, key, val);
+        this.setAttribute(key, val);
       }
     }
     for (const key of Object.keys(this.styles)) {
       if (!(key in newStyles)) {
-        clearNativeProp(this.windowId, this.id, key);
+        this.removeAttribute(key);
       }
     }
     this.styles = newStyles;
@@ -103,20 +93,15 @@ export abstract class BaseElement<
     }
 
     if (newListeners.size > 0 && this.eventListeners.size === 0) {
-      core.setBoolAttribute(this.windowId, this.id, 'interactive', true);
+      this.setAttribute('interactive', true);
     } else if (newListeners.size === 0 && this.eventListeners.size > 0) {
-      core.setBoolAttribute(this.windowId, this.id, 'interactive', false);
+      this.setAttribute('interactive', false);
     }
     this.eventListeners = newListeners;
   }
 
   destroy(): void {
-    for (const child of this.children) {
-      child.destroy();
-    }
-    eventManager.clearNode(this.id);
-    unregisterNode(this.id);
     this.eventListeners.clear();
-    this.children = [];
+    super.destroy();
   }
 }

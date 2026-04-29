@@ -1,5 +1,5 @@
 import { CHECKBOX_ATTR_NAMES } from '../constants';
-import core, { clearNativeProp, setNativeProp } from '../core';
+import { createNativeElement } from '../core/element';
 import { eventManager } from '../events';
 import { ListenerEntry } from '../types';
 import {
@@ -17,8 +17,7 @@ export class CheckboxElement extends BaseElement<Record<string, any>> {
   private onChangeListener: ((ev: any) => void) | null = null;
 
   constructor(window: Window, props: Record<string, any>) {
-    const id = core.createElement(window.id, 'checkbox');
-    super(id, 'checkbox', window);
+    super(createNativeElement(window, 'checkbox'), 'checkbox', window);
     this.parseProps(props);
     this.applyStyles();
     this.applyCheckboxAttrs();
@@ -58,7 +57,7 @@ export class CheckboxElement extends BaseElement<Record<string, any>> {
 
   private applyCheckboxAttrs(): void {
     for (const [key, val] of Object.entries(this.checkboxAttrs)) {
-      setNativeProp(this.windowId, this.id, key, val);
+      this.setAttribute(key, val);
     }
   }
 
@@ -71,7 +70,7 @@ export class CheckboxElement extends BaseElement<Record<string, any>> {
       this.onChange?.(ev.value === 'true');
     };
     eventManager.addHandlerByName(this.id, 'input', this.onChangeListener);
-    core.setBoolAttribute(this.windowId, this.id, 'interactive', true);
+    this.setAttribute('interactive', true);
   }
 
   private unbindOnChange(): void {
@@ -127,12 +126,12 @@ export class CheckboxElement extends BaseElement<Record<string, any>> {
 
     for (const [key, val] of Object.entries(newCheckboxAttrs)) {
       if (this.checkboxAttrs[key] !== val) {
-        setNativeProp(this.windowId, this.id, key, val);
+        this.setAttribute(key, val);
       }
     }
     for (const key of Object.keys(this.checkboxAttrs)) {
       if (!(key in newCheckboxAttrs)) {
-        clearNativeProp(this.windowId, this.id, key);
+        this.removeAttribute(key);
       }
     }
     this.checkboxAttrs = newCheckboxAttrs;

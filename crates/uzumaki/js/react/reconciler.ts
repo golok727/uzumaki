@@ -12,14 +12,14 @@ import { TextElement } from '../elements/text';
 import type { JSX } from './jsx/runtime';
 
 import core from '../core';
+import { CoreElement } from '../core/element';
 import { eventManager } from '../events';
 import { clearNodeRegistry } from '../registry';
-import type { NodeId } from '../types';
 import { Window } from '../window';
 
 type Container = {
   window: Window;
-  rootNodeId: NodeId;
+  rootNode: CoreElement;
 };
 
 function getWindowId(container: Container): number {
@@ -147,10 +147,7 @@ const reconciler = ReactReconciler<
   },
 
   appendInitialChild(parent, child) {
-    parent.children.push(child);
-    child.parent = parent;
-    if (parent.window.isDisposed) return;
-    core.appendChild(parent.windowId, parent.id, child.id);
+    parent.appendChild(child);
   },
 
   finalizeInitialChildren() {
@@ -158,55 +155,35 @@ const reconciler = ReactReconciler<
   },
 
   appendChildToContainer(container, child) {
-    child.parent = null;
     if (container.window.isDisposed) return;
-    const windowId = getWindowId(container);
-    core.appendChild(windowId, container.rootNodeId, child.id);
+    container.rootNode.appendChild(child);
   },
 
   appendChild(parent, child) {
-    parent.children.push(child);
-    child.parent = parent;
-    if (parent.window.isDisposed) return;
-    core.appendChild(parent.windowId, parent.id, child.id);
+    parent.appendChild(child);
   },
 
   insertBefore(parent, child, before) {
-    const idx = parent.children.indexOf(before);
-    if (idx === -1) {
-      parent.children.push(child);
-    } else {
-      parent.children.splice(idx, 0, child);
-    }
-    child.parent = parent;
-    if (parent.window.isDisposed) return;
-    core.insertBefore(parent.windowId, parent.id, child.id, before.id);
+    parent.insertBefore(child, before);
   },
 
   insertInContainerBefore(container, child, before) {
-    child.parent = null;
     if (container.window.isDisposed) return;
-    const windowId = getWindowId(container);
-    core.insertBefore(windowId, container.rootNodeId, child.id, before.id);
+    container.rootNode.insertBefore(child, before);
   },
 
   removeChild(parent, child) {
-    const idx = parent.children.indexOf(child);
-    if (idx !== -1) parent.children.splice(idx, 1);
-    child.parent = null;
-    if (!parent.window.isDisposed) {
-      core.removeChild(parent.windowId, parent.id, child.id);
-    }
     child.destroy();
+    if (!parent.window.isDisposed) {
+      parent.removeChild(child);
+    }
   },
 
   removeChildFromContainer(container, child) {
-    child.parent = null;
-    if (!container.window.isDisposed) {
-      const windowId = getWindowId(container);
-      core.removeChild(windowId, container.rootNodeId, child.id);
-    }
     child.destroy();
+    if (!container.window.isDisposed) {
+      container.rootNode.removeChild(child);
+    }
   },
 
   commitUpdate(instance, _type, oldProps, newProps, _internalHandle) {
@@ -224,23 +201,23 @@ const reconciler = ReactReconciler<
   },
 
   hideInstance(instance) {
-    core.setBoolAttribute(instance.windowId, instance.id, 'visibility', false);
+    instance.setAttribute('visibility', false);
   },
 
   unhideInstance(instance) {
-    core.setBoolAttribute(instance.windowId, instance.id, 'visibility', true);
+    instance.setAttribute('visibility', true);
   },
 
   hideTextInstance(instance) {
-    core.setBoolAttribute(instance.windowId, instance.id, 'visibility', false);
+    instance.setAttribute('visibility', false);
   },
 
   unhideTextInstance(instance) {
-    core.setBoolAttribute(instance.windowId, instance.id, 'visibility', true);
+    instance.setAttribute('visibility', true);
   },
 
   resetTextContent(instance) {
-    core.setText(instance.windowId, instance.id, '');
+    instance.textContent = '';
   },
 
   clearContainer(container) {
@@ -298,8 +275,7 @@ const reconciler = ReactReconciler<
 const roots = new Map<string, { root: any; container: Container }>();
 
 export function render(window: Window, element: JSX.Element) {
-  const rootNodeId = core.getRootNodeId(window.id);
-  const container: Container = { window, rootNodeId };
+  const container: Container = { window, rootNode: window.root };
 
   const root = reconciler.createContainer(
     container,
