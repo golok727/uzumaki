@@ -24,7 +24,6 @@ export interface WindowAttributes {
   maximized?: boolean;
   minimized?: boolean;
   fullscreen?: boolean;
-  alwaysOnTop?: boolean;
   windowLevel?: WindowLevel;
   minWidth?: number;
   minHeight?: number;

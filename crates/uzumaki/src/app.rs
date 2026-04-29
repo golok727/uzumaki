@@ -530,7 +530,6 @@ impl ApplicationHandler<UserEvent> for Application {
                 let attributes = options.to_window_attributes();
                 let is_visible = attributes.visible;
                 let transparent = attributes.transparent;
-                let minimized = options.minimized();
 
                 let Ok(winit_window) = event_loop.create_window(attributes.with_visible(false))
                 else {
@@ -546,9 +545,7 @@ impl ApplicationHandler<UserEvent> for Application {
                 match window::Window::new(&state.gpu, winit_window, transparent) {
                     Ok(handle) => {
                         let created = if let Some(window) = state.windows.get_mut(&id) {
-                            if minimized {
-                                handle.winit_window.set_minimized(true);
-                            }
+                            options.apply_post_create_state(&handle.winit_window);
                             handle.winit_window.set_visible(is_visible);
                             window.handle = Some(handle);
                             true

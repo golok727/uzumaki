@@ -116,7 +116,7 @@ export class Window {
   }
 
   setAlwaysOnTop(alwaysOnTop: boolean): void {
-    this._native.setAlwaysOnTop(alwaysOnTop);
+    this.setWindowLevel(alwaysOnTop ? 'alwaysOnTop' : 'normal');
   }
 
   setWindowLevel(windowLevel: WindowLevel): void {
@@ -204,7 +204,7 @@ export class Window {
   }
 
   get alwaysOnTop(): boolean {
-    return this._native.alwaysOnTop ?? false;
+    return this.windowLevel === 'alwaysOnTop';
   }
 
   get windowLevel(): WindowLevel {

@@ -49,7 +49,6 @@ render(window, <App />);
 | `maximized`              | `boolean`                                       | Whether the window starts maximized                 |
 | `minimized`              | `boolean`                                       | Whether the window is minimized after creation      |
 | `fullscreen`             | `boolean`                                       | Whether the window starts in borderless fullscreen  |
-| `alwaysOnTop`            | `boolean`                                       | Convenience alias for `windowLevel: 'alwaysOnTop'`  |
 | `windowLevel`            | `'normal' \| 'alwaysOnTop' \| 'alwaysOnBottom'` | Requested z-level hint                              |
 | `minWidth` / `minHeight` | `number`                                        | Minimum size when both are provided                 |
 | `maxWidth` / `maxHeight` | `number`                                        | Maximum size when both are provided                 |
@@ -119,4 +118,4 @@ window.maximizable;
 
 - Sizes and positions use logical pixels.
 - `fullscreen: true` uses borderless fullscreen.
-- `windowLevel`, `alwaysOnTop`, `contentProtected`, `closable`, `minimizable`, `maximizable`, `active`, and runtime transparency are best-effort platform hints. The underlying OS or window manager may ignore them.
+- `windowLevel`, `contentProtected`, `closable`, `minimizable`, `maximizable`, `active`, and runtime transparency are best-effort platform hints. The underlying OS or window manager may ignore them.

@@ -28,8 +28,6 @@ export interface CoreWindow {
   setMinimized(minimized: boolean): boolean;
   readonly fullscreen: boolean | null;
   setFullscreen(fullscreen: boolean): boolean;
-  readonly alwaysOnTop: boolean | null;
-  setAlwaysOnTop(alwaysOnTop: boolean): boolean;
   readonly windowLevel: WindowLevel | null;
   setWindowLevel(level: WindowLevel): boolean;
   setMinSize(width: number, height: number): boolean;

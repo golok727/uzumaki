@@ -29,7 +29,6 @@ pub(crate) struct WindowOptions {
     maximized: bool,
     minimized: bool,
     fullscreen: bool,
-    always_on_top: bool,
     window_level: Option<UzWindowLevel>,
     min_width: Option<f64>,
     min_height: Option<f64>,
@@ -148,7 +147,6 @@ impl Default for WindowOptions {
             maximized: false,
             minimized: false,
             fullscreen: false,
-            always_on_top: false,
             window_level: None,
             min_width: None,
             min_height: None,
@@ -170,16 +168,10 @@ impl WindowOptions {
         self.transparent
     }
 
-    pub(crate) fn minimized(&self) -> bool {
-        self.minimized
-    }
-
     pub(crate) fn window_level(&self) -> WindowLevel {
-        match (self.window_level, self.always_on_top) {
-            (Some(level), _) => level.to_winit(),
-            (None, true) => WindowLevel::AlwaysOnTop,
-            (None, false) => WindowLevel::Normal,
-        }
+        self.window_level
+            .map(UzWindowLevel::to_winit)
+            .unwrap_or(WindowLevel::Normal)
     }
 
     pub(crate) fn enabled_buttons(&self) -> WindowButtons {
@@ -223,6 +215,12 @@ impl WindowOptions {
         }
         attributes
     }
+
+    pub(crate) fn apply_post_create_state(&self, window: &WinitWindow) {
+        if self.minimized {
+            window.set_minimized(true);
+        }
+    }
 }
 
 fn try_logical_size(width: Option<f64>, height: Option<f64>) -> Option<LogicalSize<f64>> {
@@ -248,14 +246,6 @@ fn window_buttons(closable: bool, minimizable: bool, maximizable: bool) -> Windo
         buttons |= WindowButtons::MAXIMIZE;
     }
     buttons
-}
-
-fn set_window_button(buttons: &mut WindowButtons, button: WindowButtons, enabled: bool) {
-    if enabled {
-        *buttons |= button;
-    } else {
-        *buttons &= !button;
-    }
 }
 
 #[op2]
@@ -443,7 +433,11 @@ impl CoreWindow {
         enabled: bool,
     ) -> bool {
         self.with_window_entry_mut(state, |entry| {
-            set_window_button(&mut entry.enabled_buttons, button, enabled);
+            if enabled {
+                entry.enabled_buttons |= button;
+            } else {
+                entry.enabled_buttons &= !button;
+            }
             if let Some(handle) = entry.handle.as_ref() {
                 handle
                     .winit_window
@@ -589,23 +583,6 @@ impl CoreWindow {
             let target = fullscreen.then_some(Fullscreen::Borderless(None));
             window.set_fullscreen(target);
         })
-    }
-
-    #[getter]
-    pub fn alwaysOnTop(&self, state: &OpState) -> Option<bool> {
-        self.with_window_entry(state, |entry| {
-            entry.window_level == WindowLevel::AlwaysOnTop
-        })
-    }
-
-    #[fast]
-    pub fn setAlwaysOnTop(&self, state: &OpState, always_on_top: bool) -> bool {
-        let level = if always_on_top {
-            WindowLevel::AlwaysOnTop
-        } else {
-            WindowLevel::Normal
-        };
-        self.set_window_level_state(state, level)
     }
 
     #[getter]
@@ -857,28 +834,16 @@ mod tests {
     }
 
     #[test]
-    fn always_on_top_maps_to_window_level_when_no_explicit_level() {
+    fn explicit_window_level_maps_to_window_attributes() {
         let mut options = base_options();
-        options.always_on_top = true;
-
-        assert_eq!(
-            options.window_level(),
-            winit::window::WindowLevel::AlwaysOnTop
-        );
-        assert_eq!(
-            options.to_window_attributes().window_level,
-            winit::window::WindowLevel::AlwaysOnTop
-        );
-    }
-
-    #[test]
-    fn explicit_window_level_wins_over_always_on_top() {
-        let mut options = base_options();
-        options.always_on_top = true;
         options.window_level = Some(super::UzWindowLevel::AlwaysOnBottom);
 
         assert_eq!(
             options.window_level(),
+            winit::window::WindowLevel::AlwaysOnBottom
+        );
+        assert_eq!(
+            options.to_window_attributes().window_level,
             winit::window::WindowLevel::AlwaysOnBottom
         );
     }
@@ -903,6 +868,6 @@ mod tests {
         let mut options = base_options();
         options.minimized = true;
 
-        assert!(options.minimized());
+        assert!(options.minimized);
     }
 }
