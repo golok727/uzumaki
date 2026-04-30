@@ -6,4 +6,5 @@ export type Tab =
   | 'events'
   | 'issues'
   | 'images'
-  | 'timer';
+  | 'timer'
+  | 'shiki';

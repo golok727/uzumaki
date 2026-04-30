@@ -11,6 +11,7 @@ import { EventsPage } from './pages/eventsPage';
 import { IssuesPage } from './pages/issuesPage';
 import { ImagesPage } from './pages/imagesPage';
 import { TimerPage } from './pages/timerPage';
+import { ShikiPage } from './pages/codeHighlight';
 
 export function App() {
   const [activeTab, setActiveTab] = useState<Tab>('dashboard');
@@ -25,6 +26,7 @@ export function App() {
     issues: <IssuesPage />,
     images: <ImagesPage />,
     timer: <TimerPage />,
+    shiki: <ShikiPage />,
   }[activeTab];
 
   return (

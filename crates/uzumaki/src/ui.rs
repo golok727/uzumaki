@@ -778,7 +778,11 @@ impl UIState {
 #[cfg(test)]
 mod tests {
     use super::UIState;
-    use crate::{cursor::UzCursorIcon, style::Bounds};
+    use crate::{
+        cursor::UzCursorIcon,
+        style::{Bounds, Length, Size, UzStyle},
+        text::TextRenderer,
+    };
     use std::sync::{
         Arc,
         atomic::{AtomicUsize, Ordering},
@@ -828,6 +832,40 @@ mod tests {
         dom.nodes[parent].style.cursor = Some(UzCursorIcon::Pointer);
 
         assert_eq!(dom.resolve_cursor(child), UzCursorIcon::Pointer);
+    }
+
+    #[test]
+    fn view_default_stacks_child_views_vertically() {
+        let mut dom = UIState::new();
+        let mut renderer = TextRenderer::new();
+
+        let mut parent_style = UzStyle::default_for_element("view");
+        parent_style.size = Size {
+            width: Length::Px(100.0),
+            height: Length::Px(100.0),
+        };
+
+        let mut child_style = UzStyle::default_for_element("view");
+        child_style.size = Size {
+            width: Length::Px(20.0),
+            height: Length::Px(10.0),
+        };
+
+        let parent = dom.create_view(parent_style);
+        let first = dom.create_view(child_style.clone());
+        let second = dom.create_view(child_style);
+
+        dom.set_root(parent);
+        dom.append_child(parent, first);
+        dom.append_child(parent, second);
+        dom.compute_layout(100.0, 100.0, &mut renderer);
+
+        let first_layout = dom.taffy.layout(dom.nodes[first].taffy_node).unwrap();
+        let second_layout = dom.taffy.layout(dom.nodes[second].taffy_node).unwrap();
+
+        assert_eq!(first_layout.location.y, 0.0);
+        assert_eq!(second_layout.location.y, first_layout.size.height);
+        assert_eq!(second_layout.location.x, 0.0);
     }
 
     #[test]

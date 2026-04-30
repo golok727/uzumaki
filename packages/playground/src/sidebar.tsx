@@ -11,6 +11,7 @@ const TABS: { id: Tab; label: string; icon: string }[] = [
   { id: 'timer', label: 'Timers', icon: 'timer' },
   { id: 'issues', label: 'GitHub Issues', icon: 'circle-dot' },
   { id: 'images', label: 'Images', icon: 'image' },
+  { id: 'shiki', label: 'Code Highlight', icon: 'brackets' },
 ];
 
 export function Sidebar({

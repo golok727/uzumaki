@@ -62,6 +62,9 @@ importers:
       react:
         specifier: ^19.2.4
         version: 19.2.4
+      shiki:
+        specifier: ^4.0.2
+        version: 4.0.2
       typescript:
         specifier: ^5
         version: 5.9.3

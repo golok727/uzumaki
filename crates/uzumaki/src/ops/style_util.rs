@@ -379,6 +379,13 @@ fn set_style_str(
             node.style.cursor = cursor::UzCursorIcon::parse(value);
             StyleEffect::Applied
         }
+        StyleProp::FontWeight => {
+            if let Some(weight) = parse_font_weight_str(value) {
+                set_font_weight(node, weight)
+            } else {
+                clear_style_prop(node, prop, variant)
+            }
+        }
         StyleProp::Visibility => set_style_number(
             node,
             prop,
@@ -453,6 +460,13 @@ fn set_variant_style_str(
             get_or_init_variant_style(node, variant).cursor = cursor::UzCursorIcon::parse(value);
             StyleEffect::Applied
         }
+        StyleProp::FontWeight => {
+            if let Some(weight) = parse_font_weight_str(value) {
+                set_variant_font_weight(node, variant, weight)
+            } else {
+                clear_style_prop(node, prop, variant)
+            }
+        }
         StyleProp::Visibility => set_variant_number(
             node,
             prop,
@@ -510,11 +524,7 @@ fn set_style_number(
         | StyleProp::Display
         | StyleProp::TextWrap
         | StyleProp::WordBreak
-        | StyleProp::Position => {
-            set_enum_style_prop(&mut node.style, prop, value as i32);
-            remember_inherited_enum(node, prop);
-            StyleEffect::AppliedNeedsSync
-        }
+        | StyleProp::Position => StyleEffect::Ignored,
         StyleProp::Visibility => {
             node.style.visibility = if value > 0.5 {
                 Visibility::Visible
@@ -522,6 +532,13 @@ fn set_style_number(
                 Visibility::Hidden
             };
             StyleEffect::AppliedNeedsSync
+        }
+        StyleProp::FontWeight => {
+            if let Some(weight) = parse_font_weight_number(value) {
+                set_font_weight(node, weight)
+            } else {
+                StyleEffect::Ignored
+            }
         }
         _ => set_f32_style_prop(node, prop, value),
     }
@@ -649,12 +666,7 @@ fn set_variant_number(
         | StyleProp::Display
         | StyleProp::TextWrap
         | StyleProp::WordBreak
-        | StyleProp::Position => {
-            if set_variant_enum(node, prop, variant, value as i32) {
-                return StyleEffect::Applied;
-            }
-            return StyleEffect::Ignored;
-        }
+        | StyleProp::Position => return StyleEffect::Ignored,
         _ => {}
     }
 
@@ -669,6 +681,12 @@ fn set_variant_number(
         }
         StyleProp::TextSelect => {
             r.text_selectable = Some((value > 0.5).into());
+        }
+        StyleProp::FontWeight => {
+            let Some(weight) = parse_font_weight_number(value) else {
+                return StyleEffect::Ignored;
+            };
+            r.text.font_weight = Some(weight);
         }
         StyleProp::TranslateX => r.transform.translate_x = Some(value),
         StyleProp::TranslateY => r.transform.translate_y = Some(value),
@@ -726,7 +744,6 @@ fn set_variant_number(
         StyleProp::FlexGrow => r.flex_grow = Some(value),
         StyleProp::FlexShrink => r.flex_shrink = Some(value),
         StyleProp::FontSize => r.text.font_size = Some(value),
-        StyleProp::FontWeight => {}
         StyleProp::Rounded => {
             r.corner_radii = CornersRefinement {
                 top_left: Some(value),
@@ -773,68 +790,6 @@ fn set_variant_number(
     StyleEffect::Applied
 }
 
-fn set_variant_enum(node: &mut Node, prop: StyleProp, variant: StyleVariant, value: i32) -> bool {
-    let r = get_or_init_variant_style(node, variant);
-    match prop {
-        StyleProp::FlexDir => {
-            r.flex_direction = Some(match value {
-                0 => FlexDirection::Row,
-                1 => FlexDirection::Column,
-                2 => FlexDirection::RowReverse,
-                3 => FlexDirection::ColumnReverse,
-                _ => FlexDirection::Row,
-            });
-        }
-        StyleProp::Items => {
-            r.align_items = Some(match value {
-                0 => AlignItems::FlexStart,
-                1 => AlignItems::FlexEnd,
-                2 => AlignItems::Center,
-                3 => AlignItems::Stretch,
-                4 => AlignItems::Baseline,
-                _ => AlignItems::Stretch,
-            });
-        }
-        StyleProp::Justify => {
-            r.justify_content = Some(match value {
-                0 => JustifyContent::FlexStart,
-                1 => JustifyContent::FlexEnd,
-                2 => JustifyContent::Center,
-                3 => JustifyContent::SpaceBetween,
-                4 => JustifyContent::SpaceAround,
-                5 => JustifyContent::SpaceEvenly,
-                _ => JustifyContent::FlexStart,
-            });
-        }
-        StyleProp::Display => {
-            r.display = Some(match value {
-                0 => Display::None,
-                1 => Display::Flex,
-                2 => Display::Block,
-                _ => Display::Flex,
-            });
-        }
-        StyleProp::TextWrap => set_text_wrap_refinement(r, value),
-        StyleProp::WordBreak => {
-            r.text.word_break = Some(match value {
-                0 => WordBreak::Normal,
-                1 => WordBreak::BreakAll,
-                2 => WordBreak::KeepAll,
-                _ => WordBreak::Normal,
-            });
-        }
-        StyleProp::Position => {
-            r.position = Some(match value {
-                0 => Position::Relative,
-                1 => Position::Absolute,
-                _ => Position::Relative,
-            });
-        }
-        _ => return false,
-    }
-    true
-}
-
 fn set_variant_enum_from_str(
     node: &mut Node,
     prop: StyleProp,
@@ -842,57 +797,72 @@ fn set_variant_enum_from_str(
     value: &str,
 ) -> bool {
     let value = value.trim();
-    let number = match prop {
-        StyleProp::FlexDir => match value {
-            "row" => 0,
-            "col" | "column" => 1,
-            "row-reverse" => 2,
-            "col-reverse" | "column-reverse" => 3,
-            _ => return false,
-        },
-        StyleProp::Items => match value {
-            "flex-start" | "start" => 0,
-            "flex-end" | "end" => 1,
-            "center" => 2,
-            "stretch" => 3,
-            "baseline" => 4,
-            _ => return false,
-        },
-        StyleProp::Justify => match value {
-            "flex-start" | "start" => 0,
-            "flex-end" | "end" => 1,
-            "center" => 2,
-            "space-between" | "between" => 3,
-            "space-around" | "around" => 4,
-            "space-evenly" | "evenly" => 5,
-            _ => return false,
-        },
-        StyleProp::Display => match value {
-            "none" => 0,
-            "flex" => 1,
-            "block" => 2,
-            _ => return false,
-        },
-        StyleProp::TextWrap => match text_wrap_value(value) {
-            Some(v) => v,
-            None => return false,
-        },
-        StyleProp::WordBreak => match value {
-            "normal" => 0,
-            "break-all" => 1,
-            "keep-all" => 2,
-            _ => return false,
-        },
-        StyleProp::Position => match value {
-            "relative" => 0,
-            "absolute" => 1,
-            _ => return false,
-        },
+    let r = get_or_init_variant_style(node, variant);
+    match prop {
+        StyleProp::FlexDir => {
+            r.flex_direction = Some(match value {
+                "row" => FlexDirection::Row,
+                "col" | "column" => FlexDirection::Column,
+                "row-reverse" => FlexDirection::RowReverse,
+                "col-reverse" | "column-reverse" => FlexDirection::ColumnReverse,
+                _ => return false,
+            });
+        }
+        StyleProp::Items => {
+            r.align_items = Some(match value {
+                "flex-start" | "start" => AlignItems::FlexStart,
+                "flex-end" | "end" => AlignItems::FlexEnd,
+                "center" => AlignItems::Center,
+                "stretch" => AlignItems::Stretch,
+                "baseline" => AlignItems::Baseline,
+                _ => return false,
+            });
+        }
+        StyleProp::Justify => {
+            r.justify_content = Some(match value {
+                "flex-start" | "start" => JustifyContent::FlexStart,
+                "flex-end" | "end" => JustifyContent::FlexEnd,
+                "center" => JustifyContent::Center,
+                "space-between" | "between" => JustifyContent::SpaceBetween,
+                "space-around" | "around" => JustifyContent::SpaceAround,
+                "space-evenly" | "evenly" => JustifyContent::SpaceEvenly,
+                _ => return false,
+            });
+        }
+        StyleProp::Display => {
+            r.display = Some(match value {
+                "none" => Display::None,
+                "flex" => Display::Flex,
+                "block" => Display::Block,
+                "inline" => Display::Inline,
+                _ => return false,
+            });
+        }
+        StyleProp::TextWrap => {
+            let Some(value) = text_wrap_value(value) else {
+                return false;
+            };
+            set_text_wrap_refinement(r, value);
+        }
+        StyleProp::WordBreak => {
+            r.text.word_break = Some(match value {
+                "normal" => WordBreak::Normal,
+                "break-all" => WordBreak::BreakAll,
+                "keep-all" => WordBreak::KeepAll,
+                _ => return false,
+            });
+        }
+        StyleProp::Position => {
+            r.position = Some(match value {
+                "relative" => Position::Relative,
+                "absolute" => Position::Absolute,
+                _ => return false,
+            });
+        }
         _ => return false,
-    };
-    set_variant_enum(node, prop, variant, number)
+    }
+    true
 }
-
 fn set_variant_flex_string(node: &mut Node, variant: StyleVariant, value: &str) -> bool {
     let dir = match value.trim() {
         "row" => FlexDirection::Row,
@@ -1056,6 +1026,62 @@ fn set_color_style_prop(node: &mut Node, prop: StyleProp, color: Color) -> Style
     }
 }
 
+fn set_font_weight(node: &mut Node, weight: FontWeight) -> StyleEffect {
+    node.style.text.font_weight = weight;
+    node.interactivity.base_style.text.font_weight = Some(weight);
+    StyleEffect::AppliedNeedsSync
+}
+
+fn set_variant_font_weight(
+    node: &mut Node,
+    variant: StyleVariant,
+    weight: FontWeight,
+) -> StyleEffect {
+    get_or_init_variant_style(node, variant).text.font_weight = Some(weight);
+    StyleEffect::Applied
+}
+
+fn parse_font_weight_str(value: &str) -> Option<FontWeight> {
+    match value.trim().to_ascii_lowercase().as_str() {
+        "thin" => Some(FontWeight::Thin),
+        "extra-light" | "extralight" | "ultra-light" | "ultralight" => Some(FontWeight::ExtraLight),
+        "light" => Some(FontWeight::Light),
+        "normal" | "regular" => Some(FontWeight::Regular),
+        "medium" => Some(FontWeight::Medium),
+        "semi-bold" | "semibold" | "demi-bold" | "demibold" => Some(FontWeight::SemiBold),
+        "bold" => Some(FontWeight::Bold),
+        "extra-bold" | "extrabold" | "ultra-bold" | "ultrabold" => Some(FontWeight::ExtraBold),
+        "black" | "heavy" => Some(FontWeight::Black),
+        value => value.parse::<f32>().ok().and_then(parse_font_weight_number),
+    }
+}
+
+fn parse_font_weight_number(value: f32) -> Option<FontWeight> {
+    if !value.is_finite() {
+        return None;
+    }
+    let rounded = value.round();
+    if (value - rounded).abs() > f32::EPSILON {
+        return None;
+    }
+    let weight = rounded as i32;
+    if weight % 100 != 0 {
+        return None;
+    }
+    match weight {
+        100 => Some(FontWeight::Thin),
+        200 => Some(FontWeight::ExtraLight),
+        300 => Some(FontWeight::Light),
+        400 => Some(FontWeight::Regular),
+        500 => Some(FontWeight::Medium),
+        600 => Some(FontWeight::SemiBold),
+        700 => Some(FontWeight::Bold),
+        800 => Some(FontWeight::ExtraBold),
+        900 => Some(FontWeight::Black),
+        _ => None,
+    }
+}
+
 fn set_f32_style_prop(node: &mut Node, prop: StyleProp, v: f32) -> StyleEffect {
     match prop {
         StyleProp::Interactive => {
@@ -1156,7 +1182,6 @@ fn set_f32_style_prop(node: &mut Node, prop: StyleProp, v: f32) -> StyleEffect {
             style.text.font_size = v;
             node.interactivity.base_style.text.font_size = Some(v);
         }
-        StyleProp::FontWeight => {}
         StyleProp::Rounded => style.corner_radii = Corners::uniform(v),
         StyleProp::RoundedTL => style.corner_radii.top_left = v,
         StyleProp::RoundedTR => style.corner_radii.top_right = v,
@@ -1192,118 +1217,72 @@ fn set_f32_style_prop(node: &mut Node, prop: StyleProp, v: f32) -> StyleEffect {
     StyleEffect::AppliedNeedsSync
 }
 
-fn set_enum_style_prop(style: &mut UzStyle, prop: StyleProp, value: i32) -> bool {
+fn set_enum_style_prop_from_str(style: &mut UzStyle, prop: StyleProp, value: &str) -> bool {
+    let value = value.trim();
     match prop {
         StyleProp::FlexDir => {
             style.flex_direction = match value {
-                0 => FlexDirection::Row,
-                1 => FlexDirection::Column,
-                2 => FlexDirection::RowReverse,
-                3 => FlexDirection::ColumnReverse,
-                _ => FlexDirection::Row,
+                "row" => FlexDirection::Row,
+                "col" | "column" => FlexDirection::Column,
+                "row-reverse" => FlexDirection::RowReverse,
+                "col-reverse" | "column-reverse" => FlexDirection::ColumnReverse,
+                _ => return false,
             };
         }
         StyleProp::Items => {
             style.align_items = Some(match value {
-                0 => AlignItems::FlexStart,
-                1 => AlignItems::FlexEnd,
-                2 => AlignItems::Center,
-                3 => AlignItems::Stretch,
-                4 => AlignItems::Baseline,
-                _ => AlignItems::Stretch,
+                "flex-start" | "start" => AlignItems::FlexStart,
+                "flex-end" | "end" => AlignItems::FlexEnd,
+                "center" => AlignItems::Center,
+                "stretch" => AlignItems::Stretch,
+                "baseline" => AlignItems::Baseline,
+                _ => return false,
             });
         }
         StyleProp::Justify => {
             style.justify_content = Some(match value {
-                0 => JustifyContent::FlexStart,
-                1 => JustifyContent::FlexEnd,
-                2 => JustifyContent::Center,
-                3 => JustifyContent::SpaceBetween,
-                4 => JustifyContent::SpaceAround,
-                5 => JustifyContent::SpaceEvenly,
-                _ => JustifyContent::FlexStart,
+                "flex-start" | "start" => JustifyContent::FlexStart,
+                "flex-end" | "end" => JustifyContent::FlexEnd,
+                "center" => JustifyContent::Center,
+                "space-between" | "between" => JustifyContent::SpaceBetween,
+                "space-around" | "around" => JustifyContent::SpaceAround,
+                "space-evenly" | "evenly" => JustifyContent::SpaceEvenly,
+                _ => return false,
             });
         }
         StyleProp::Display => {
             style.display = match value {
-                0 => Display::None,
-                1 => Display::Flex,
-                2 => Display::Block,
-                _ => Display::Flex,
+                "none" => Display::None,
+                "flex" => Display::Flex,
+                "block" => Display::Block,
+                "inline" => Display::Inline,
+                _ => return false,
             };
         }
-        StyleProp::TextWrap => set_text_wrap(style, value),
+        StyleProp::TextWrap => {
+            let Some(value) = text_wrap_value(value) else {
+                return false;
+            };
+            set_text_wrap(style, value);
+        }
         StyleProp::WordBreak => {
             style.text.word_break = match value {
-                0 => WordBreak::Normal,
-                1 => WordBreak::BreakAll,
-                2 => WordBreak::KeepAll,
-                _ => WordBreak::Normal,
+                "normal" => WordBreak::Normal,
+                "break-all" => WordBreak::BreakAll,
+                "keep-all" => WordBreak::KeepAll,
+                _ => return false,
             };
         }
         StyleProp::Position => {
             style.position = match value {
-                0 => Position::Relative,
-                1 => Position::Absolute,
-                _ => Position::Relative,
+                "relative" => Position::Relative,
+                "absolute" => Position::Absolute,
+                _ => return false,
             };
         }
         _ => return false,
     }
     true
-}
-
-fn set_enum_style_prop_from_str(style: &mut UzStyle, prop: StyleProp, value: &str) -> bool {
-    let value = value.trim();
-    let number = match prop {
-        StyleProp::FlexDir => match value {
-            "row" => 0,
-            "col" | "column" => 1,
-            "row-reverse" => 2,
-            "col-reverse" | "column-reverse" => 3,
-            _ => return false,
-        },
-        StyleProp::Items => match value {
-            "flex-start" | "start" => 0,
-            "flex-end" | "end" => 1,
-            "center" => 2,
-            "stretch" => 3,
-            "baseline" => 4,
-            _ => return false,
-        },
-        StyleProp::Justify => match value {
-            "flex-start" | "start" => 0,
-            "flex-end" | "end" => 1,
-            "center" => 2,
-            "space-between" | "between" => 3,
-            "space-around" | "around" => 4,
-            "space-evenly" | "evenly" => 5,
-            _ => return false,
-        },
-        StyleProp::Display => match value {
-            "none" => 0,
-            "flex" => 1,
-            "block" => 2,
-            _ => return false,
-        },
-        StyleProp::TextWrap => match text_wrap_value(value) {
-            Some(v) => v,
-            None => return false,
-        },
-        StyleProp::WordBreak => match value {
-            "normal" => 0,
-            "break-all" => 1,
-            "keep-all" => 2,
-            _ => return false,
-        },
-        StyleProp::Position => match value {
-            "relative" => 0,
-            "absolute" => 1,
-            _ => return false,
-        },
-        _ => return false,
-    };
-    set_enum_style_prop(style, prop, number)
 }
 
 fn remember_inherited_enum(node: &mut Node, prop: StyleProp) {
@@ -1482,6 +1461,7 @@ fn get_style_prop(node: &Node, prop: StyleProp) -> Value {
         StyleProp::FlexGrow | StyleProp::Flex => json!(style.flex_grow),
         StyleProp::FlexShrink => json!(style.flex_shrink),
         StyleProp::FontSize => json!(style.text.font_size),
+        StyleProp::FontWeight => json!(font_weight_to_number(style.text.font_weight)),
         StyleProp::Rounded => json!(style.corner_radii.top_left),
         StyleProp::Border => json!(style.border_widths.top),
         StyleProp::TranslateX => json!(style.transform.translate_x),
@@ -1535,4 +1515,81 @@ fn color_to_json(color: Color) -> Value {
         "b": color.b,
         "a": color.a,
     })
+}
+
+fn font_weight_to_number(weight: FontWeight) -> u16 {
+    match weight {
+        FontWeight::Thin => 100,
+        FontWeight::ExtraLight => 200,
+        FontWeight::Light => 300,
+        FontWeight::Regular => 400,
+        FontWeight::Medium => 500,
+        FontWeight::SemiBold => 600,
+        FontWeight::Bold => 700,
+        FontWeight::ExtraBold => 800,
+        FontWeight::Black => 900,
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::{
+        Display, FlexDirection, FontWeight, Node, StyleVariant, UzStyle, parse_font_weight_number,
+        parse_font_weight_str, set_flex_string, set_variant_flex_string,
+    };
+
+    #[test]
+    fn parses_font_weight_names() {
+        assert_eq!(parse_font_weight_str("normal"), Some(FontWeight::Regular));
+        assert_eq!(parse_font_weight_str("bold"), Some(FontWeight::Bold));
+        assert_eq!(
+            parse_font_weight_str("semi-bold"),
+            Some(FontWeight::SemiBold)
+        );
+        assert_eq!(
+            parse_font_weight_str("extraBold"),
+            Some(FontWeight::ExtraBold)
+        );
+        assert_eq!(parse_font_weight_str("wat"), None);
+    }
+
+    #[test]
+    fn parses_exact_numeric_font_weights() {
+        assert_eq!(parse_font_weight_str("700"), Some(FontWeight::Bold));
+        assert_eq!(parse_font_weight_number(400.0), Some(FontWeight::Regular));
+        assert_eq!(parse_font_weight_number(750.0), None);
+        assert_eq!(parse_font_weight_number(0.0), None);
+    }
+
+    #[test]
+    fn flex_string_sets_display_and_direction() {
+        let mut style = UzStyle::default();
+
+        assert!(set_flex_string(&mut style, "col"));
+        assert_eq!(style.display, Display::Flex);
+        assert_eq!(style.flex_direction, FlexDirection::Column);
+
+        assert!(set_flex_string(&mut style, "row"));
+        assert_eq!(style.display, Display::Flex);
+        assert_eq!(style.flex_direction, FlexDirection::Row);
+    }
+
+    #[test]
+    fn variant_flex_string_sets_display_and_direction() {
+        let mut node = Node::new(
+            taffy::NodeId::from(0usize),
+            UzStyle::default(),
+            crate::element::ElementNode::new(crate::element::ElementData::None),
+        );
+
+        assert!(set_variant_flex_string(
+            &mut node,
+            StyleVariant::Hover,
+            "col"
+        ));
+
+        let hover = node.interactivity.hover_style.as_ref().unwrap();
+        assert_eq!(hover.display, Some(Display::Flex));
+        assert_eq!(hover.flex_direction, Some(FlexDirection::Column));
+    }
 }

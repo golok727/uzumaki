@@ -218,6 +218,7 @@ pub enum Display {
     #[default]
     Flex,
     Block,
+    Inline,
 }
 
 #[derive(Clone, Copy, Debug, Default, PartialEq)]
@@ -615,6 +616,10 @@ impl UzStyle {
 
     pub fn default_for_element(element_type: &str) -> Self {
         match element_type {
+            "view" => Self {
+                display: Display::Block,
+                ..Default::default()
+            },
             "button" => Self {
                 flex_shrink: 0.0,
                 align_items: Some(AlignItems::Center),
@@ -635,7 +640,8 @@ impl UzStyle {
                 },
                 ..Default::default()
             },
-            "text" | "#text" | "p" => Self {
+            "text" | "#text" => Self {
+                display: Display::Inline,
                 text: TextStyle {
                     overflow_wrap: OverflowWrap::Normal,
                     word_break: WordBreak::Normal,
@@ -653,6 +659,7 @@ impl UzStyle {
                 Display::None => taffy::Display::None,
                 Display::Flex => taffy::Display::Flex,
                 Display::Block => taffy::Display::Block,
+                Display::Inline => taffy::Display::Flex,
             },
             position: match self.position {
                 Position::Relative => taffy::Position::Relative,
@@ -1052,5 +1059,22 @@ fn justify_content_to_taffy(j: JustifyContent) -> taffy::JustifyContent {
         JustifyContent::SpaceBetween => taffy::JustifyContent::SpaceBetween,
         JustifyContent::SpaceAround => taffy::JustifyContent::SpaceAround,
         JustifyContent::SpaceEvenly => taffy::JustifyContent::SpaceEvenly,
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::{Display, UzStyle};
+
+    #[test]
+    fn text_elements_default_to_inline_display() {
+        assert_eq!(
+            UzStyle::default_for_element("text").display,
+            Display::Inline
+        );
+        assert_eq!(
+            UzStyle::default_for_element("#text").display,
+            Display::Inline
+        );
     }
 }

@@ -4,6 +4,7 @@
   "private": true,
   "dependencies": {
     "react": "^19.2.4",
+    "shiki": "^4.0.2",
     "uzumaki-ui": "workspace:*"
   },
   "scripts": {
@@ -13,8 +14,8 @@
     "preview": "cargo r -p uzumaki --release -- dist/index.js"
   },
   "devDependencies": {
-    "uzumaki-types": "workspace:*",
-    "@types/react": "^19.2.14"
+    "@types/react": "^19.2.14",
+    "uzumaki-types": "workspace:*"
   },
   "peerDependencies": {
     "typescript": "^5"
