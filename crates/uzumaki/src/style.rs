@@ -610,7 +610,17 @@ impl UzStyle {
     }
 
     pub fn inherit_from(&mut self, parent: &Self) {
-        self.text = parent.text.clone();
+        // Per-field cascade. `overflow_wrap` and `word_break` are intentionally
+        // NOT inherited: `default_for_element` sets them per element type
+        // (e.g. text/button/input use Normal while views use BreakWord), and a
+        // wholesale `self.text = parent.text` would clobber those defaults
+        // before `refine(&base_style)` ever runs.
+        self.text.font_size = parent.text.font_size;
+        self.text.color = parent.text.color;
+        self.text.font_weight = parent.text.font_weight;
+        self.text.line_height = parent.text.line_height;
+        self.text.letter_spacing = parent.text.letter_spacing;
+        self.text.word_spacing = parent.text.word_spacing;
         self.text_selectable = parent.text_selectable;
     }
 
