@@ -424,7 +424,7 @@ fn hit_text_in_run(
 
     let (node_id, _, bounds) = best?;
     let node = dom.nodes.get(node_id)?;
-    let text = node.as_text_node()?;
+    let text = node.get_text_content()?;
 
     if text.content.is_empty() {
         return Some(TextRunHit {
@@ -467,7 +467,7 @@ fn text_range_at_point(
 ) -> Option<(SelectionEndpoint, SelectionEndpoint)> {
     let (_run, _entry) = dom.find_run_entry_for_node(node_id)?;
     let node = dom.nodes.get(node_id)?;
-    let text = node.as_text_node()?;
+    let text = node.get_text_content()?;
     let bounds = node
         .interactivity
         .hitbox_id

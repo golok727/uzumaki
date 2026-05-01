@@ -316,7 +316,7 @@ impl CoreNode {
             let Some(node) = entry.dom.nodes.get(self.node_id) else {
                 return Err(node_not_found());
             };
-            Ok(node.as_text_node().map(|text| text.content.clone()))
+            Ok(node.get_text_content().map(|text| text.content.clone()))
         })
     }
 
@@ -349,7 +349,7 @@ fn create_element(
         } else if element_type == "image" {
             entry.dom.create_image(style)
         } else if element_type == "text" {
-            entry.dom.create_text(String::new(), style)
+            entry.dom.create_text_element(String::new(), style)
         } else {
             let id = entry.dom.create_view(style);
             if element_type == "button"
@@ -375,7 +375,7 @@ fn create_text_node(
         };
         Ok(entry
             .dom
-            .create_text(text, UzStyle::default_for_element("#text")) as u32)
+            .create_text_element(text, UzStyle::default_for_element("#text")) as u32)
     })
 }
 

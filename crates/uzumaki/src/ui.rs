@@ -4,7 +4,8 @@ use crate::{
     cursor::UzCursorIcon,
     element::{
         ElementData, ElementNode, ImageData, ImageMeasureInfo, ImageNode, Node, NodeContext,
-        ScrollDragState, ScrollThumbRect, TextNode, TextRunEntry, TextSelectRun, UzNodeId, render,
+        ScrollDragState, ScrollThumbRect, TextContent, TextRunEntry, TextSelectRun, UzNodeId,
+        render,
     },
     input::InputState,
     interactivity::{HitTestState, HitboxStore},
@@ -171,17 +172,21 @@ impl UIState {
         node_id
     }
 
+    pub fn create_text_node(&mut self, content: String, style: UzStyle) -> UzNodeId {
+        todo!()
+    }
+
     /// Create a Text element.
-    pub fn create_text(&mut self, content: String, style: UzStyle) -> UzNodeId {
+    pub fn create_text_element(&mut self, content: String, style: UzStyle) -> UzNodeId {
         let taffy_style = style.to_taffy();
         let taffy_node = self.taffy.new_leaf(taffy_style).unwrap();
-        let text = TextNode {
+        let text = TextContent {
             content: content.clone(),
         };
         let text_style = style.text.clone();
         let node_id = self
             .nodes
-            .insert(Node::new(taffy_node, style, TextNode::new(content)));
+            .insert(Node::new(taffy_node, style, TextContent::new(content)));
 
         self.taffy
             .set_node_context(
@@ -309,7 +314,7 @@ impl UIState {
         if parent_id == child_id {
             return;
         }
-        if self.nodes[parent_id].as_text_node().is_some() {
+        if self.nodes[parent_id].get_text_content().is_some() {
             return;
         }
         self.detach_from_parent(child_id);
@@ -335,7 +340,7 @@ impl UIState {
         if child_id == before_id || parent_id == child_id {
             return;
         }
-        if self.nodes[parent_id].as_text_node().is_some() {
+        if self.nodes[parent_id].get_text_content().is_some() {
             return;
         }
         self.detach_from_parent(child_id);
@@ -499,11 +504,11 @@ impl UIState {
     /// Update a text node's content.
     pub fn set_text_content(&mut self, node_id: UzNodeId, text: String) {
         let node = &mut self.nodes[node_id];
-        let tc = TextNode {
+        let tc = TextContent {
             content: text.clone(),
         };
 
-        if let Some(text_node) = node.as_text_node_mut() {
+        if let Some(text_node) = node.text_content_mut() {
             text_node.content = text;
         }
 
@@ -841,7 +846,7 @@ mod tests {
     fn plain_text_inherits_cursor_from_parent() {
         let mut dom = UIState::new();
         let parent = dom.create_view(Default::default());
-        let child = dom.create_text("pointer".into(), Default::default());
+        let child = dom.create_text_element("pointer".into(), Default::default());
 
         dom.append_child(parent, child);
         dom.nodes[parent].style.cursor = Some(UzCursorIcon::Pointer);
@@ -853,7 +858,7 @@ mod tests {
     fn append_child_to_text_node_is_noop() {
         let mut dom = UIState::new();
         let parent = dom.create_view(Default::default());
-        let text = dom.create_text("leaf".into(), Default::default());
+        let text = dom.create_text_element("leaf".into(), Default::default());
         let child = dom.create_view(Default::default());
 
         dom.append_child(parent, child);
@@ -868,7 +873,7 @@ mod tests {
     fn insert_before_into_text_node_is_noop() {
         let mut dom = UIState::new();
         let parent = dom.create_view(Default::default());
-        let text = dom.create_text("leaf".into(), Default::default());
+        let text = dom.create_text_element("leaf".into(), Default::default());
         let child = dom.create_view(Default::default());
         let before = dom.create_view(Default::default());
 

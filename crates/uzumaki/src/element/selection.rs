@@ -56,7 +56,7 @@ impl UIState {
             };
 
             // Add text nodes to the current run
-            if let Some(tc) = node.as_text_node()
+            if let Some(tc) = node.get_text_content()
                 && let Some(idx) = current_run
             {
                 let gc = tc.content.graphemes(true).count();
@@ -113,7 +113,11 @@ impl UIState {
                 continue;
             }
 
-            let Some(text) = self.nodes.get(entry.node_id).and_then(|n| n.as_text_node()) else {
+            let Some(text) = self
+                .nodes
+                .get(entry.node_id)
+                .and_then(|n| n.get_text_content())
+            else {
                 continue;
             };
             let local_start = if entry.node_id == start.node {
@@ -217,13 +221,13 @@ impl UIState {
             let entry_end = entry.flat_start + entry.grapheme_count;
             if flat_index <= entry_end {
                 let local_grapheme = flat_index.saturating_sub(entry.flat_start);
-                let text = self.nodes.get(entry.node_id)?.as_text_node()?;
+                let text = self.nodes.get(entry.node_id)?.get_text_content()?;
                 let offset = Self::grapheme_to_byte(&text.content, local_grapheme);
                 return Some(SelectionEndpoint::new(entry.node_id, offset, affinity));
             }
         }
         let entry = run.entries.last()?;
-        let text = self.nodes.get(entry.node_id)?.as_text_node()?;
+        let text = self.nodes.get(entry.node_id)?.get_text_content()?;
         Some(SelectionEndpoint::new(
             entry.node_id,
             text.content.len(),
@@ -233,7 +237,7 @@ impl UIState {
 
     pub fn flat_index_for_endpoint(&self, endpoint: SelectionEndpoint) -> Option<usize> {
         let (_run, entry) = self.find_run_entry_for_node(endpoint.node)?;
-        let text = self.nodes.get(endpoint.node)?.as_text_node()?;
+        let text = self.nodes.get(endpoint.node)?.get_text_content()?;
         Some(entry.flat_start + Self::byte_to_grapheme(&text.content, endpoint.offset))
     }
 
@@ -409,8 +413,8 @@ mod tests {
     fn selected_text_spans_sibling_text_nodes_with_byte_offsets() {
         let mut dom = UIState::new();
         let root = dom.create_view(selectable_style());
-        let first = dom.create_text("hello".into(), Default::default());
-        let second = dom.create_text(" world".into(), Default::default());
+        let first = dom.create_text_element("hello".into(), Default::default());
+        let second = dom.create_text_element(" world".into(), Default::default());
         dom.set_root(root);
         dom.append_child(root, first);
         dom.append_child(root, second);
@@ -428,8 +432,8 @@ mod tests {
     fn removing_node_that_holds_endpoint_clears_selection() {
         let mut dom = UIState::new();
         let root = dom.create_view(selectable_style());
-        let first = dom.create_text("hello".into(), Default::default());
-        let second = dom.create_text(" world".into(), Default::default());
+        let first = dom.create_text_element("hello".into(), Default::default());
+        let second = dom.create_text_element(" world".into(), Default::default());
         dom.set_root(root);
         dom.append_child(root, first);
         dom.append_child(root, second);

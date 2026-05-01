@@ -107,7 +107,7 @@ impl<'a> Painter<'a> {
                             self.dom.computed_style(node_id, parent_style.as_deref());
 
                         let text = node
-                            .as_text_node()
+                            .get_text_content()
                             .map(|tc| (tc.content.clone(), computed_style.text.clone()));
 
                         let is_input = node.is_text_input();
@@ -667,7 +667,7 @@ impl<'a> Painter<'a> {
                 .dom
                 .nodes
                 .get(entry.node_id)
-                .and_then(|n| n.as_text_node())
+                .and_then(|n| n.get_text_content())
             else {
                 continue;
             };
