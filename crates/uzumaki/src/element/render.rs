@@ -642,35 +642,50 @@ impl<'a> Painter<'a> {
     }
 
     /// Pre-compute per-text-node selection ranges for the current frame.
-    /// Returns a map from NodeId → (local_sel_start, local_sel_end) in grapheme units.
+    /// Returns a map from NodeId → (local_sel_start, local_sel_end) in byte offsets.
     fn compute_text_selections_map(&self) -> HashMap<UzNodeId, (usize, usize)> {
         let mut map = HashMap::new();
         let sel = self.dom.text_selection;
-        let Some(root) = sel.root else {
-            return map;
-        };
         if sel.is_collapsed() {
             return map;
         }
-        let Some(run) = self
-            .dom
-            .selectable_text_runs
-            .iter()
-            .find(|r| r.root_id == root)
-        else {
+        let Some((start, end)) = self.dom.ordered_text_selection() else {
             return map;
         };
-        let sel_start = sel.start();
-        let sel_end = sel.end();
+        let Some(run) = self.dom.find_run_for_node(start.node) else {
+            return map;
+        };
+        let mut in_range = false;
         for entry in &run.entries {
-            let entry_end = entry.flat_start + entry.grapheme_count;
-            let local_start = sel_start.max(entry.flat_start);
-            let local_end = sel_end.min(entry_end);
+            if entry.node_id == start.node {
+                in_range = true;
+            }
+            if !in_range {
+                continue;
+            }
+            let Some(text) = self
+                .dom
+                .nodes
+                .get(entry.node_id)
+                .and_then(|n| n.as_text_node())
+            else {
+                continue;
+            };
+            let local_start = if entry.node_id == start.node {
+                start.offset.min(text.content.len())
+            } else {
+                0
+            };
+            let local_end = if entry.node_id == end.node {
+                end.offset.min(text.content.len())
+            } else {
+                text.content.len()
+            };
             if local_start < local_end {
-                map.insert(
-                    entry.node_id,
-                    (local_start - entry.flat_start, local_end - entry.flat_start),
-                );
+                map.insert(entry.node_id, (local_start, local_end));
+            }
+            if entry.node_id == end.node {
+                break;
             }
         }
         map

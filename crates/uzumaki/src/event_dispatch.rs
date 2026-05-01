@@ -4,7 +4,7 @@ use winit::keyboard::{Key, NamedKey};
 use crate::clipboard::SystemClipboard;
 use crate::element::{ScrollDragState, UzNodeId};
 use crate::input::{self, KeyResult};
-use crate::selection::{SelectionRange, TextSelection};
+use crate::selection::{Affinity, SelectionEndpoint, TextSelection};
 use crate::style::TextStyle;
 use crate::text::{apply_text_style_to_editor, secure_cursor_geometry};
 use crate::ui::UIState;
@@ -372,8 +372,8 @@ pub fn handle_cursor_moved(
                 logical_y,
             )
         {
-            if dom.text_selection.root == Some(root_id) {
-                dom.text_selection.range.active = hit.flat_index;
+            if dom.selection_root(&dom.text_selection) == Some(root_id) {
+                dom.text_selection.focus = Some(hit.endpoint);
             }
             needs_redraw = true;
         }
@@ -393,7 +393,7 @@ pub fn handle_cursor_moved(
 /// Returns the matched text node and flat grapheme index if a suitable text node is found.
 struct TextRunHit {
     node_id: UzNodeId,
-    flat_index: usize,
+    endpoint: SelectionEndpoint,
 }
 
 fn hit_text_in_run(
@@ -423,20 +423,19 @@ fn hit_text_in_run(
     }
 
     let (node_id, _, bounds) = best?;
-    let entry = run.entries.iter().find(|e| e.node_id == node_id)?;
     let node = dom.nodes.get(node_id)?;
     let text = node.as_text_node()?;
 
     if text.content.is_empty() {
         return Some(TextRunHit {
             node_id,
-            flat_index: entry.flat_start,
+            endpoint: SelectionEndpoint::new(node_id, 0, Affinity::Downstream),
         });
     }
 
     let relative_x = (mx - bounds.x) as f32;
     let relative_y = (my - bounds.y) as f32;
-    let local_idx = text_renderer.hit_to_grapheme_2d(
+    let (offset, affinity) = text_renderer.hit_to_text_position(
         &text.content,
         &node.style.text,
         Some(bounds.width as f32),
@@ -446,7 +445,7 @@ fn hit_text_in_run(
 
     Some(TextRunHit {
         node_id,
-        flat_index: entry.flat_start + local_idx.min(entry.grapheme_count),
+        endpoint: SelectionEndpoint::new(node_id, offset, affinity),
     })
 }
 
@@ -465,8 +464,8 @@ fn text_range_at_point(
     mx: f64,
     my: f64,
     select_line: bool,
-) -> Option<(usize, usize, usize)> {
-    let (run, entry) = dom.find_run_entry_for_node(node_id)?;
+) -> Option<(SelectionEndpoint, SelectionEndpoint)> {
+    let (_run, _entry) = dom.find_run_entry_for_node(node_id)?;
     let node = dom.nodes.get(node_id)?;
     let text = node.as_text_node()?;
     let bounds = node
@@ -476,13 +475,14 @@ fn text_range_at_point(
         .map(|hb| hb.bounds)?;
 
     if text.content.is_empty() {
-        return Some((run.root_id, entry.flat_start, entry.flat_start));
+        let endpoint = SelectionEndpoint::new(node_id, 0, Affinity::Downstream);
+        return Some((endpoint, endpoint));
     }
 
     let rel_x = (mx - bounds.x) as f32;
     let rel_y = (my - bounds.y) as f32;
     let (local_start, local_end) = if select_line {
-        text_renderer.line_range_at_point(
+        text_renderer.line_byte_range_at_point(
             &text.content,
             &node.style.text,
             Some(bounds.width as f32),
@@ -490,7 +490,7 @@ fn text_range_at_point(
             rel_y,
         )
     } else {
-        text_renderer.word_range_at_point(
+        text_renderer.word_byte_range_at_point(
             &text.content,
             &node.style.text,
             Some(bounds.width as f32),
@@ -500,9 +500,8 @@ fn text_range_at_point(
     };
 
     Some((
-        run.root_id,
-        entry.flat_start + local_start.min(entry.grapheme_count),
-        entry.flat_start + local_end.min(entry.grapheme_count),
+        SelectionEndpoint::new(node_id, local_start, Affinity::Downstream),
+        SelectionEndpoint::new(node_id, local_end, Affinity::Upstream),
     ))
 }
 
@@ -767,7 +766,7 @@ pub fn handle_mouse_input(
                             hit_text_in_run(dom, &mut handle.text_renderer, root_id, mx, my)
                         }) {
                             let run_root = run_root.unwrap_or(nid);
-                            let flat_idx = hit.flat_index;
+                            let endpoint = hit.endpoint;
 
                             // Multi-click detection
                             let now = std::time::Instant::now();
@@ -785,7 +784,7 @@ pub fn handle_mouse_input(
 
                             match dom.click_count {
                                 2 => {
-                                    if let Some((root, ws, we)) = text_range_at_point(
+                                    if let Some((start, end)) = text_range_at_point(
                                         dom,
                                         &mut handle.text_renderer,
                                         hit.node_id,
@@ -793,11 +792,11 @@ pub fn handle_mouse_input(
                                         my,
                                         false,
                                     ) {
-                                        dom.set_selection(TextSelection::new(root, ws, we));
+                                        dom.set_selection(TextSelection::new(start, end));
                                     }
                                 }
                                 3 => {
-                                    if let Some((root, ls, le)) = text_range_at_point(
+                                    if let Some((start, end)) = text_range_at_point(
                                         dom,
                                         &mut handle.text_renderer,
                                         hit.node_id,
@@ -805,7 +804,7 @@ pub fn handle_mouse_input(
                                         my,
                                         true,
                                     ) {
-                                        dom.set_selection(TextSelection::new(root, ls, le));
+                                        dom.set_selection(TextSelection::new(start, end));
                                     }
                                 }
                                 4 => {
@@ -814,19 +813,25 @@ pub fn handle_mouse_input(
                                         .selectable_text_runs
                                         .iter()
                                         .find(|r| r.root_id == run_root)
+                                        && let (Some(start), Some(end)) = (
+                                            dom.endpoint_from_flat_index(
+                                                run_root,
+                                                0,
+                                                Affinity::Downstream,
+                                            ),
+                                            dom.endpoint_from_flat_index(
+                                                run_root,
+                                                run.total_graphemes,
+                                                Affinity::Upstream,
+                                            ),
+                                        )
                                     {
-                                        dom.set_selection(TextSelection::new(
-                                            run_root,
-                                            0,
-                                            run.total_graphemes,
-                                        ));
+                                        dom.set_selection(TextSelection::new(start, end));
                                     }
                                 }
                                 _ => {
                                     // Single click: place cursor
-                                    dom.set_selection(TextSelection::new(
-                                        run_root, flat_idx, flat_idx,
-                                    ));
+                                    dom.set_selection(TextSelection::new(endpoint, endpoint));
                                 }
                             }
                             dom.dragging_view_selection = Some(run_root);
@@ -1201,10 +1206,18 @@ pub fn handle_key_for_view_selection(
         return false;
     };
 
-    let Some(root) = sel.root else {
+    let Some(root) = dom.selection_root(&sel) else {
         return false;
     };
-    let SelectionRange { anchor, active } = sel.range;
+    let Some(anchor_endpoint) = sel.anchor else {
+        return false;
+    };
+    let Some(focus_endpoint) = sel.focus else {
+        return false;
+    };
+    let Some(active) = dom.flat_index_for_endpoint(focus_endpoint) else {
+        return false;
+    };
 
     let run_len = dom
         .selectable_text_runs
@@ -1224,34 +1237,59 @@ pub fn handle_key_for_view_selection(
         Key::Named(NamedKey::ArrowLeft) if shift && ctrl => {
             // Move active to previous word boundary
             let new_active = prev_word_boundary_in_run(dom, root, active);
-            dom.set_selection(TextSelection::new(root, anchor, new_active));
+            if let Some(focus) =
+                dom.endpoint_from_flat_index(root, new_active, Affinity::Downstream)
+            {
+                dom.set_selection(TextSelection::new(anchor_endpoint, focus));
+            }
             true
         }
         Key::Named(NamedKey::ArrowRight) if shift && ctrl => {
             let new_active = next_word_boundary_in_run(dom, root, active);
-            dom.set_selection(TextSelection::new(root, anchor, new_active));
+            if let Some(focus) =
+                dom.endpoint_from_flat_index(root, new_active, Affinity::Downstream)
+            {
+                dom.set_selection(TextSelection::new(anchor_endpoint, focus));
+            }
             true
         }
         Key::Named(NamedKey::ArrowLeft) if shift => {
             let new_active = if active > 0 { active - 1 } else { 0 };
-            dom.set_selection(TextSelection::new(root, anchor, new_active));
+            if let Some(focus) =
+                dom.endpoint_from_flat_index(root, new_active, Affinity::Downstream)
+            {
+                dom.set_selection(TextSelection::new(anchor_endpoint, focus));
+            }
             true
         }
         Key::Named(NamedKey::ArrowRight) if shift => {
             let new_active = (active + 1).min(run_len);
-            dom.set_selection(TextSelection::new(root, anchor, new_active));
+            if let Some(focus) =
+                dom.endpoint_from_flat_index(root, new_active, Affinity::Downstream)
+            {
+                dom.set_selection(TextSelection::new(anchor_endpoint, focus));
+            }
             true
         }
         Key::Named(NamedKey::Home) if shift => {
-            dom.set_selection(TextSelection::new(root, anchor, 0));
+            if let Some(focus) = dom.endpoint_from_flat_index(root, 0, Affinity::Downstream) {
+                dom.set_selection(TextSelection::new(anchor_endpoint, focus));
+            }
             true
         }
         Key::Named(NamedKey::End) if shift => {
-            dom.set_selection(TextSelection::new(root, anchor, run_len));
+            if let Some(focus) = dom.endpoint_from_flat_index(root, run_len, Affinity::Upstream) {
+                dom.set_selection(TextSelection::new(anchor_endpoint, focus));
+            }
             true
         }
         Key::Character(c) if ctrl && (c.as_ref() == "a" || c.as_ref() == "A") => {
-            dom.set_selection(TextSelection::new(root, 0, run_len));
+            if let (Some(start), Some(end)) = (
+                dom.endpoint_from_flat_index(root, 0, Affinity::Downstream),
+                dom.endpoint_from_flat_index(root, run_len, Affinity::Upstream),
+            ) {
+                dom.set_selection(TextSelection::new(start, end));
+            }
             true
         }
         _ => false,
@@ -1294,7 +1332,7 @@ fn resolve_clipboard_target(dom: &UIState) -> Option<ClipboardTarget> {
     }
     if let Some(sel) = dom.get_text_selection()
         && !sel.is_collapsed()
-        && let Some(root) = sel.root
+        && let Some(root) = dom.selection_root(&sel)
     {
         return Some(ClipboardTarget::ViewSelection(root));
     }

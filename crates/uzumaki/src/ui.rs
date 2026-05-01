@@ -309,6 +309,9 @@ impl UIState {
         if parent_id == child_id {
             return;
         }
+        if self.nodes[parent_id].as_text_node().is_some() {
+            return;
+        }
         self.detach_from_parent(child_id);
 
         let parent_taffy = self.nodes[parent_id].taffy_node;
@@ -330,6 +333,9 @@ impl UIState {
 
     pub fn insert_before(&mut self, parent_id: UzNodeId, child_id: UzNodeId, before_id: UzNodeId) {
         if child_id == before_id || parent_id == child_id {
+            return;
+        }
+        if self.nodes[parent_id].as_text_node().is_some() {
             return;
         }
         self.detach_from_parent(child_id);
@@ -420,7 +426,16 @@ impl UIState {
         {
             self.scroll_lock = None;
         }
-        if self.text_selection.root == Some(id) {
+        if self
+            .text_selection
+            .anchor
+            .is_some_and(|endpoint| endpoint.node == id)
+            || self
+                .text_selection
+                .focus
+                .is_some_and(|endpoint| endpoint.node == id)
+            || self.selection_root(&self.text_selection) == Some(id)
+        {
             self.text_selection.clear();
         }
 
@@ -832,6 +847,37 @@ mod tests {
         dom.nodes[parent].style.cursor = Some(UzCursorIcon::Pointer);
 
         assert_eq!(dom.resolve_cursor(child), UzCursorIcon::Pointer);
+    }
+
+    #[test]
+    fn append_child_to_text_node_is_noop() {
+        let mut dom = UIState::new();
+        let parent = dom.create_view(Default::default());
+        let text = dom.create_text("leaf".into(), Default::default());
+        let child = dom.create_view(Default::default());
+
+        dom.append_child(parent, child);
+        dom.append_child(text, child);
+
+        assert_eq!(dom.nodes[text].first_child, None);
+        assert_eq!(dom.nodes[text].last_child, None);
+        assert_eq!(dom.nodes[child].parent, Some(parent));
+    }
+
+    #[test]
+    fn insert_before_into_text_node_is_noop() {
+        let mut dom = UIState::new();
+        let parent = dom.create_view(Default::default());
+        let text = dom.create_text("leaf".into(), Default::default());
+        let child = dom.create_view(Default::default());
+        let before = dom.create_view(Default::default());
+
+        dom.append_child(parent, child);
+        dom.insert_before(text, child, before);
+
+        assert_eq!(dom.nodes[text].first_child, None);
+        assert_eq!(dom.nodes[text].last_child, None);
+        assert_eq!(dom.nodes[child].parent, Some(parent));
     }
 
     #[test]

@@ -35,7 +35,7 @@ const LineRenderer = memo(function LineComponent({
 }) {
   return (
     <view display="flex" flexDir="row" gap={12}>
-      <text color={C.textMuted} fontSize={14} w={32}>
+      <text selectable={false} color={C.textMuted} fontSize={14} w={32}>
         {String(lineNumber)}
       </text>
       <view display="flex" flexDir="row" flexWrap="wrap" flex={1}>
@@ -63,7 +63,15 @@ export function ShikiPage() {
       bg={C.bg}
     >
       <Panel title="Preview">
-        <view display="flex" flexDir="col" p={16} gap={2} flex={1} scrollable>
+        <view
+          selectable
+          display="flex"
+          flexDir="col"
+          p={16}
+          gap={2}
+          flex={1}
+          scrollable
+        >
           {lineTokens.map((tokens, i) => (
             <LineRenderer key={i} tokens={tokens} lineNumber={i + 1} />
           ))}
