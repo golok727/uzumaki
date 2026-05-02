@@ -346,6 +346,7 @@ impl<'a> Painter<'a> {
         }
     }
 
+    #[allow(clippy::too_many_arguments)]
     fn register_input_scrollbar(
         &mut self,
         node_id: UzNodeId,
@@ -488,6 +489,7 @@ impl<'a> Painter<'a> {
         })
     }
 
+    #[allow(clippy::too_many_arguments)]
     fn register_view_thumb(
         &mut self,
         node_id: UzNodeId,
