@@ -1051,6 +1051,7 @@ function ScrollDemo() {
                       key={`${row}-${col}`}
                       w={120}
                       h={72}
+                      flexShrink={0}
                       rounded={8}
                       p={10}
                       bg={(row + col) % 2 === 0 ? C.successDim : C.warningDim}

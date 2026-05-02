@@ -39,12 +39,12 @@ export function App() {
       position="relative"
     >
       <Sidebar
-        w="16%"
+        w="200px"
         active={activeTab}
         setActive={setActiveTab}
         onOpenModal={() => setShowModal(true)}
       />
-      <view w="84%" h="full" display="flex" flexDir="col" bg={C.bg}>
+      <view flex={1} minW={0} h="full" display="flex" flexDir="col" bg={C.bg}>
         {page}
       </view>
       {showModal && <Modal onClose={() => setShowModal(false)} />}

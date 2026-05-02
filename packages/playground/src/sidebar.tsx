@@ -28,7 +28,8 @@ export function Sidebar({
   return (
     <view
       w={w}
-      minW={'200px'}
+      minW={w}
+      flexShrink={0}
       h="full"
       bg={C.surface}
       borderRight={1}
