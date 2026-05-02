@@ -99,7 +99,9 @@ interface ElementStyles {
   scale?: number | [number, number] | { x?: number; y?: number };
   scaleX?: number | string;
   scaleY?: number | string;
-  scrollable?: boolean;
+  scroll?: boolean;
+  scrollX?: boolean;
+  scrollY?: boolean;
   // if true text inside this view can be selected
   selectable?: boolean;
   visibility?: 'visible' | 'hidden';

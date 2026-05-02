@@ -1054,13 +1054,21 @@ impl ApplicationHandler<UserEvent> for Application {
             }
             WindowEvent::MouseWheel { delta, .. } => {
                 let mut state = self.app_state.borrow_mut();
-                let scroll_delta_y = match delta {
-                    winit::event::MouseScrollDelta::LineDelta(_, y) => (y as f64) * 40.0,
-                    winit::event::MouseScrollDelta::PixelDelta(pos) => pos.y,
+                let (mut dx, mut dy) = match delta {
+                    winit::event::MouseScrollDelta::LineDelta(x, y) => {
+                        ((x as f64) * 40.0, (y as f64) * 40.0)
+                    }
+                    winit::event::MouseScrollDelta::PixelDelta(pos) => (pos.x, pos.y),
                 };
+                // Shift+wheel translates a vertical scroll into a horizontal
+                // one — the standard convention for mice without a tilt wheel.
+                if state.modifiers & 4 != 0 && dx == 0.0 {
+                    dx = dy;
+                    dy = 0.0;
+                }
                 if let Some(entry) = state.windows.get_mut(&wid)
                     && let Some(handle) = entry.handle.as_mut()
-                    && event_dispatch::handle_mouse_wheel(&mut entry.dom, handle, scroll_delta_y)
+                    && event_dispatch::handle_mouse_wheel(&mut entry.dom, handle, dx, dy)
                 {
                     needs_redraw = true;
                 }

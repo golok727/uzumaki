@@ -86,7 +86,7 @@ function ImageCard({
 
 export function ImagesPage() {
   return (
-    <view display="flex" flexDir="col" gap={0} h="full" scrollable>
+    <view display="flex" flexDir="col" gap={0} h="full" scroll>
       <view
         display="flex"
         flexDir="col"

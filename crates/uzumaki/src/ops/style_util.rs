@@ -676,7 +676,21 @@ fn set_variant_number(
 
     let r = get_or_init_variant_style(node, variant);
     match prop {
-        StyleProp::Scrollable => {
+        StyleProp::Scroll => {
+            r.overflow_y = Some(if value > 0.5 {
+                Overflow::Scroll
+            } else {
+                Overflow::Visible
+            });
+        }
+        StyleProp::ScrollX => {
+            r.overflow_x = Some(if value > 0.5 {
+                Overflow::Scroll
+            } else {
+                Overflow::Visible
+            });
+        }
+        StyleProp::ScrollY => {
             r.overflow_y = Some(if value > 0.5 {
                 Overflow::Scroll
             } else {
@@ -961,7 +975,9 @@ fn clear_variant_prop(node: &mut Node, prop: StyleProp, variant: StyleVariant) -
             StyleProp::Cursor => style.cursor = None,
             StyleProp::Interactive => {}
             StyleProp::Visibility => style.visibility = None,
-            StyleProp::Scrollable => style.overflow_y = None,
+            StyleProp::Scroll => style.overflow_y = None,
+            StyleProp::ScrollX => style.overflow_x = None,
+            StyleProp::ScrollY => style.overflow_y = None,
             StyleProp::TextSelect => style.text_selectable = None,
             StyleProp::TextWrap => {
                 style.text.overflow_wrap = None;
@@ -1100,7 +1116,7 @@ fn set_f32_style_prop(node: &mut Node, prop: StyleProp, v: f32) -> StyleEffect {
             node.interactivity.js_interactive = v > 0.5;
             return StyleEffect::Applied;
         }
-        StyleProp::Scrollable => {
+        StyleProp::Scroll | StyleProp::ScrollY => {
             if v > 0.5 {
                 node.style.overflow_y = Overflow::Scroll;
                 if node.scroll_state.is_none() {
@@ -1108,7 +1124,23 @@ fn set_f32_style_prop(node: &mut Node, prop: StyleProp, v: f32) -> StyleEffect {
                 }
             } else {
                 node.style.overflow_y = Overflow::Visible;
-                node.scroll_state = None;
+                if node.style.overflow_x == Overflow::Visible {
+                    node.scroll_state = None;
+                }
+            }
+            return StyleEffect::AppliedNeedsSync;
+        }
+        StyleProp::ScrollX => {
+            if v > 0.5 {
+                node.style.overflow_x = Overflow::Scroll;
+                if node.scroll_state.is_none() {
+                    node.scroll_state = Some(element::ScrollState::new());
+                }
+            } else {
+                node.style.overflow_x = Overflow::Visible;
+                if node.style.overflow_y == Overflow::Visible {
+                    node.scroll_state = None;
+                }
             }
             return StyleEffect::AppliedNeedsSync;
         }
@@ -1411,9 +1443,17 @@ fn clear_style_prop(node: &mut Node, prop: StyleProp, variant: StyleVariant) -> 
         StyleProp::Cursor => node.style.cursor = default.cursor,
         StyleProp::Interactive => node.interactivity.js_interactive = false,
         StyleProp::Visibility => node.style.visibility = default.visibility,
-        StyleProp::Scrollable => {
+        StyleProp::Scroll | StyleProp::ScrollY => {
             node.style.overflow_y = default.overflow_y;
-            node.scroll_state = None;
+            if node.style.overflow_x == Overflow::Visible {
+                node.scroll_state = None;
+            }
+        }
+        StyleProp::ScrollX => {
+            node.style.overflow_x = default.overflow_x;
+            if node.style.overflow_y == Overflow::Visible {
+                node.scroll_state = None;
+            }
         }
         StyleProp::TextSelect => {
             node.set_text_selectable(default.text_selectable);
@@ -1470,7 +1510,9 @@ fn get_style_prop(node: &Node, prop: StyleProp) -> Value {
             .unwrap_or(Value::Null),
         StyleProp::Opacity => json!(style.opacity),
         StyleProp::Visibility => json!(matches!(style.visibility, Visibility::Visible)),
-        StyleProp::Scrollable => json!(matches!(style.overflow_y, Overflow::Scroll)),
+        StyleProp::Scroll => json!(matches!(style.overflow_y, Overflow::Scroll)),
+        StyleProp::ScrollX => json!(matches!(style.overflow_x, Overflow::Scroll)),
+        StyleProp::ScrollY => json!(matches!(style.overflow_y, Overflow::Scroll)),
         StyleProp::TextSelect => json!(node.is_text_selectable()),
         StyleProp::Top => length_to_json(style.inset.top),
         StyleProp::Right => length_to_json(style.inset.right),

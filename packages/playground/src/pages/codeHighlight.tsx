@@ -70,7 +70,7 @@ export function ShikiPage() {
           p={16}
           gap={2}
           flex={1}
-          scrollable
+          scroll
         >
           {lineTokens.map((tokens, i) => (
             <LineRenderer key={i} tokens={tokens} lineNumber={i + 1} />

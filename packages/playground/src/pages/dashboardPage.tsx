@@ -49,7 +49,7 @@ export function DashboardPage() {
   const fps = 60;
 
   return (
-    <view display="flex" flexDir="col" gap={0} h="full" scrollable>
+    <view display="flex" flexDir="col" gap={0} h="full" scroll>
       <view
         display="flex"
         flexDir="row"
@@ -300,7 +300,7 @@ export function DashboardPage() {
             </text>
             <Badge label="STREAMING" color={C.successHi} bg={C.successDim} />
           </view>
-          <view scrollable h={160} display="flex" flexDir="col">
+          <view scroll h={160} display="flex" flexDir="col">
             {log.map((ev, i) => (
               <view
                 key={i}

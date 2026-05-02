@@ -1647,70 +1647,88 @@ fn next_word_boundary_in_run(
     i
 }
 
-pub fn handle_mouse_wheel(dom: &mut UIState, handle: &mut Window, scroll_delta_y: f64) -> bool {
-    let mut needs_redraw = false;
+pub fn handle_mouse_wheel(
+    dom: &mut UIState,
+    handle: &mut Window,
+    scroll_delta_x: f64,
+    scroll_delta_y: f64,
+) -> bool {
     let Some((mx, my)) = dom.hit_state.mouse_position else {
         return false;
     };
 
-    const SCROLL_LOCK_TIMEOUT: std::time::Duration = std::time::Duration::from_millis(150);
-
-    // Wheel only routes to vertical scroll for now. Horizontal wheel/trackpad
-    // routing belongs in stage 2 alongside the platform wheel-x plumbing.
-    let locked_target = dom.scroll_lock.and_then(|(nid, t)| {
-        if t.elapsed() < SCROLL_LOCK_TIMEOUT {
-            dom.scroll_thumbs
-                .iter()
-                .find(|tr| {
-                    tr.node_id == nid && tr.axis == ScrollAxis::Y && tr.view_bounds.contains(mx, my)
-                })
-                .map(|_| nid)
-        } else {
-            None
-        }
-    });
-
-    let target = if let Some(nid) = locked_target {
-        dom.scroll_lock = Some((nid, std::time::Instant::now()));
-        Some(nid)
-    } else {
-        let mut found: Option<crate::element::UzNodeId> = None;
-        for thumb_rect in dom.scroll_thumbs.iter() {
-            if thumb_rect.axis == ScrollAxis::Y && thumb_rect.view_bounds.contains(mx, my) {
-                found = Some(thumb_rect.node_id);
-                break;
-            }
-        }
-        if let Some(nid) = found {
-            dom.scroll_lock = Some((nid, std::time::Instant::now()));
-        }
-        found
-    };
-
-    if let Some(nid) = target {
-        let scroll_info = dom
-            .scroll_thumbs
-            .iter()
-            .find(|t| t.node_id == nid && t.axis == ScrollAxis::Y)
-            .map(|t| (t.content_size, t.visible_size));
-        if let Some((content_h, visible_h)) = scroll_info {
-            let max_scroll = (content_h - visible_h).max(0.0);
-            if let Some(node) = dom.nodes.get_mut(nid) {
-                if let Some(ss) = &mut node.scroll_state {
-                    ss.scroll_offset_y =
-                        (ss.scroll_offset_y - scroll_delta_y as f32).clamp(0.0, max_scroll);
-                } else if let Some(is) = node.as_text_input_mut() {
-                    is.scroll_offset_y =
-                        (is.scroll_offset_y - scroll_delta_y as f32).clamp(0.0, max_scroll);
-                }
-            }
-            needs_redraw = true;
-        }
+    let mut needs_redraw = false;
+    if scroll_delta_y != 0.0 {
+        needs_redraw |= apply_wheel_axis(dom, mx, my, ScrollAxis::Y, scroll_delta_y);
+    }
+    if scroll_delta_x != 0.0 {
+        needs_redraw |= apply_wheel_axis(dom, mx, my, ScrollAxis::X, scroll_delta_x);
     }
 
     if needs_redraw {
         update_ime_cursor_area(dom, handle);
     }
-
     needs_redraw
+}
+
+/// Route a single-axis wheel delta to the innermost scrollable under the
+/// pointer that can scroll on that axis. Scroll thumbs are registered in
+/// tree-walk order (parents before children); iterating in reverse picks the
+/// deepest match — which is what users expect for nested scrollables.
+fn apply_wheel_axis(dom: &mut UIState, mx: f64, my: f64, axis: ScrollAxis, delta: f64) -> bool {
+    const SCROLL_LOCK_TIMEOUT: std::time::Duration = std::time::Duration::from_millis(150);
+
+    // Honour the existing scroll lock for momentum/inertia continuity, but only
+    // when the locked node is actually scrollable on this axis.
+    let locked = dom.scroll_lock.and_then(|(nid, t)| {
+        if t.elapsed() < SCROLL_LOCK_TIMEOUT {
+            dom.scroll_thumbs
+                .iter()
+                .rev()
+                .find(|tr| tr.node_id == nid && tr.axis == axis && tr.view_bounds.contains(mx, my))
+        } else {
+            None
+        }
+    });
+
+    let target = if let Some(t) = locked {
+        Some((t.node_id, t.content_size, t.visible_size))
+    } else {
+        dom.scroll_thumbs
+            .iter()
+            .rev()
+            .find(|t| t.axis == axis && t.view_bounds.contains(mx, my))
+            .map(|t| (t.node_id, t.content_size, t.visible_size))
+    };
+
+    let Some((nid, content, visible)) = target else {
+        return false;
+    };
+
+    let max_scroll = (content - visible).max(0.0);
+    let Some(node) = dom.nodes.get_mut(nid) else {
+        return false;
+    };
+
+    if let Some(ss) = &mut node.scroll_state {
+        let cur = ss.offset(axis);
+        let next = (cur - delta as f32).clamp(0.0, max_scroll);
+        if next == cur {
+            return false;
+        }
+        ss.set_offset(axis, next);
+    } else if axis == ScrollAxis::Y
+        && let Some(is) = node.as_text_input_mut()
+    {
+        let next = (is.scroll_offset_y - delta as f32).clamp(0.0, max_scroll);
+        if next == is.scroll_offset_y {
+            return false;
+        }
+        is.scroll_offset_y = next;
+    } else {
+        return false;
+    }
+
+    dom.scroll_lock = Some((nid, std::time::Instant::now()));
+    true
 }

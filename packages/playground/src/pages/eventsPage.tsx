@@ -27,7 +27,7 @@ export function EventsPage() {
         : C.successHi);
 
   return (
-    <view display="flex" flexDir="col" gap={0} h="full" scrollable>
+    <view display="flex" flexDir="col" gap={0} h="full" scroll>
       <view
         display="flex"
         flexDir="col"
@@ -242,7 +242,7 @@ export function EventsPage() {
               </text>
             </button>
           </view>
-          <view scrollable h={220} display="flex" flexDir="col">
+          <view scroll h={220} display="flex" flexDir="col">
             {eventLog.length === 0 ? (
               <view p={20} display="flex" items="center" justify="center">
                 <text fontSize={13} color={C.textMuted}>
