@@ -947,8 +947,8 @@ function ScrollDemo() {
           Scroll props
         </text>
         <text fontSize={12} color={C.textMuted}>
-          `scroll` enables vertical overflow, `scrollX` enables horizontal
-          overflow, and you can combine `scrollX` with `scrollY` for both axes.
+          `scroll` enables auto overflow on both axes, while `scrollX` and
+          `scrollY` let you opt into each axis separately.
         </text>
       </view>
 
@@ -969,22 +969,28 @@ function ScrollDemo() {
             flexDir="col"
             gap={8}
           >
-            {Array.from({ length: 24 }, (_, i) => (
-              <view
-                key={i}
-                p={10}
-                bg={i % 2 === 0 ? C.surface3 : C.surface4}
-                rounded={6}
-                display="flex"
-                items="center"
-                justify="between"
-              >
-                <text fontSize={12} fontWeight={600} color={C.text}>
-                  Row #{i + 1}
-                </text>
-                <text fontSize={11} color={C.textMuted}>
-                  vertical content
-                </text>
+            {Array.from({ length: 12 }, (_, i) => (
+              <view key={i} display="flex" flexDir="row" gap={10}>
+                {Array.from({ length: 6 }, (_, j) => (
+                  <view
+                    key={`${i}-${j}`}
+                    w={140}
+                    flexShrink={0}
+                    p={10}
+                    bg={(i + j) % 2 === 0 ? C.surface3 : C.surface4}
+                    rounded={6}
+                    display="flex"
+                    items="center"
+                    justify="between"
+                  >
+                    <text fontSize={12} fontWeight={600} color={C.text}>
+                      Row {i + 1}
+                    </text>
+                    <text fontSize={11} color={C.textMuted}>
+                      Col {j + 1}
+                    </text>
+                  </view>
+                ))}
               </view>
             ))}
           </view>
@@ -1031,45 +1037,38 @@ function ScrollDemo() {
 
         <view display="flex" flexDir="col" gap={8}>
           <text fontSize={12} fontWeight={600} color={C.textMuted}>
-            scrollX + scrollY
+            scrollY
           </text>
           <view
             h={220}
-            scrollX
             scrollY
             bg={C.surface2}
             rounded={8}
             border={1}
             borderColor={C.border}
             p={12}
+            display="flex"
+            flexDir="col"
+            gap={10}
           >
-            <view display="flex" flexDir="col" gap={10}>
-              {Array.from({ length: 8 }, (_, row) => (
-                <view key={row} display="flex" flexDir="row" gap={10}>
-                  {Array.from({ length: 8 }, (_, col) => (
-                    <view
-                      key={`${row}-${col}`}
-                      w={120}
-                      h={72}
-                      flexShrink={0}
-                      rounded={8}
-                      p={10}
-                      bg={(row + col) % 2 === 0 ? C.successDim : C.warningDim}
-                      display="flex"
-                      flexDir="col"
-                      justify="between"
-                    >
-                      <text fontSize={12} fontWeight={700} color={C.text}>
-                        Cell {row + 1},{col + 1}
-                      </text>
-                      <text fontSize={10} color={C.textMuted}>
-                        Both axes can scroll
-                      </text>
-                    </view>
-                  ))}
-                </view>
-              ))}
-            </view>
+            {Array.from({ length: 14 }, (_, i) => (
+              <view
+                key={i}
+                p={12}
+                bg={i % 2 === 0 ? C.successDim : C.warningDim}
+                rounded={8}
+                display="flex"
+                flexDir="col"
+                gap={4}
+              >
+                <text fontSize={12} fontWeight={700} color={C.text}>
+                  Log entry #{i + 1}
+                </text>
+                <text fontSize={10} color={C.textMuted}>
+                  Vertical overflow only
+                </text>
+              </view>
+            ))}
           </view>
         </view>
       </view>

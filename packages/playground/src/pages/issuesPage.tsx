@@ -140,8 +140,7 @@ export function IssuesPage() {
             </view>
             <view
               h={420}
-              scrollX
-              scrollY
+              scroll
               bg={C.surface}
               rounded={8}
               border={1}
