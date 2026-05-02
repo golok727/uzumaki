@@ -375,7 +375,7 @@ fn create_text_node(
         };
         Ok(entry
             .dom
-            .create_text_element(text, UzStyle::default_for_element("#text")) as u32)
+            .create_text_node(text, UzStyle::default_for_element("#text")) as u32)
     })
 }
 

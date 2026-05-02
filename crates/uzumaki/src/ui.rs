@@ -4,8 +4,8 @@ use crate::{
     cursor::UzCursorIcon,
     element::{
         ElementData, ElementNode, ImageData, ImageMeasureInfo, ImageNode, Node, NodeContext,
-        ScrollDragState, ScrollThumbRect, TextContent, TextRunEntry, TextSelectRun, UzNodeId,
-        render,
+        ScrollDragState, ScrollThumbRect, TextContent, TextNode, TextRunEntry, TextSelectRun,
+        UzNodeId, render,
     },
     input::InputState,
     interactivity::{HitTestState, HitboxStore},
@@ -172,12 +172,8 @@ impl UIState {
         node_id
     }
 
+    // leaf text node
     pub fn create_text_node(&mut self, content: String, style: UzStyle) -> UzNodeId {
-        todo!()
-    }
-
-    /// Create a Text element.
-    pub fn create_text_element(&mut self, content: String, style: UzStyle) -> UzNodeId {
         let taffy_style = style.to_taffy();
         let taffy_node = self.taffy.new_leaf(taffy_style).unwrap();
         let text = TextContent {
@@ -186,7 +182,36 @@ impl UIState {
         let text_style = style.text.clone();
         let node_id = self
             .nodes
-            .insert(Node::new(taffy_node, style, TextContent::new(content)));
+            .insert(Node::new(taffy_node, style, TextNode::new(text.clone())));
+
+        self.taffy
+            .set_node_context(
+                taffy_node,
+                Some(NodeContext {
+                    dom_id: node_id,
+                    text: Some(text),
+                    text_style,
+                    is_input: false,
+                    image: None,
+                }),
+            )
+            .unwrap();
+        node_id
+    }
+
+    /// Create a Text element. <text>
+    pub fn create_text_element(&mut self, content: String, style: UzStyle) -> UzNodeId {
+        let taffy_style = style.to_taffy();
+        let taffy_node = self.taffy.new_leaf(taffy_style).unwrap();
+        let text = TextContent {
+            content: content.clone(),
+        };
+        let text_style = style.text.clone();
+        let node_id = self.nodes.insert(Node::new(
+            taffy_node,
+            style,
+            ElementNode::new_text(text.clone()),
+        ));
 
         self.taffy
             .set_node_context(

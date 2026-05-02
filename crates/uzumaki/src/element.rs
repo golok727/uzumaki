@@ -2,6 +2,7 @@ use crate::cursor::UzCursorIcon;
 use crate::input::InputState;
 use crate::interactivity::Interactivity;
 use crate::style::{Bounds, TextSelectable, TextStyle, UzStyle};
+use std::ops::{Deref, DerefMut};
 use std::sync::Arc;
 use vello::peniko::Blob;
 
@@ -189,7 +190,7 @@ impl ElementNode {
      *   |                          |---------------|
      *NodeData::TextNode()   NodeData::ElementNode(ElementData::Text())
      */
-    pub fn new_text_element(text: TextContent) -> Self {
+    pub fn new_text(text: TextContent) -> Self {
         Self::new(ElementData::Text(text))
     }
 
@@ -316,18 +317,40 @@ impl ElementData {
     }
 }
 
+pub struct TextNode(TextContent);
+
+impl TextNode {
+    pub fn new(content: TextContent) -> Self {
+        Self(content)
+    }
+}
+
+impl Deref for TextNode {
+    type Target = TextContent;
+
+    fn deref(&self) -> &Self::Target {
+        &self.0
+    }
+}
+
+impl DerefMut for TextNode {
+    fn deref_mut(&mut self) -> &mut Self::Target {
+        &mut self.0
+    }
+}
+
+impl From<TextNode> for NodeData {
+    fn from(value: TextNode) -> Self {
+        Self::Text(value)
+    }
+}
+
 pub enum NodeData {
     Root,
     // normal text nodes (cant add event listners etc just plain text)
-    Text(TextContent),
+    Text(TextNode),
     // element node
     Element(ElementNode),
-}
-
-impl From<TextContent> for NodeData {
-    fn from(value: TextContent) -> Self {
-        Self::Text(value)
-    }
 }
 
 impl From<ElementNode> for NodeData {
@@ -351,17 +374,9 @@ impl NodeData {
         Self::Root
     }
 
-    pub fn create_text(data: TextContent) -> Self {
-        Self::Text(data)
-    }
-
-    pub fn create_element(data: ElementNode) -> Self {
-        Self::Element(data)
-    }
-
     pub fn get_text_content(&self) -> Option<&TextContent> {
         match self {
-            Self::Text(text) => Some(text),
+            Self::Text(text) => Some(&text.0),
             Self::Element(element) => element.data.get_text_content(),
             _ => None,
         }
