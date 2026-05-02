@@ -2,7 +2,7 @@ use serde::Serialize;
 use winit::keyboard::{Key, NamedKey};
 
 use crate::clipboard::SystemClipboard;
-use crate::element::{ScrollDragState, UzNodeId};
+use crate::element::{ScrollAxis, ScrollDragState, UzNodeId};
 use crate::input::{self, KeyResult};
 use crate::selection::{Affinity, SelectionEndpoint, TextSelection};
 use crate::style::TextStyle;
@@ -282,19 +282,27 @@ pub fn handle_cursor_moved(
 
     // Scroll thumb drag
     if let Some(ref drag) = dom.scroll_drag {
-        let delta_y = logical_y - drag.start_mouse_y;
+        let mouse_pos = match drag.axis {
+            ScrollAxis::Y => logical_y,
+            ScrollAxis::X => logical_x,
+        };
+        let delta = mouse_pos - drag.start_mouse_pos;
         let new_offset = if drag.track_range > 0.0 {
-            drag.start_scroll_offset + (delta_y as f32 / drag.track_range as f32) * drag.max_scroll
+            drag.start_scroll_offset + (delta as f32 / drag.track_range as f32) * drag.max_scroll
         } else {
             drag.start_scroll_offset
         };
         let nid = drag.node_id;
-        let max = drag.max_scroll;
+        let axis = drag.axis;
+        let clamped = new_offset.clamp(0.0, drag.max_scroll);
         if let Some(node) = dom.nodes.get_mut(nid) {
             if let Some(ss) = &mut node.scroll_state {
-                ss.scroll_offset_y = new_offset.clamp(0.0, max);
+                ss.set_offset(axis, clamped);
             } else if let Some(is) = node.as_text_input_mut() {
-                is.scroll_offset_y = new_offset.clamp(0.0, max);
+                // Inputs only scroll vertically; ignore stray X drags.
+                if axis == ScrollAxis::Y {
+                    is.scroll_offset_y = clamped;
+                }
             }
         }
         needs_redraw = true;
@@ -547,26 +555,35 @@ pub fn handle_mouse_input(
             .find(|t| t.thumb_bounds.contains(mx, my));
         if let Some(t) = thumb_hit {
             let nid = t.node_id;
-            let visible_h = t.visible_height;
-            let content_h = t.content_height;
-            let max_scroll = (content_h - visible_h).max(0.0);
-            let ratio = visible_h as f64 / content_h as f64;
-            let thumb_height = (t.view_bounds.height * ratio).max(24.0);
-            let track_range = t.view_bounds.height - thumb_height;
+            let axis = t.axis;
+            let visible = t.visible_size as f64;
+            let content = t.content_size as f64;
+            let max_scroll = (t.content_size - t.visible_size).max(0.0);
+            let track = match axis {
+                ScrollAxis::Y => t.view_bounds.height,
+                ScrollAxis::X => t.view_bounds.width,
+            };
+            let thumb_length = (track * visible / content.max(1.0)).max(24.0);
+            let track_range = (track - thumb_length).max(0.0);
+            let start_mouse_pos = match axis {
+                ScrollAxis::Y => my,
+                ScrollAxis::X => mx,
+            };
             let start_offset = dom
                 .nodes
                 .get(nid)
                 .map(|n| {
                     n.scroll_state
                         .as_ref()
-                        .map(|ss| ss.scroll_offset_y)
+                        .map(|ss| ss.offset(axis))
                         .or_else(|| n.as_text_input().map(|is| is.scroll_offset_y))
                         .unwrap_or(0.0)
                 })
                 .unwrap_or(0.0);
             dom.scroll_drag = Some(ScrollDragState {
                 node_id: nid,
-                start_mouse_y: my,
+                axis,
+                start_mouse_pos,
                 start_scroll_offset: start_offset,
                 track_range,
                 max_scroll,
@@ -1638,11 +1655,15 @@ pub fn handle_mouse_wheel(dom: &mut UIState, handle: &mut Window, scroll_delta_y
 
     const SCROLL_LOCK_TIMEOUT: std::time::Duration = std::time::Duration::from_millis(150);
 
+    // Wheel only routes to vertical scroll for now. Horizontal wheel/trackpad
+    // routing belongs in stage 2 alongside the platform wheel-x plumbing.
     let locked_target = dom.scroll_lock.and_then(|(nid, t)| {
         if t.elapsed() < SCROLL_LOCK_TIMEOUT {
             dom.scroll_thumbs
                 .iter()
-                .find(|tr| tr.node_id == nid && tr.view_bounds.contains(mx, my))
+                .find(|tr| {
+                    tr.node_id == nid && tr.axis == ScrollAxis::Y && tr.view_bounds.contains(mx, my)
+                })
                 .map(|_| nid)
         } else {
             None
@@ -1655,7 +1676,7 @@ pub fn handle_mouse_wheel(dom: &mut UIState, handle: &mut Window, scroll_delta_y
     } else {
         let mut found: Option<crate::element::UzNodeId> = None;
         for thumb_rect in dom.scroll_thumbs.iter() {
-            if thumb_rect.view_bounds.contains(mx, my) {
+            if thumb_rect.axis == ScrollAxis::Y && thumb_rect.view_bounds.contains(mx, my) {
                 found = Some(thumb_rect.node_id);
                 break;
             }
@@ -1670,8 +1691,8 @@ pub fn handle_mouse_wheel(dom: &mut UIState, handle: &mut Window, scroll_delta_y
         let scroll_info = dom
             .scroll_thumbs
             .iter()
-            .find(|t| t.node_id == nid)
-            .map(|t| (t.content_height, t.visible_height));
+            .find(|t| t.node_id == nid && t.axis == ScrollAxis::Y)
+            .map(|t| (t.content_size, t.visible_size));
         if let Some((content_h, visible_h)) = scroll_info {
             let max_scroll = (content_h - visible_h).max(0.0);
             if let Some(node) = dom.nodes.get_mut(nid) {

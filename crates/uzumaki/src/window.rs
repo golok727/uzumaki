@@ -128,11 +128,16 @@ impl Window {
             height as f32 / scale as f32,
             &mut self.text_renderer,
         );
-        Painter::new(dom, &mut self.scene, &mut self.text_renderer, scale).paint();
+
+        // Prepaint walks the tree, refreshes hit/scroll caches and yields a
+        // pure paint list. If the new hitboxes change which node is hovered,
+        // re-prepaint with the updated computed_styles (hover variants now
+        // apply differently). Paint runs exactly once.
+        let mut list = Painter::new(dom, &mut self.text_renderer, scale).prepaint();
         if dom.refresh_hit_test() {
-            self.scene.reset();
-            Painter::new(dom, &mut self.scene, &mut self.text_renderer, scale).paint();
+            list = Painter::new(dom, &mut self.text_renderer, scale).prepaint();
         }
+        list.paint(&mut self.scene, &mut self.text_renderer);
 
         let target_view = Self::ensure_vello_target(&mut self.vello_target, device, width, height);
 

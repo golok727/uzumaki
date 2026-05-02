@@ -289,6 +289,21 @@ pub enum Overflow {
     Visible,
     Hidden,
     Scroll,
+    Auto,
+}
+
+impl Overflow {
+    /// True when content that exceeds the box should produce a scrollbar
+    /// (covers explicit `Scroll` and the `Auto` case where content overflows).
+    pub fn is_scrollable(self) -> bool {
+        matches!(self, Self::Scroll | Self::Auto)
+    }
+
+    /// True when overflowing content must be clipped to the box (everything
+    /// except `Visible`).
+    pub fn clips(self) -> bool {
+        !matches!(self, Self::Visible)
+    }
 }
 
 #[derive(Clone, Copy, Debug, Default, PartialEq, Refineable)]
@@ -1034,7 +1049,7 @@ fn overflow_to_taffy(o: Overflow) -> taffy::Overflow {
     match o {
         Overflow::Visible => taffy::Overflow::Visible,
         Overflow::Hidden => taffy::Overflow::Hidden,
-        Overflow::Scroll => taffy::Overflow::Scroll,
+        Overflow::Scroll | Overflow::Auto => taffy::Overflow::Scroll,
     }
 }
 

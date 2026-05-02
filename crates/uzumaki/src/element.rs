@@ -10,6 +10,7 @@ pub mod checkbox;
 pub mod image;
 pub mod input;
 pub mod render;
+pub mod scroll;
 pub mod selection;
 pub mod svg;
 pub mod text;
@@ -19,42 +20,62 @@ use vello::kurbo::Affine;
 
 pub type UzNodeId = usize;
 
-pub struct ScrollState {
-    pub scroll_offset_y: f32,
+/// Which axis a scroll operation targets. Used by drag/wheel routing and by
+/// the unified scrollbar geometry helpers.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
+pub enum ScrollAxis {
+    X,
+    Y,
 }
 
-impl Default for ScrollState {
-    fn default() -> Self {
-        Self::new()
-    }
+#[derive(Default)]
+pub struct ScrollState {
+    pub scroll_offset_x: f32,
+    pub scroll_offset_y: f32,
 }
 
 impl ScrollState {
     pub fn new() -> Self {
-        Self {
-            scroll_offset_y: 0.0,
+        Self::default()
+    }
+
+    pub fn offset(&self, axis: ScrollAxis) -> f32 {
+        match axis {
+            ScrollAxis::X => self.scroll_offset_x,
+            ScrollAxis::Y => self.scroll_offset_y,
+        }
+    }
+
+    pub fn set_offset(&mut self, axis: ScrollAxis, value: f32) {
+        match axis {
+            ScrollAxis::X => self.scroll_offset_x = value,
+            ScrollAxis::Y => self.scroll_offset_y = value,
         }
     }
 }
 
-/// Active scroll-thumb drag. Stored on Dom (only one drag at a time).
+/// Active scroll-thumb drag. Stored on the dom (only one drag at a time).
 pub struct ScrollDragState {
     pub node_id: UzNodeId,
-    pub start_mouse_y: f64,
+    pub axis: ScrollAxis,
+    /// Mouse coordinate on `axis` at drag start (logical px).
+    pub start_mouse_pos: f64,
     pub start_scroll_offset: f32,
-    /// Track length = visible_height - thumb_height (how far thumb can move).
+    /// Distance the thumb can travel along `axis` (track length minus thumb
+    /// length).
     pub track_range: f64,
-    /// Max scroll offset (content_height - visible_height).
+    /// Maximum scroll offset along `axis` (content_size - visible_size).
     pub max_scroll: f32,
 }
 
 /// Rendered thumb rect, rebuilt each paint pass for hit testing.
 pub struct ScrollThumbRect {
     pub node_id: UzNodeId,
+    pub axis: ScrollAxis,
     pub thumb_bounds: Bounds,
     pub view_bounds: Bounds,
-    pub content_height: f32,
-    pub visible_height: f32,
+    pub content_size: f32,
+    pub visible_size: f32,
 }
 
 #[derive(Clone, Debug)]

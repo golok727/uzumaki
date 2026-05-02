@@ -929,7 +929,59 @@ export function LayoutPage() {
 
         <Divider />
 
+        <ScrollableDemo />
+
+        <Divider />
+
         <AbsolutePositioningDemo />
+      </view>
+    </view>
+  );
+}
+
+function ScrollableDemo() {
+  return (
+    <view display="flex" flexDir="col" gap={12}>
+      <view display="flex" flexDir="col" gap={4}>
+        <text fontSize={14} fontWeight={700} color={C.text}>
+          Scrollable container
+        </text>
+        <text fontSize={12} color={C.textMuted}>
+          Fixed-height view with overflowing children. Wheel or drag the overlay
+          scrollbar at the right edge.
+        </text>
+      </view>
+
+      <view
+        h={200}
+        scrollable
+        bg={C.surface2}
+        rounded={8}
+        border={1}
+        borderColor={C.border}
+        p={12}
+        display="flex"
+        flexDir="col"
+        gap={8}
+      >
+        {Array.from({ length: 24 }, (_, i) => (
+          <view
+            key={i}
+            p={10}
+            bg={i % 2 === 0 ? C.surface3 : C.surface4}
+            rounded={6}
+            display="flex"
+            items="center"
+            justify="between"
+          >
+            <text fontSize={12} fontWeight={600} color={C.text}>
+              Row #{i + 1}
+            </text>
+            <text fontSize={11} color={C.textMuted}>
+              scrollable child
+            </text>
+          </view>
+        ))}
       </view>
     </view>
   );
