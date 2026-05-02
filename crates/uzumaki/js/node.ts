@@ -7,10 +7,12 @@ import type { Window } from './window';
 export class UzNode {
   readonly _native: CoreNode;
   readonly _window: Window;
+  interactionType?: 'button' | 'input' | 'container' | 'text';
 
   constructor(window: Window, native: CoreNode) {
     this._window = window;
     this._native = native;
+    this.interactionType = inferInteractionType(native.nodeName);
     registerNode(this);
   }
 
@@ -98,5 +100,26 @@ export class UzNode {
 export class UzTextNode extends UzNode {
   constructor(window: Window, text: string) {
     super(window, core.createTextNode(window.id, text));
+  }
+}
+
+function inferInteractionType(
+  nodeName: string,
+): 'button' | 'input' | 'container' | 'text' {
+  switch (nodeName.toLowerCase()) {
+    case 'button':
+      return 'button';
+
+    case 'input':
+    case 'textarea':
+      return 'input';
+
+    case 'span':
+    case 'p':
+    case 'text':
+      return 'text';
+
+    default:
+      return 'container';
   }
 }

@@ -10,9 +10,50 @@ import {
   type EventName,
   type UzumakiEvent,
 } from './events';
+import { UzNode } from './node';
 import { getNode } from './registry';
 import type { NodeId } from './types';
 import type { Window } from './window';
+
+function canInteract(
+  node: UzNode | null,
+  action: 'click' | 'keyboard' | 'focus',
+): boolean {
+  if (!node?.interactionType) return false;
+
+  switch (node.interactionType) {
+    case 'button':
+      return action === 'click' || action === 'keyboard';
+
+    case 'input':
+      return action === 'focus' || action === 'keyboard' || action === 'click';
+
+    case 'text':
+    case 'container':
+    default:
+      return false;
+  }
+}
+
+function resolveInteractiveTarget(
+  windowId: number,
+  nodeId: NodeId | null,
+): NodeId | null {
+  if (nodeId == null) return null;
+
+  const path = core.getAncestorPath(windowId, nodeId);
+
+  for (let i = path.length - 1; i >= 0; i--) {
+    const id = path[i]!;
+    const node = getNode(windowId, id);
+
+    if (node?.interactionType === 'button') {
+      return id;
+    }
+  }
+
+  return nodeId;
+}
 
 function nodeAt(windowId: number, id: NodeId | null) {
   if (id == null) return null;
@@ -71,11 +112,27 @@ export function dispatchDomEvent(
   const name = EVENT_TYPE_TO_NAME[type];
   if (!name) return false;
 
-  const target = nodeAt(window.id, targetNodeId);
+  const resolvedTargetNodeId = resolveInteractiveTarget(
+    window.id,
+    targetNodeId,
+  );
+
+  const target = nodeAt(window.id, resolvedTargetNodeId);
+  if (type === EventType.Click) {
+    if (!canInteract(target, 'click')) {
+      return false;
+    }
+  }
+
+  if (type === EventType.KeyDown || type === EventType.KeyUp) {
+    if (!canInteract(target, 'keyboard')) {
+      return false;
+    }
+  }
   return dispatchEvent(
     window,
     name,
-    targetNodeId,
+    resolvedTargetNodeId,
     buildDomEvent(type, target, payload),
   );
 }

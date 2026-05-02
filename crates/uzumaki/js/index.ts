@@ -1,6 +1,7 @@
 import core from './core';
 import { dispatchDomEvent } from './dispatcher';
 import { EventType } from './events';
+import { getNode } from './registry';
 import { disposeWindow, Window } from './window';
 
 export { Window } from './window';
