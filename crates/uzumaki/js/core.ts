@@ -40,8 +40,8 @@ interface Core {
   requestQuit(): void;
   requestRedraw(windowId: number): void;
   getRootNode(windowId: number): CoreNode;
-  createCoreElementNode(windowId: number, elementType: string): CoreNode;
-  createCoreTextNode(windowId: number, text: string): CoreNode;
+  createElementNode(windowId: number, elementType: string): CoreNode;
+  createTextNode(windowId: number, text: string): CoreNode;
   setEncodedImageData(
     windowId: number,
     nodeId: NodeId,

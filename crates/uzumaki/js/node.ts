@@ -97,6 +97,6 @@ export class UzNode {
 
 export class UzTextNode extends UzNode {
   constructor(window: Window, text: string) {
-    super(window, core.createCoreTextNode(window.id, text));
+    super(window, core.createTextNode(window.id, text));
   }
 }

@@ -113,7 +113,7 @@ export class Element<M extends UzEventMap = UzEventMap> extends UzNode {
 }
 
 export function createNativeElement(window: Window, type: string): CoreNode {
-  return core.createCoreElementNode(window.id, type);
+  return core.createElementNode(window.id, type);
 }
 
 export function getNativeRootNode(window: Window): CoreNode {

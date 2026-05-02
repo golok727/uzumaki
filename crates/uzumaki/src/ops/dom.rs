@@ -96,7 +96,7 @@ pub fn op_get_root_node(
 
 #[op2]
 #[cppgc]
-pub fn op_create_core_element_node(
+pub fn op_create_element_node(
     state: &mut OpState,
     #[smi] window_id: u32,
     #[string] element_type: String,
@@ -107,7 +107,7 @@ pub fn op_create_core_element_node(
 
 #[op2]
 #[cppgc]
-pub fn op_create_core_text_node(
+pub fn op_create_text_node(
     state: &mut OpState,
     #[smi] window_id: u32,
     #[string] text: String,
