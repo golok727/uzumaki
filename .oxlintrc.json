@@ -214,7 +214,7 @@
         "unicorn/prefer-dom-node-dataset": "error",
         "unicorn/prefer-dom-node-remove": "off",
         "unicorn/prefer-dom-node-text-content": "off",
-        "unicorn/prefer-event-target": "error",
+        "unicorn/prefer-event-target": "off",
         "unicorn/prefer-global-this": "error",
         "unicorn/prefer-import-meta-properties": "off",
         "unicorn/prefer-includes": "error",

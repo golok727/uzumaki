@@ -1,4 +1,5 @@
 import core from '../core';
+import type { UzEventMap } from '../events';
 import type { Window } from '../window';
 import { UzElement } from './base';
 
@@ -46,17 +47,22 @@ function loadImageBytes(source: string): Promise<Uint8Array> {
   return promise;
 }
 
-export type ImageLoadEvent = { src: string };
-export type ImageErrorEvent = { src: string; message: string };
+export interface ImageLoadEvent {
+  readonly src: string;
+}
 
-export class UzImageElement extends UzElement {
-  /** Called once a load is kicked off (after `src` is set, before bytes resolve). */
-  onLoadStart?: (event: ImageLoadEvent) => void;
-  /** Called when bytes are decoded and uploaded to the GPU. */
-  onLoad?: (event: ImageLoadEvent) => void;
-  /** Called when the load fails. If unset, errors log to console. */
-  onError?: (event: ImageErrorEvent) => void;
+export interface ImageErrorEvent {
+  readonly src: string;
+  readonly message: string;
+}
 
+export interface ImageEventMap extends UzEventMap {
+  load: ImageLoadEvent;
+  loadstart: ImageLoadEvent;
+  error: ImageErrorEvent;
+}
+
+export class UzImageElement extends UzElement<ImageEventMap> {
   private _generation = 0;
   private _disposed = false;
   private _src: string | undefined;
@@ -84,12 +90,12 @@ export class UzImageElement extends UzElement {
 
     if (!src) return;
 
-    callHandler(this.onLoadStart, { src });
+    this._safeEmit('loadstart', { src });
 
     if (core.applyCachedImage(this.windowId, this.nodeId, src)) {
       if (!this._isCurrent(generation)) return;
       core.requestRedraw(this.windowId);
-      callHandler(this.onLoad, { src });
+      this._safeEmit('load', { src });
       return;
     }
 
@@ -102,17 +108,29 @@ export class UzImageElement extends UzElement {
       if (!this._isCurrent(generation)) return;
       core.setEncodedImageData(this.windowId, this.nodeId, src, data);
       core.requestRedraw(this.windowId);
-      callHandler(this.onLoad, { src });
+      this._safeEmit('load', { src });
     } catch (error) {
       if (!this._isCurrent(generation)) return;
       core.clearImageData(this.windowId, this.nodeId);
       core.requestRedraw(this.windowId);
       const message = error instanceof Error ? error.message : String(error);
-      if (this.onError) {
-        callHandler(this.onError, { src, message });
+      const errorEntries = this._emitter._listeners('error');
+      if (errorEntries && errorEntries.length > 0) {
+        this._safeEmit('error', { src, message });
       } else {
         console.error(`[uzumaki] Failed to load image "${src}": ${message}`);
       }
+    }
+  }
+
+  private _safeEmit<K extends 'load' | 'loadstart' | 'error'>(
+    name: K,
+    event: ImageEventMap[K],
+  ): void {
+    try {
+      this._emitter.emit(name, event);
+    } catch (error) {
+      console.error(`[uzumaki] image '${name}' handler threw:`, error);
     }
   }
 
@@ -128,17 +146,5 @@ export class UzImageElement extends UzElement {
     this._disposed = true;
     this._generation++;
     super.destroy();
-  }
-}
-
-function callHandler<T>(
-  handler: ((event: T) => void) | undefined,
-  event: T,
-): void {
-  if (!handler) return;
-  try {
-    handler(event);
-  } catch (error) {
-    console.error('[uzumaki] image handler threw:', error);
   }
 }

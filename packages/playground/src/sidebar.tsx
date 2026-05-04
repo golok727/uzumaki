@@ -12,6 +12,7 @@ const TABS: { id: Tab; label: string; icon: string }[] = [
   { id: 'timer', label: 'Timers', icon: 'timer' },
   { id: 'issues', label: 'GitHub Issues', icon: 'circle-dot' },
   { id: 'images', label: 'Images', icon: 'image' },
+  { id: 'shiki', label: 'Code Highlight', icon: 'brackets' },
 ];
 
 export function Sidebar({
@@ -28,7 +29,8 @@ export function Sidebar({
   return (
     <view
       w={w}
-      minW={'200px'}
+      minW={w}
+      flexShrink={0}
       h="full"
       bg={C.surface}
       borderRight={1}
@@ -80,7 +82,6 @@ export function Sidebar({
                   {t.label}
                 </text>
               </view>
-              {isActive && <view w={4} h={4} bg={C.accentHi} rounded={4} />}
             </button>
           );
         })}

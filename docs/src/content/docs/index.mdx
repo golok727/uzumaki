@@ -20,24 +20,18 @@ import { Tabs, TabItem, Aside } from '@astrojs/starlight/components';
 
 <Tabs syncKey="platform">
   <TabItem label="Windows">
-    ```powershell
-    irm https://uzumaki.run/install.ps1 | iex
-    ```
+    ```powershell irm https://uzumaki.run/install.ps1 | iex ```
   </TabItem>
   <TabItem label="macOS">
-    ```sh
-    curl -fsSL https://uzumaki.run/install.sh | sh
-    ```
+    ```sh curl -fsSL https://uzumaki.run/install.sh | sh ```
   </TabItem>
   <TabItem label="Linux">
-    ```sh
-    curl -fsSL https://uzumaki.run/install.sh | sh
-    ```
+    ```sh curl -fsSL https://uzumaki.run/install.sh | sh ```
   </TabItem>
 </Tabs>
 
 <script>
-{`
+  {`
 (function() {
   function selectPlatformTab() {
     const ua = navigator.userAgent || navigator.platform || '';
@@ -72,23 +66,33 @@ import { Tabs, TabItem, Aside } from '@astrojs/starlight/components';
 
 <div style="border: 1px solid #27272a; border-radius: 8px; padding: 1.25rem;">
   <h3 style="margin-top: 0; color: #e2a52e;">GPU Rendered</h3>
-  <p style="color: #a1a1aa; margin-bottom: 0;">Built on wgpu and Vello. Hardware-accelerated 2D vector graphics. No Electron, no browser.</p>
+  <p style="color: #a1a1aa; margin-bottom: 0;">
+    Built on wgpu and Vello. Hardware-accelerated 2D vector graphics. No
+    Electron, no browser.
+  </p>
 </div>
 
 <div style="border: 1px solid #27272a; border-radius: 8px; padding: 1.25rem;">
   <h3 style="margin-top: 0; color: #e2a52e;">React + JSX</h3>
-  <p style="color: #a1a1aa; margin-bottom: 0;">Write native desktop apps with the React you already know. Hooks, state, components — it all works.</p>
+  <p style="color: #a1a1aa; margin-bottom: 0;">
+    Write native desktop apps with the React you already know. Hooks, state,
+    components — it all works.
+  </p>
 </div>
 
 <div style="border: 1px solid #27272a; border-radius: 8px; padding: 1.25rem;">
   <h3 style="margin-top: 0; color: #e2a52e;">Deno Runtime</h3>
-  <p style="color: #a1a1aa; margin-bottom: 0;">TypeScript and JSX out of the box. No config needed. Just write your code and run it.</p>
+  <p style="color: #a1a1aa; margin-bottom: 0;">
+    TypeScript and JSX out of the box. No config needed. Just write your code
+    and run it.
+  </p>
 </div>
 
 </div>
 
 <Aside type="caution">
-  Uzumaki is in alpha. The API is unstable and will change. Do not use in production.
+  Uzumaki is in alpha. The API is unstable and will change. Do not use in
+  production.
 </Aside>
 
 ---

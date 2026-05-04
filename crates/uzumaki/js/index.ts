@@ -1,32 +1,46 @@
-import { eventManager, EventType } from './events';
+import core from './core';
+import { dispatchDomEvent } from './dispatcher';
+import { EventType } from './events';
 import { disposeWindow, Window } from './window';
 
 export { getWindow, Window } from './window';
 export type {
-  WindowAttributes,
+  WindowOptions,
   WindowLevel,
   WindowPosition,
   WindowSize,
   WindowTheme,
-} from './window';
+} from './types';
 export { UzNode, UzTextNode } from './node';
 export { Element } from './elements/element';
+// todo cleanup imports
 export { UzElement } from './elements/base';
 export { UzRootElement } from './elements/root';
+export { UzViewElement } from './elements/view';
+export { UzTextElement } from './elements/text';
+export { UzButtonElement } from './elements/button';
 export { UzImageElement } from './elements/image';
+export { UzInputElement } from './elements/input';
+export { UzCheckboxElement } from './elements/checkbox';
+
 export { Clipboard } from './clipboard';
-export { eventManager, EventType } from './events';
+export { UzEventTarget as EventEmitter } from './event-target';
+export { EventType, UzEvent } from './events';
+export { EventPhase } from './events';
 export type {
-  EventPhase,
   EventName,
   EventHandler,
-  EventHandlerMap,
+  UzEventMap as EventHandlerMap,
+  WindowEventName,
+  WindowEventHandler,
+  WindowEventMap,
   UzumakiEvent,
-  UzumakiMouseEvent,
-  UzumakiKeyboardEvent,
-  UzumakiInputEvent,
-  UzumakiFocusEvent,
-  UzumakiClipboardEvent,
+  UzMouseEvent as UzumakiMouseEvent,
+  UzKeyboardEvent as UzumakiKeyboardEvent,
+  UzInputEvent as UzumakiInputEvent,
+  UzFocusEvent as UzumakiFocusEvent,
+  UzClipboardEvent as UzumakiClipboardEvent,
+  UzumakiResizeEvent,
 } from './events';
 
 interface AppEvent {
@@ -65,42 +79,44 @@ const EVENT_TYPE_MAP: Record<string, EventType> = {
   paste: EventType.Paste,
 };
 
-(globalThis as unknown as any).__uzumaki_on_app_event__ = function (
-  event: AppEvent,
-): boolean {
-  // WindowLoad is a special event dispatched directly to window handlers
+core.onAppEvent((event: AppEvent, ctx) => {
   if (event.type === 'windowLoad') {
-    eventManager.dispatchWindowEvent(event.windowId, EventType.WindowLoad);
-    return false;
+    const w = Window._getById(event.windowId);
+    if (w) w._dispatchLifecycle('load');
+    return;
   }
 
   if (event.type === 'windowClose') {
     const w = Window._getById(event.windowId);
     if (w) {
+      w._dispatchLifecycle('close');
       disposeWindow(w);
     }
-    return false;
+    return;
+  }
+
+  if (event.type === 'resize') {
+    const w = Window._getById(event.windowId);
+    if (w) {
+      w._dispatchLifecycle('resize', {
+        width: event.width ?? 0,
+        height: event.height ?? 0,
+      });
+    }
+    return;
   }
 
   if (event.type === 'hotReload') {
     console.log('[uzumaki] Hot reload');
-    return false;
-  }
-
-  if (event.type === 'resize') {
-    // todo: dispatch resize event to window handlers
-    return false;
+    return;
   }
 
   const eventType = EVENT_TYPE_MAP[event.type];
-  if (eventType === undefined) return false;
+  if (eventType === undefined) return;
 
-  // Always dispatch — no more nodeId guards.
-  // Events without a target node will only fire window-level handlers.
-  return eventManager.onRawEvent(
-    eventType,
-    event.windowId,
-    event.nodeId ?? null,
-    event,
-  );
-};
+  const w = Window._getById(event.windowId);
+  if (!w) return;
+
+  const prevented = dispatchDomEvent(w, eventType, event.nodeId ?? null, event);
+  if (prevented) ctx.preventDefault();
+});

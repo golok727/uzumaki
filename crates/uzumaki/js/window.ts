@@ -1,6 +1,6 @@
 import core, { type CoreWindow } from './core';
 import type {
-  WindowAttributes,
+  WindowOptions,
   WindowLevel,
   WindowPosition,
   WindowSize,
@@ -10,22 +10,20 @@ import { UzTextNode } from './node';
 import { Element } from './elements/element';
 import { UzElement } from './elements/base';
 import { UzRootElement } from './elements/root';
+import { UzViewElement } from './elements/view';
+import { UzTextElement } from './elements/text';
+import { UzButtonElement } from './elements/button';
 import { UzImageElement } from './elements/image';
+import { UzInputElement } from './elements/input';
+import { UzCheckboxElement } from './elements/checkbox';
+import { UzEventTarget, type ListenerOptions } from './event-target';
 import {
-  eventManager,
-  EVENT_NAME_TO_TYPE,
-  type EventName,
-  type EventHandler,
+  buildLifecycleEvent,
+  type WindowEventMap,
+  type WindowEventName,
+  type WindowEventHandler,
 } from './events';
 import { clearWindowNodes } from './registry';
-
-export type {
-  WindowAttributes,
-  WindowLevel,
-  WindowPosition,
-  WindowSize,
-  WindowTheme,
-} from './types';
 
 const windowsByLabel = new Map<string, Window>();
 const windowsById = new Map<number, Window>();
@@ -35,6 +33,31 @@ const DEFAULT_WINDOW_TITLE = 'uzumaki';
 const DEFAULT_WINDOW_LEVEL: WindowLevel = 'normal';
 const DEFAULT_WINDOW_THEME: WindowTheme | null = null;
 
+type ElementConstructor<T extends Element<any> = Element<any>> = new (
+  window: Window,
+) => T;
+
+const ELEMENT_CONSTRUCTORS = {
+  view: UzViewElement,
+  text: UzTextElement,
+  button: UzButtonElement,
+  input: UzInputElement,
+  checkbox: UzCheckboxElement,
+  image: UzImageElement,
+} satisfies Record<string, ElementConstructor>;
+
+export type ElementTagName = keyof typeof ELEMENT_CONSTRUCTORS;
+export type ElementForTag<T extends ElementTagName> = InstanceType<
+  (typeof ELEMENT_CONSTRUCTORS)[T]
+>;
+
+export interface WindowAttributes {
+  width: number;
+  height: number;
+  title: string;
+  rootStyles: Record<string, unknown>;
+}
+
 export class Window {
   private _id: number;
   private _native: CoreWindow;
@@ -43,8 +66,10 @@ export class Window {
   private _disposed: boolean = false;
   private _disposables: (() => void)[] = [];
   private _root: UzRootElement | null = null;
+  /** @internal Used by the dispatcher and runtime glue. */
+  readonly _emitter: UzEventTarget<WindowEventMap> = new UzEventTarget();
 
-  constructor(label: string, attributes: WindowAttributes = {}) {
+  constructor(label: string, attributes: WindowOptions = {}) {
     const existing = windowsByLabel.get(label);
     if (existing) {
       throw new Error(`Window with label ${label} already exists`);
@@ -67,11 +92,10 @@ export class Window {
     windowsById.set(this._id, this);
   }
 
-  close(): void {
-    if (this._disposed) {
-      return;
-    }
-
+  close() {
+    this._emitter._clear();
+    windowsByLabel.delete(this._label);
+    windowsById.delete(this._id);
     this._native.close();
   }
 
@@ -262,10 +286,13 @@ export class Window {
     return this._root;
   }
 
-  createElement(type: string): Element {
-    if (type === 'image') {
-      return new UzImageElement(this);
-    }
+  createElement<T extends ElementTagName>(type: T): ElementForTag<T>;
+  createElement(type: string): Element<any>;
+  createElement(type: string): Element<any> {
+    const Constructor = ELEMENT_CONSTRUCTORS[type as ElementTagName] as
+      | ElementConstructor
+      | undefined;
+    if (Constructor) return new Constructor(this);
     return new UzElement(type, this);
   }
 
@@ -286,36 +313,30 @@ export class Window {
     this._native.remBase = value;
   }
 
-  on<K extends EventName>(
+  on<K extends WindowEventName>(
     eventName: K,
-    handler: EventHandler<K>,
-    options?: { capture?: boolean },
+    handler: WindowEventHandler<K>,
+    options?: ListenerOptions,
   ): void {
-    const t = EVENT_NAME_TO_TYPE[eventName];
-    if (t !== undefined) {
-      eventManager.addWindowHandler(
-        this._id,
-        t,
-        handler as Function,
-        options?.capture ?? false,
-      );
-    }
+    this._emitter.on(eventName, handler, options);
   }
 
-  off<K extends EventName>(
+  off<K extends WindowEventName>(
     eventName: K,
-    handler: EventHandler<K>,
-    options?: { capture?: boolean },
+    handler: WindowEventHandler<K>,
+    options?: ListenerOptions,
   ): void {
-    const t = EVENT_NAME_TO_TYPE[eventName];
-    if (t !== undefined) {
-      eventManager.removeWindowHandler(
-        this._id,
-        t,
-        handler as Function,
-        options?.capture ?? false,
-      );
-    }
+    this._emitter.off(eventName, handler, options);
+  }
+
+  /** @internal Fire a lifecycle event (load/close/resize). */
+  _dispatchLifecycle(
+    name: 'load' | 'close' | 'resize',
+    payload?: any,
+  ): boolean {
+    const event = buildLifecycleEvent(name, payload);
+    this._emitter.emit(name, event as any);
+    return event.defaultPrevented;
   }
 }
 
@@ -324,25 +345,22 @@ export function getWindow(label: string): Window | undefined {
 }
 
 /** @internal Called when the native window is destroyed. */
-export function disposeWindow(_window: Window): void {
+export function disposeWindow(_window: Window) {
   const window = _window as never as {
     id: number;
     label: string;
     _disposed: boolean;
     _disposables: (() => void)[];
+    _emitter: { _clear(): void };
   };
-
-  if (window._disposed) {
-    return;
-  }
 
   window._disposed = true;
   for (const cb of window._disposables) {
     cb();
   }
   window._disposables = [];
+  window._emitter._clear();
   clearWindowNodes(window.id);
-  eventManager.clearWindowHandlers(window.id);
   windowsByLabel.delete(window.label);
   windowsById.delete(window.id);
 }

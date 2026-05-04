@@ -36,7 +36,7 @@ export function IssuesPage() {
 
   const columns = [
     { key: 'number', header: '#', width: 50, align: 'end' as const },
-    { key: 'title', header: 'Title', flex: 1 },
+    { key: 'title', header: 'Title', width: 360 },
     {
       key: 'state',
       header: 'State',
@@ -76,23 +76,38 @@ export function IssuesPage() {
   ];
 
   return (
-    <view display="flex" flexDir="col" gap={0} h="full" scrollable>
+    <view
+      display="flex"
+      flexDir="col"
+      gap={0}
+      h="full"
+      scroll
+      scrollbarWidth={8}
+      scrollbarRadius={5}
+    >
       <view
         display="flex"
         flexDir="col"
+        gap={8}
         px={24}
         py={16}
         borderBottom={1}
         borderColor={C.border}
       >
-        <view display="flex" flexDir="row" items="center" gap={12}>
-          <text fontSize={20} fontWeight={800} color={C.text}>
-            GitHub Issues
-          </text>
+        <view
+          display="flex"
+          flexDir="row"
+          items="center"
+          gap={12}
+          fontSize={20}
+          fontWeight={800}
+          color={C.text}
+        >
+          GitHub Issues
         </view>
-        <text fontSize={12} color={C.textMuted}>
+        <view fontSize={12} color={C.textMuted}>
           Fetching from https://github.com/golok727/uzumaki/issues
-        </text>
+        </view>
       </view>
 
       <view display="flex" flexDir="col" gap={20} p={24}>
@@ -138,12 +153,23 @@ export function IssuesPage() {
                 bg={C.accentDark}
               />
             </view>
-            <Table
-              columns={columns}
-              data={issues}
-              keyField="number"
-              rowHeight={48}
-            />
+            <view
+              h={420}
+              scroll
+              bg={C.surface}
+              rounded={8}
+              border={1}
+              borderColor={C.border}
+            >
+              <view minW={740}>
+                <Table
+                  columns={columns}
+                  data={issues}
+                  keyField="number"
+                  rowHeight={48}
+                />
+              </view>
+            </view>
           </view>
         )}
       </view>

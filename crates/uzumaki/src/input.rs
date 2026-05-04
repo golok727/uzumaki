@@ -34,7 +34,6 @@ pub struct InputState {
     pub placeholder: String,
     pub scroll_offset: f32,
     pub scroll_offset_y: f32,
-    pub focused: bool,
     pub blink_reset: Instant,
     pub disabled: bool,
     pub secure: bool,
@@ -65,7 +64,6 @@ impl InputState {
             placeholder: String::new(),
             scroll_offset: 0.0,
             scroll_offset_y: 0.0,
-            focused: false,
             blink_reset: Instant::now(),
             disabled: false,
             secure: false,
@@ -439,16 +437,16 @@ impl InputState {
         self.blink_reset = Instant::now();
     }
 
-    pub fn blink_visible(&self, window_focused: bool) -> bool {
-        if !self.focused || !window_focused {
+    pub fn blink_visible(&self, focused: bool, window_focused: bool) -> bool {
+        if !focused || !window_focused {
             return false;
         }
         let elapsed = self.blink_phase_elapsed_ms();
         elapsed < Self::BLINK_ON_MS
     }
 
-    pub fn next_blink_toggle_in(&self, window_focused: bool) -> Option<Duration> {
-        if !self.focused || !window_focused {
+    pub fn next_blink_toggle_in(&self, focused: bool, window_focused: bool) -> Option<Duration> {
+        if !focused || !window_focused {
             return None;
         }
 
@@ -782,37 +780,34 @@ mod tests {
     #[test]
     fn blink_not_visible_unfocused() {
         let is = InputState::new();
-        assert!(!is.blink_visible(true));
+        assert!(!is.blink_visible(false, true));
     }
 
     #[test]
     fn blink_not_visible_window_unfocused() {
-        let mut is = InputState::new();
-        is.focused = true;
-        assert!(!is.blink_visible(false));
+        let is = InputState::new();
+        assert!(!is.blink_visible(true, false));
     }
 
     #[test]
     fn next_blink_toggle_is_absent_when_unfocused() {
         let is = InputState::new();
-        assert!(is.next_blink_toggle_in(true).is_none());
+        assert!(is.next_blink_toggle_in(false, true).is_none());
     }
 
     #[test]
     fn next_blink_toggle_matches_visible_phase() {
         let mut is = InputState::new();
-        is.focused = true;
         is.blink_reset = Instant::now() - Duration::from_millis(200);
-        let next = is.next_blink_toggle_in(true).unwrap();
+        let next = is.next_blink_toggle_in(true, true).unwrap();
         assert!((329..=330).contains(&next.as_millis()));
     }
 
     #[test]
     fn next_blink_toggle_matches_hidden_phase() {
         let mut is = InputState::new();
-        is.focused = true;
         is.blink_reset = Instant::now() - Duration::from_millis(700);
-        let next = is.next_blink_toggle_in(true).unwrap();
+        let next = is.next_blink_toggle_in(true, true).unwrap();
         assert!((359..=360).contains(&next.as_millis()));
     }
 }

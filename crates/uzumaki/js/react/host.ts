@@ -2,7 +2,6 @@ import { CHECKBOX_ATTR_NAMES, INPUT_ATTR_NAMES } from '../constants';
 import { Element } from '../elements/element';
 import { UzImageElement } from '../elements/image';
 import { UzNode } from '../node';
-import { eventManager } from '../events';
 import type { ListenerEntry } from '../types';
 import {
   assignNativeStyle,
@@ -13,23 +12,12 @@ import {
 import type { Window } from '../window';
 
 const RESERVED_PROPS = new Set(['children', 'key', 'ref', 'id']);
-const IMAGE_LIFECYCLE_PROPS = new Set([
-  'children',
-  'key',
-  'ref',
-  'id',
-  'src',
-  'onLoad',
-  'onLoadStart',
-  'onError',
-]);
+const IMAGE_RESERVED_PROPS = new Set([...RESERVED_PROPS, 'src']);
 
 export interface HostInstance {
   /** The DOM node — Element for intrinsics, UzNode for #text instances. */
   node: UzNode;
   type: string;
-  onChangeTextListener?: (ev: any) => void;
-  onChangeListener?: (ev: any) => void;
 }
 
 export function createHostInstance(
@@ -110,7 +98,6 @@ export function unhideInstance(instance: HostInstance): void {
 }
 
 export function disposeHostInstance(instance: HostInstance): void {
-  unbindSpecialEvents(instance);
   instance.node.destroy();
 }
 
@@ -131,16 +118,11 @@ export function applyReactProps(
   updateAttributes(node, oldBuckets.styles, newBuckets.styles);
   updateAttributes(node, oldBuckets.attrs, newBuckets.attrs);
   updateEvents(instance, oldBuckets.events, newBuckets.events);
-  updateSpecialEvents(instance, newProps, oldProps);
   syncInteractive(instance, newBuckets.events.size > 0);
   if (instance.type === 'text') {
     node.textContent = String(newProps.children ?? '');
   }
   if (instance.type === 'image' && node instanceof UzImageElement) {
-    // assign callbacks before src so they fire on this update's load
-    node.onLoadStart = newProps.onLoadStart;
-    node.onLoad = newProps.onLoad;
-    node.onError = newProps.onError;
     node.src = newProps.src;
   }
 }
@@ -180,13 +162,7 @@ function collectProps(
 }
 
 function skippedPropsForType(type: string): Set<string> {
-  if (type === 'image') return IMAGE_LIFECYCLE_PROPS;
-  if (type === 'input') {
-    return new Set([...RESERVED_PROPS, 'onChangeText']);
-  }
-  if (type === 'checkbox') {
-    return new Set([...RESERVED_PROPS, 'onChange']);
-  }
+  if (type === 'image') return IMAGE_RESERVED_PROPS;
   return RESERVED_PROPS;
 }
 
@@ -218,7 +194,8 @@ function updateEvents(
   oldListeners: Map<string, ListenerEntry>,
   newListeners: Map<string, ListenerEntry>,
 ): void {
-  const { windowId, nodeId } = instance.node;
+  if (!(instance.node instanceof Element)) return;
+  const el = instance.node as Element<any>;
   for (const [key, newEntry] of newListeners) {
     const old = oldListeners.get(key);
     if (
@@ -227,104 +204,18 @@ function updateEvents(
       old.capture !== newEntry.capture
     ) {
       if (old) {
-        eventManager.removeHandlerByName(
-          windowId,
-          nodeId,
-          old.name,
-          old.handler,
-          old.capture,
-        );
+        el.off(old.name, old.handler as any, { capture: old.capture });
       }
-      eventManager.addHandlerByName(
-        windowId,
-        nodeId,
-        newEntry.name,
-        newEntry.handler,
-        newEntry.capture,
-      );
+      el.on(newEntry.name, newEntry.handler as any, {
+        capture: newEntry.capture,
+      });
     }
   }
 
   for (const [key, old] of oldListeners) {
     if (!newListeners.has(key)) {
-      eventManager.removeHandlerByName(
-        windowId,
-        nodeId,
-        old.name,
-        old.handler,
-        old.capture,
-      );
+      el.off(old.name, old.handler as any, { capture: old.capture });
     }
-  }
-}
-
-function updateSpecialEvents(
-  instance: HostInstance,
-  newProps: Record<string, any>,
-  oldProps: Record<string, any>,
-): void {
-  if (
-    instance.type === 'input' &&
-    newProps.onChangeText !== oldProps.onChangeText
-  ) {
-    unbindOnChangeText(instance);
-    if (typeof newProps.onChangeText === 'function') {
-      const onChangeText = newProps.onChangeText;
-      instance.onChangeTextListener = (ev: any) => {
-        onChangeText(ev.value);
-      };
-      eventManager.addHandlerByName(
-        instance.node.windowId,
-        instance.node.nodeId,
-        'input',
-        instance.onChangeTextListener,
-      );
-    }
-  }
-
-  if (instance.type === 'checkbox' && newProps.onChange !== oldProps.onChange) {
-    unbindOnChange(instance);
-    if (typeof newProps.onChange === 'function') {
-      const onChange = newProps.onChange;
-      instance.onChangeListener = (ev: any) => {
-        onChange(ev.value === 'true');
-      };
-      eventManager.addHandlerByName(
-        instance.node.windowId,
-        instance.node.nodeId,
-        'input',
-        instance.onChangeListener,
-      );
-    }
-  }
-}
-
-function unbindSpecialEvents(instance: HostInstance): void {
-  unbindOnChangeText(instance);
-  unbindOnChange(instance);
-}
-
-function unbindOnChangeText(instance: HostInstance): void {
-  if (instance.onChangeTextListener) {
-    eventManager.removeHandlerByName(
-      instance.node.windowId,
-      instance.node.nodeId,
-      'input',
-      instance.onChangeTextListener,
-    );
-    instance.onChangeTextListener = undefined;
-  }
-}
-
-function unbindOnChange(instance: HostInstance): void {
-  if (instance.onChangeListener) {
-    eventManager.removeHandlerByName(
-      instance.node.windowId,
-      instance.node.nodeId,
-      'input',
-      instance.onChangeListener,
-    );
-    instance.onChangeListener = undefined;
   }
 }
 
@@ -333,9 +224,5 @@ function syncInteractive(
   hasReactEvents: boolean,
 ): void {
   if (!(instance.node instanceof Element)) return;
-  const interactive =
-    hasReactEvents ||
-    Boolean(instance.onChangeTextListener) ||
-    Boolean(instance.onChangeListener);
-  instance.node.setAttribute('interactive', interactive);
+  instance.node.setAttribute('interactive', hasReactEvents);
 }

@@ -1,21 +1,27 @@
 use serde_json::{Value, json};
 
 use crate::app::WindowEntry;
-use crate::cursor;
 use crate::element::{self, Node, UzNodeId};
 use crate::prop_keys::{AttributeKind, ElementProp, StyleProp, StyleVariant};
 use crate::style::*;
-use crate::ui::UIState;
+use crate::{SharedString, cursor};
 
 use crate::parse::*;
 
+// TODO
+// - attribute parser  and (simplify code)
+//
+//
+//
+//
+//
 impl WindowEntry {
     pub fn set_str_attribute(&mut self, node_id: UzNodeId, name: &str, value: &str) {
         let Some(kind) = name.parse::<AttributeKind>().ok() else {
             return;
         };
 
-        let effect = match kind {
+        match kind {
             AttributeKind::Element(ep) => {
                 let Some(node) = self.dom.nodes.get_mut(node_id) else {
                     return;
@@ -30,7 +36,7 @@ impl WindowEntry {
             }
         };
 
-        self.apply_side_effects(node_id, &kind, effect);
+        self.apply_side_effects(node_id, &kind);
     }
 
     pub fn set_number_attribute(&mut self, node_id: UzNodeId, name: &str, value: f64) {
@@ -38,7 +44,7 @@ impl WindowEntry {
             return;
         };
 
-        let effect = match kind {
+        match kind {
             AttributeKind::Element(ep) => {
                 let Some(node) = self.dom.nodes.get_mut(node_id) else {
                     return;
@@ -53,7 +59,7 @@ impl WindowEntry {
             }
         };
 
-        self.apply_side_effects(node_id, &kind, effect);
+        self.apply_side_effects(node_id, &kind);
     }
 
     pub fn set_bool_attribute(&mut self, node_id: UzNodeId, name: &str, value: bool) {
@@ -61,7 +67,7 @@ impl WindowEntry {
             return;
         };
 
-        let effect = match kind {
+        match kind {
             AttributeKind::Element(ep) => {
                 let Some(node) = self.dom.nodes.get_mut(node_id) else {
                     return;
@@ -76,7 +82,7 @@ impl WindowEntry {
             }
         };
 
-        self.apply_side_effects(node_id, &kind, effect);
+        self.apply_side_effects(node_id, &kind);
     }
 
     pub fn clear_attribute(&mut self, node_id: UzNodeId, name: &str) {
@@ -84,7 +90,7 @@ impl WindowEntry {
             return;
         };
 
-        let effect = match kind {
+        match kind {
             AttributeKind::Element(ep) => {
                 let Some(node) = self.dom.nodes.get_mut(node_id) else {
                     return;
@@ -99,7 +105,7 @@ impl WindowEntry {
             }
         };
 
-        self.apply_side_effects(node_id, &kind, effect);
+        self.apply_side_effects(node_id, &kind);
     }
 
     pub fn get_attribute(&self, node_id: UzNodeId, name: &str) -> Value {
@@ -117,10 +123,7 @@ impl WindowEntry {
         }
     }
 
-    fn apply_side_effects(&mut self, node_id: UzNodeId, kind: &AttributeKind, effect: StyleEffect) {
-        if matches!(effect, StyleEffect::AppliedNeedsSync) {
-            sync_taffy(&mut self.dom, node_id);
-        }
+    fn apply_side_effects(&mut self, _node_id: UzNodeId, kind: &AttributeKind) {
         if matches!(kind, AttributeKind::Style(StyleProp::Cursor, _)) {
             self.update_cursor();
         }
@@ -136,30 +139,21 @@ impl WindowEntry {
     }
 }
 
-pub(crate) enum StyleEffect {
-    Ignored,
-    Applied,
-    AppliedNeedsSync,
-}
-
-fn set_element_str(node: &mut Node, prop: ElementProp, value: &str, _rem_base: f32) -> StyleEffect {
+fn set_element_str(node: &mut Node, prop: ElementProp, value: &str, _rem_base: f32) {
     match prop {
         ElementProp::Value => {
             if let Some(input) = node.as_text_input_mut() {
                 input.set_value(value);
-                return StyleEffect::Applied;
             }
         }
         ElementProp::Placeholder => {
             if let Some(input) = node.as_text_input_mut() {
                 input.placeholder = value.to_string();
-                return StyleEffect::Applied;
             }
         }
         ElementProp::MaxLength => {
             if let Some(input) = node.as_text_input_mut() {
                 input.max_length = parse_max_length(value.parse::<f32>().unwrap_or(-1.0));
-                return StyleEffect::Applied;
             }
         }
         ElementProp::Disabled
@@ -167,18 +161,16 @@ fn set_element_str(node: &mut Node, prop: ElementProp, value: &str, _rem_base: f
         | ElementProp::Secure
         | ElementProp::Checked
         | ElementProp::Focusable => {
-            return set_element_bool(node, prop, parse_bool(value));
+            set_element_bool(node, prop, parse_bool(value));
         }
     }
-    StyleEffect::Ignored
 }
 
-fn set_element_number(node: &mut Node, prop: ElementProp, value: f32) -> StyleEffect {
+fn set_element_number(node: &mut Node, prop: ElementProp, value: f32) {
     match prop {
         ElementProp::MaxLength => {
             if let Some(input) = node.as_text_input_mut() {
                 input.max_length = parse_max_length(value);
-                return StyleEffect::Applied;
             }
         }
         ElementProp::Disabled
@@ -186,102 +178,86 @@ fn set_element_number(node: &mut Node, prop: ElementProp, value: f32) -> StyleEf
         | ElementProp::Secure
         | ElementProp::Checked
         | ElementProp::Focusable => {
-            return set_element_bool(node, prop, value > 0.5);
+            set_element_bool(node, prop, value > 0.5);
         }
         _ => {}
     }
-    StyleEffect::Ignored
 }
 
-fn set_element_bool(node: &mut Node, prop: ElementProp, value: bool) -> StyleEffect {
+fn set_element_bool(node: &mut Node, prop: ElementProp, value: bool) {
     match prop {
         ElementProp::Disabled => {
             if let Some(input) = node.as_text_input_mut() {
                 input.disabled = value;
-                return StyleEffect::Applied;
             }
         }
         ElementProp::Multiline => {
             if let Some(input) = node.as_text_input_mut() {
                 input.multiline = value;
-                return StyleEffect::Applied;
             }
         }
         ElementProp::Secure => {
             if let Some(input) = node.as_text_input_mut() {
                 input.secure = value;
-                return StyleEffect::Applied;
             }
         }
         ElementProp::Checked => {
             if let Some(checked) = node.as_checkbox_input_mut() {
                 *checked = value;
-                return StyleEffect::Applied;
             }
         }
         ElementProp::Focusable => {
             if let Some(element) = node.as_element_mut() {
                 element.set_focussable(value);
-                return StyleEffect::Applied;
             }
         }
         _ => {}
     }
-    StyleEffect::Ignored
 }
 
-fn clear_element_prop(node: &mut Node, prop: ElementProp) -> StyleEffect {
+fn clear_element_prop(node: &mut Node, prop: ElementProp) {
     match prop {
         ElementProp::Value => {
             if let Some(input) = node.as_text_input_mut() {
                 input.set_value("");
-                return StyleEffect::Applied;
             }
         }
         ElementProp::Placeholder => {
             if let Some(input) = node.as_text_input_mut() {
                 input.placeholder.clear();
-                return StyleEffect::Applied;
             }
         }
         ElementProp::Disabled => {
             if let Some(input) = node.as_text_input_mut() {
                 input.disabled = false;
-                return StyleEffect::Applied;
             }
         }
         ElementProp::MaxLength => {
             if let Some(input) = node.as_text_input_mut() {
                 input.max_length = None;
-                return StyleEffect::Applied;
             }
         }
         ElementProp::Multiline => {
             if let Some(input) = node.as_text_input_mut() {
                 input.multiline = false;
-                return StyleEffect::Applied;
             }
         }
         ElementProp::Secure => {
             if let Some(input) = node.as_text_input_mut() {
                 input.secure = false;
-                return StyleEffect::Applied;
             }
         }
         ElementProp::Checked => {
             if let Some(checked) = node.as_checkbox_input_mut() {
                 *checked = false;
-                return StyleEffect::Applied;
             }
         }
         ElementProp::Focusable => {
             if let Some(element) = node.as_element_mut() {
                 element.set_focussable(false);
-                return StyleEffect::Applied;
             }
         }
     }
-    StyleEffect::Ignored
 }
 
 fn get_element_prop(node: &Node, prop: ElementProp) -> Value {
@@ -327,7 +303,7 @@ fn set_style_str(
     variant: StyleVariant,
     value: &str,
     rem_base: f32,
-) -> StyleEffect {
+) {
     if variant != StyleVariant::Base {
         return set_variant_style_str(node, prop, variant, value, rem_base);
     }
@@ -343,25 +319,24 @@ fn set_style_str(
         | StyleProp::Left => {
             if let Some(length) = parse_length(value, rem_base) {
                 set_length_style_prop(&mut node.style, prop, length)
-            } else {
-                clear_style_prop(node, prop, variant)
             }
         }
         StyleProp::Gap => {
             if let Some(length) = parse_definite_length(value, rem_base) {
                 set_gap_style_prop(&mut node.style, length)
-            } else {
-                clear_style_prop(node, prop, variant)
             }
         }
-        StyleProp::Bg | StyleProp::Color | StyleProp::BorderColor => {
+        StyleProp::Bg
+        | StyleProp::Color
+        | StyleProp::BorderColor
+        | StyleProp::ScrollbarColor
+        | StyleProp::ScrollbarHoverColor => {
             if let Some(color) = parse_color(value) {
                 set_color_style_prop(node, prop, color)
-            } else {
-                clear_style_prop(node, prop, variant)
             }
         }
         StyleProp::FlexDir
+        | StyleProp::FlexWrap
         | StyleProp::Items
         | StyleProp::Justify
         | StyleProp::Display
@@ -370,15 +345,20 @@ fn set_style_str(
         | StyleProp::Position => {
             if set_enum_style_prop_from_str(&mut node.style, prop, value) {
                 remember_inherited_enum(node, prop);
-                StyleEffect::AppliedNeedsSync
-            } else {
-                clear_style_prop(node, prop, variant)
             }
         }
         StyleProp::Cursor => {
             node.style.cursor = cursor::UzCursorIcon::parse(value);
-            StyleEffect::Applied
         }
+        StyleProp::FontWeight => {
+            if let Some(weight) = parse_font_weight_str(value) {
+                set_font_weight(node, weight)
+            } else {
+                clear_style_prop(node, prop, variant)
+            }
+        }
+        StyleProp::FontFamily => set_font_family(node, value),
+
         StyleProp::Visibility => set_style_number(
             node,
             prop,
@@ -386,16 +366,14 @@ fn set_style_str(
             if value == "visible" { 1.0 } else { 0.0 },
         ),
         StyleProp::Flex => {
-            if set_flex_string(&mut node.style, value) {
-                StyleEffect::AppliedNeedsSync
-            } else {
+            if !set_flex_string(&mut node.style, value) {
                 let v = parse_px_scalar(value, rem_base).unwrap_or_default();
-                set_f32_style_prop(node, prop, v)
+                set_f32_style_prop(node, prop, v); // flex={v} flex = true, flex_grow = v
             }
         }
         _ => {
-            let v = parse_px_scalar(value, rem_base).unwrap_or_default();
-            set_f32_style_prop(node, prop, v)
+            let v = parse_px_scalar(value, rem_base).unwrap_or_default(); // parse with unit
+            set_f32_style_prop(node, prop, v);
         }
     }
 }
@@ -406,7 +384,7 @@ fn set_variant_style_str(
     variant: StyleVariant,
     value: &str,
     rem_base: f32,
-) -> StyleEffect {
+) {
     match prop {
         StyleProp::W
         | StyleProp::H
@@ -429,30 +407,34 @@ fn set_variant_style_str(
                 clear_style_prop(node, prop, variant)
             }
         }
-        StyleProp::Bg | StyleProp::Color | StyleProp::BorderColor => {
+        StyleProp::Bg
+        | StyleProp::Color
+        | StyleProp::BorderColor
+        | StyleProp::ScrollbarColor
+        | StyleProp::ScrollbarHoverColor => {
             if let Some(color) = parse_color(value) {
                 set_variant_color(node, prop, variant, color)
-            } else {
-                clear_style_prop(node, prop, variant)
             }
         }
         StyleProp::FlexDir
+        | StyleProp::FlexWrap
         | StyleProp::Items
         | StyleProp::Justify
         | StyleProp::Display
         | StyleProp::TextWrap
         | StyleProp::WordBreak
         | StyleProp::Position => {
-            if set_variant_enum_from_str(node, prop, variant, value) {
-                StyleEffect::Applied
-            } else {
-                clear_style_prop(node, prop, variant)
-            }
+            set_variant_enum_from_str(node, prop, variant, value);
         }
         StyleProp::Cursor => {
             get_or_init_variant_style(node, variant).cursor = cursor::UzCursorIcon::parse(value);
-            StyleEffect::Applied
         }
+        StyleProp::FontWeight => {
+            if let Some(weight) = parse_font_weight_str(value) {
+                set_variant_font_weight(node, variant, weight)
+            }
+        }
+        StyleProp::FontFamily => set_variant_font_family(node, variant, value),
         StyleProp::Visibility => set_variant_number(
             node,
             prop,
@@ -460,9 +442,7 @@ fn set_variant_style_str(
             if value == "visible" { 1.0 } else { 0.0 },
         ),
         StyleProp::Flex => {
-            if set_variant_flex_string(node, variant, value) {
-                StyleEffect::Applied
-            } else {
+            if !set_variant_flex_string(node, variant, value) {
                 let v = parse_px_scalar(value, rem_base).unwrap_or_default();
                 set_variant_number(node, prop, variant, v)
             }
@@ -484,12 +464,7 @@ fn set_variant_style_str(
     }
 }
 
-fn set_style_number(
-    node: &mut Node,
-    prop: StyleProp,
-    variant: StyleVariant,
-    value: f32,
-) -> StyleEffect {
+fn set_style_number(node: &mut Node, prop: StyleProp, variant: StyleVariant, value: f32) {
     if variant != StyleVariant::Base {
         return set_variant_number(node, prop, variant, value);
     }
@@ -504,24 +479,18 @@ fn set_style_number(
         | StyleProp::Bottom
         | StyleProp::Left => set_length_style_prop(&mut node.style, prop, Length::Px(value)),
         StyleProp::Gap => set_gap_style_prop(&mut node.style, DefiniteLength::Px(value)),
-        StyleProp::FlexDir
-        | StyleProp::Items
-        | StyleProp::Justify
-        | StyleProp::Display
-        | StyleProp::TextWrap
-        | StyleProp::WordBreak
-        | StyleProp::Position => {
-            set_enum_style_prop(&mut node.style, prop, value as i32);
-            remember_inherited_enum(node, prop);
-            StyleEffect::AppliedNeedsSync
-        }
         StyleProp::Visibility => {
+            // show we allow this ?
             node.style.visibility = if value > 0.5 {
                 Visibility::Visible
             } else {
                 Visibility::Hidden
             };
-            StyleEffect::AppliedNeedsSync
+        }
+        StyleProp::FontWeight => {
+            if let Some(weight) = parse_font_weight_number(value) {
+                set_font_weight(node, weight)
+            }
         }
         _ => set_f32_style_prop(node, prop, value),
     }
@@ -549,12 +518,7 @@ fn get_or_init_variant_style(node: &mut Node, variant: StyleVariant) -> &mut UzS
     }
 }
 
-fn set_variant_color(
-    node: &mut Node,
-    prop: StyleProp,
-    variant: StyleVariant,
-    color: Color,
-) -> StyleEffect {
+fn set_variant_color(node: &mut Node, prop: StyleProp, variant: StyleVariant, color: Color) {
     let r = get_or_init_variant_style(node, variant);
     match prop {
         StyleProp::Bg => r.background = Some(color),
@@ -564,17 +528,13 @@ fn set_variant_color(
             let outline = r.outline.get_or_insert(Outline::FOCUS_RING);
             outline.color = color;
         }
-        _ => return StyleEffect::Ignored,
+        StyleProp::ScrollbarColor => r.scrollbar.color = Some(color),
+        StyleProp::ScrollbarHoverColor => r.scrollbar.hover_color = Some(color),
+        _ => {}
     }
-    StyleEffect::Applied
 }
 
-fn set_variant_length(
-    node: &mut Node,
-    prop: StyleProp,
-    variant: StyleVariant,
-    length: Length,
-) -> StyleEffect {
+fn set_variant_length(node: &mut Node, prop: StyleProp, variant: StyleVariant, length: Length) {
     let r = get_or_init_variant_style(node, variant);
     match prop {
         StyleProp::W => r.size.width = Some(length),
@@ -585,16 +545,16 @@ fn set_variant_length(
         StyleProp::Right => r.inset.right = Some(length),
         StyleProp::Bottom => r.inset.bottom = Some(length),
         StyleProp::Left => r.inset.left = Some(length),
-        _ => return StyleEffect::Ignored,
+        _ => {
+            // rest doesnt affect length
+        }
     }
-    StyleEffect::Applied
 }
 
-fn set_variant_gap(node: &mut Node, variant: StyleVariant, length: DefiniteLength) -> StyleEffect {
+fn set_variant_gap(node: &mut Node, variant: StyleVariant, length: DefiniteLength) {
     let r = get_or_init_variant_style(node, variant);
     r.gap.width = Some(length);
     r.gap.height = Some(length);
-    StyleEffect::Applied
 }
 
 fn text_wrap_value(value: &str) -> Option<i32> {
@@ -625,12 +585,7 @@ fn set_text_wrap_refinement(style: &mut UzStyleRefinement, value: i32) {
     style.text.word_break = Some(resolved.text.word_break);
 }
 
-fn set_variant_number(
-    node: &mut Node,
-    prop: StyleProp,
-    variant: StyleVariant,
-    value: f32,
-) -> StyleEffect {
+fn set_variant_number(node: &mut Node, prop: StyleProp, variant: StyleVariant, value: f32) {
     match prop {
         StyleProp::W
         | StyleProp::H
@@ -643,32 +598,41 @@ fn set_variant_number(
             return set_variant_length(node, prop, variant, Length::Px(value));
         }
         StyleProp::Gap => return set_variant_gap(node, variant, DefiniteLength::Px(value)),
-        StyleProp::FlexDir
-        | StyleProp::Items
-        | StyleProp::Justify
-        | StyleProp::Display
-        | StyleProp::TextWrap
-        | StyleProp::WordBreak
-        | StyleProp::Position => {
-            if set_variant_enum(node, prop, variant, value as i32) {
-                return StyleEffect::Applied;
-            }
-            return StyleEffect::Ignored;
-        }
-        _ => {}
+        _ => { /* These props doesnt support number values */ }
     }
 
     let r = get_or_init_variant_style(node, variant);
     match prop {
-        StyleProp::Scrollable => {
+        StyleProp::Scroll => {
+            let overflow = if value > 0.5 {
+                Overflow::Auto
+            } else {
+                Overflow::Visible
+            };
+            r.overflow_x = Some(overflow);
+            r.overflow_y = Some(overflow);
+        }
+        StyleProp::ScrollX => {
+            r.overflow_x = Some(if value > 0.5 {
+                Overflow::Auto
+            } else {
+                Overflow::Visible
+            });
+        }
+        StyleProp::ScrollY => {
             r.overflow_y = Some(if value > 0.5 {
-                Overflow::Scroll
+                Overflow::Auto
             } else {
                 Overflow::Visible
             });
         }
         StyleProp::TextSelect => {
             r.text_selectable = Some((value > 0.5).into());
+        }
+        StyleProp::FontWeight => {
+            if let Some(weight) = parse_font_weight_number(value) {
+                r.text.font_weight = Some(weight);
+            };
         }
         StyleProp::TranslateX => r.transform.translate_x = Some(value),
         StyleProp::TranslateY => r.transform.translate_y = Some(value),
@@ -726,7 +690,6 @@ fn set_variant_number(
         StyleProp::FlexGrow => r.flex_grow = Some(value),
         StyleProp::FlexShrink => r.flex_shrink = Some(value),
         StyleProp::FontSize => r.text.font_size = Some(value),
-        StyleProp::FontWeight => {}
         StyleProp::Rounded => {
             r.corner_radii = CornersRefinement {
                 top_left: Some(value),
@@ -760,6 +723,8 @@ fn set_variant_number(
             outline.offset = value;
         }
         StyleProp::Opacity => r.opacity = Some(value),
+        StyleProp::ScrollbarWidth => r.scrollbar.width = Some(value),
+        StyleProp::ScrollbarRadius => r.scrollbar.radius = Some(value),
         StyleProp::Visibility => {
             r.visibility = Some(if value > 0.5 {
                 Visibility::Visible
@@ -767,72 +732,8 @@ fn set_variant_number(
                 Visibility::Hidden
             });
         }
-        StyleProp::Interactive => return StyleEffect::Ignored,
-        _ => return StyleEffect::Ignored,
+        _ => {}
     }
-    StyleEffect::Applied
-}
-
-fn set_variant_enum(node: &mut Node, prop: StyleProp, variant: StyleVariant, value: i32) -> bool {
-    let r = get_or_init_variant_style(node, variant);
-    match prop {
-        StyleProp::FlexDir => {
-            r.flex_direction = Some(match value {
-                0 => FlexDirection::Row,
-                1 => FlexDirection::Column,
-                2 => FlexDirection::RowReverse,
-                3 => FlexDirection::ColumnReverse,
-                _ => FlexDirection::Row,
-            });
-        }
-        StyleProp::Items => {
-            r.align_items = Some(match value {
-                0 => AlignItems::FlexStart,
-                1 => AlignItems::FlexEnd,
-                2 => AlignItems::Center,
-                3 => AlignItems::Stretch,
-                4 => AlignItems::Baseline,
-                _ => AlignItems::Stretch,
-            });
-        }
-        StyleProp::Justify => {
-            r.justify_content = Some(match value {
-                0 => JustifyContent::FlexStart,
-                1 => JustifyContent::FlexEnd,
-                2 => JustifyContent::Center,
-                3 => JustifyContent::SpaceBetween,
-                4 => JustifyContent::SpaceAround,
-                5 => JustifyContent::SpaceEvenly,
-                _ => JustifyContent::FlexStart,
-            });
-        }
-        StyleProp::Display => {
-            r.display = Some(match value {
-                0 => Display::None,
-                1 => Display::Flex,
-                2 => Display::Block,
-                _ => Display::Flex,
-            });
-        }
-        StyleProp::TextWrap => set_text_wrap_refinement(r, value),
-        StyleProp::WordBreak => {
-            r.text.word_break = Some(match value {
-                0 => WordBreak::Normal,
-                1 => WordBreak::BreakAll,
-                2 => WordBreak::KeepAll,
-                _ => WordBreak::Normal,
-            });
-        }
-        StyleProp::Position => {
-            r.position = Some(match value {
-                0 => Position::Relative,
-                1 => Position::Absolute,
-                _ => Position::Relative,
-            });
-        }
-        _ => return false,
-    }
-    true
 }
 
 fn set_variant_enum_from_str(
@@ -842,57 +743,79 @@ fn set_variant_enum_from_str(
     value: &str,
 ) -> bool {
     let value = value.trim();
-    let number = match prop {
-        StyleProp::FlexDir => match value {
-            "row" => 0,
-            "col" | "column" => 1,
-            "row-reverse" => 2,
-            "col-reverse" | "column-reverse" => 3,
-            _ => return false,
-        },
-        StyleProp::Items => match value {
-            "flex-start" | "start" => 0,
-            "flex-end" | "end" => 1,
-            "center" => 2,
-            "stretch" => 3,
-            "baseline" => 4,
-            _ => return false,
-        },
-        StyleProp::Justify => match value {
-            "flex-start" | "start" => 0,
-            "flex-end" | "end" => 1,
-            "center" => 2,
-            "space-between" | "between" => 3,
-            "space-around" | "around" => 4,
-            "space-evenly" | "evenly" => 5,
-            _ => return false,
-        },
-        StyleProp::Display => match value {
-            "none" => 0,
-            "flex" => 1,
-            "block" => 2,
-            _ => return false,
-        },
-        StyleProp::TextWrap => match text_wrap_value(value) {
-            Some(v) => v,
-            None => return false,
-        },
-        StyleProp::WordBreak => match value {
-            "normal" => 0,
-            "break-all" => 1,
-            "keep-all" => 2,
-            _ => return false,
-        },
-        StyleProp::Position => match value {
-            "relative" => 0,
-            "absolute" => 1,
-            _ => return false,
-        },
+    let r = get_or_init_variant_style(node, variant);
+    match prop {
+        StyleProp::FlexDir => {
+            r.flex_direction = Some(match value {
+                "row" => FlexDirection::Row,
+                "col" | "column" => FlexDirection::Column,
+                "row-reverse" => FlexDirection::RowReverse,
+                "col-reverse" | "column-reverse" => FlexDirection::ColumnReverse,
+                _ => return false,
+            });
+        }
+        StyleProp::FlexWrap => {
+            r.flex_wrap = Some(match value {
+                "nowrap" | "no-wrap" => FlexWrap::NoWrap,
+                "wrap" => FlexWrap::Wrap,
+                "wrap-reverse" => FlexWrap::WrapReverse,
+                _ => return false,
+            });
+        }
+        StyleProp::Items => {
+            r.align_items = Some(match value {
+                "flex-start" | "start" => AlignItems::FlexStart,
+                "flex-end" | "end" => AlignItems::FlexEnd,
+                "center" => AlignItems::Center,
+                "stretch" => AlignItems::Stretch,
+                "baseline" => AlignItems::Baseline,
+                _ => return false,
+            });
+        }
+        StyleProp::Justify => {
+            r.justify_content = Some(match value {
+                "flex-start" | "start" => JustifyContent::FlexStart,
+                "flex-end" | "end" => JustifyContent::FlexEnd,
+                "center" => JustifyContent::Center,
+                "space-between" | "between" => JustifyContent::SpaceBetween,
+                "space-around" | "around" => JustifyContent::SpaceAround,
+                "space-evenly" | "evenly" => JustifyContent::SpaceEvenly,
+                _ => return false,
+            });
+        }
+        StyleProp::Display => {
+            r.display = Some(match value {
+                "none" => Display::None,
+                "flex" => Display::Flex,
+                "block" => Display::Block,
+                _ => return false,
+            });
+        }
+        StyleProp::TextWrap => {
+            let Some(value) = text_wrap_value(value) else {
+                return false;
+            };
+            set_text_wrap_refinement(r, value);
+        }
+        StyleProp::WordBreak => {
+            r.text.word_break = Some(match value {
+                "normal" => WordBreak::Normal,
+                "break-all" => WordBreak::BreakAll,
+                "keep-all" => WordBreak::KeepAll,
+                _ => return false,
+            });
+        }
+        StyleProp::Position => {
+            r.position = Some(match value {
+                "relative" => Position::Relative,
+                "absolute" => Position::Absolute,
+                _ => return false,
+            });
+        }
         _ => return false,
-    };
-    set_variant_enum(node, prop, variant, number)
+    }
+    true
 }
-
 fn set_variant_flex_string(node: &mut Node, variant: StyleVariant, value: &str) -> bool {
     let dir = match value.trim() {
         "row" => FlexDirection::Row,
@@ -907,13 +830,14 @@ fn set_variant_flex_string(node: &mut Node, variant: StyleVariant, value: &str) 
     true
 }
 
-fn clear_variant_prop(node: &mut Node, prop: StyleProp, variant: StyleVariant) -> StyleEffect {
+fn clear_variant_prop(node: &mut Node, prop: StyleProp, variant: StyleVariant) {
     let style = match variant {
         StyleVariant::Hover => node.interactivity.hover_style.as_mut(),
         StyleVariant::Active => node.interactivity.active_style.as_mut(),
         StyleVariant::Focus => node.interactivity.focus_style.as_mut(),
         StyleVariant::Base => unreachable!(),
     };
+
     if let Some(style) = style {
         match prop {
             StyleProp::W => style.size.width = None,
@@ -951,6 +875,7 @@ fn clear_variant_prop(node: &mut Node, prop: StyleProp, variant: StyleVariant) -
                 style.flex_grow = None;
             }
             StyleProp::FlexDir => style.flex_direction = None,
+            StyleProp::FlexWrap => style.flex_wrap = None,
             StyleProp::FlexGrow => style.flex_grow = None,
             StyleProp::FlexShrink => style.flex_shrink = None,
             StyleProp::Items => style.align_items = None,
@@ -960,6 +885,7 @@ fn clear_variant_prop(node: &mut Node, prop: StyleProp, variant: StyleVariant) -
             StyleProp::Color => style.text.color = None,
             StyleProp::FontSize => style.text.font_size = None,
             StyleProp::FontWeight => style.text.font_weight = None,
+            StyleProp::FontFamily => style.text.font_family = None,
             StyleProp::Rounded => style.corner_radii = CornersRefinement::default(),
             StyleProp::RoundedTL => style.corner_radii.top_left = None,
             StyleProp::RoundedTR => style.corner_radii.top_right = None,
@@ -979,7 +905,16 @@ fn clear_variant_prop(node: &mut Node, prop: StyleProp, variant: StyleVariant) -
             StyleProp::Cursor => style.cursor = None,
             StyleProp::Interactive => {}
             StyleProp::Visibility => style.visibility = None,
-            StyleProp::Scrollable => style.overflow_y = None,
+            StyleProp::Scroll => {
+                style.overflow_x = None;
+                style.overflow_y = None;
+            }
+            StyleProp::ScrollX => style.overflow_x = None,
+            StyleProp::ScrollY => style.overflow_y = None,
+            StyleProp::ScrollbarWidth => style.scrollbar.width = None,
+            StyleProp::ScrollbarColor => style.scrollbar.color = None,
+            StyleProp::ScrollbarHoverColor => style.scrollbar.hover_color = None,
+            StyleProp::ScrollbarRadius => style.scrollbar.radius = None,
             StyleProp::TextSelect => style.text_selectable = None,
             StyleProp::TextWrap => {
                 style.text.overflow_wrap = None;
@@ -1002,14 +937,13 @@ fn clear_variant_prop(node: &mut Node, prop: StyleProp, variant: StyleVariant) -
             StyleProp::ScaleY => style.transform.scale_y = None,
         }
     }
-    StyleEffect::Applied
 }
 
 // ---------------------------------------------------------------------------
 // Base style prop helpers
 // ---------------------------------------------------------------------------
 
-fn set_length_style_prop(style: &mut UzStyle, prop: StyleProp, length: Length) -> StyleEffect {
+fn set_length_style_prop(style: &mut UzStyle, prop: StyleProp, length: Length) {
     match prop {
         StyleProp::W => style.size.width = length,
         StyleProp::H => style.size.height = length,
@@ -1019,66 +953,156 @@ fn set_length_style_prop(style: &mut UzStyle, prop: StyleProp, length: Length) -
         StyleProp::Right => style.inset.right = length,
         StyleProp::Bottom => style.inset.bottom = length,
         StyleProp::Left => style.inset.left = length,
-        _ => return StyleEffect::Ignored,
+        _ => {}
     }
-    StyleEffect::AppliedNeedsSync
 }
 
-fn set_gap_style_prop(style: &mut UzStyle, length: DefiniteLength) -> StyleEffect {
+fn set_gap_style_prop(style: &mut UzStyle, length: DefiniteLength) {
     style.gap = GapSize {
         width: length,
         height: length,
     };
-    StyleEffect::AppliedNeedsSync
 }
 
-fn set_color_style_prop(node: &mut Node, prop: StyleProp, color: Color) -> StyleEffect {
+fn set_color_style_prop(node: &mut Node, prop: StyleProp, color: Color) {
     match prop {
         StyleProp::Bg => {
             node.style.background = Some(color);
-            StyleEffect::AppliedNeedsSync
         }
         StyleProp::Color => {
             node.style.text.color = color;
             node.interactivity.base_style.text.color = Some(color);
-            StyleEffect::AppliedNeedsSync
         }
         StyleProp::BorderColor => {
             node.style.border_color = Some(color);
-            StyleEffect::AppliedNeedsSync
         }
         StyleProp::OutlineColor => {
             let outline = node.style.outline.get_or_insert(Outline::FOCUS_RING);
             outline.color = color;
-            StyleEffect::Applied
         }
-        _ => StyleEffect::Ignored,
+        StyleProp::ScrollbarColor => {
+            node.style.scrollbar.color = color;
+        }
+        StyleProp::ScrollbarHoverColor => {
+            node.style.scrollbar.hover_color = color;
+        }
+        _ => {
+            // rest doesnt affect color
+        }
     }
 }
 
-fn set_f32_style_prop(node: &mut Node, prop: StyleProp, v: f32) -> StyleEffect {
+fn set_font_weight(node: &mut Node, weight: FontWeight) {
+    node.style.text.font_weight = weight;
+    node.interactivity.base_style.text.font_weight = Some(weight);
+}
+
+fn set_font_family(node: &mut Node, font_family: impl Into<SharedString>) {
+    let font_family: SharedString = font_family.into();
+    node.interactivity.base_style.text.font_family = Some(font_family);
+}
+
+fn set_variant_font_family(
+    node: &mut Node,
+    variant: StyleVariant,
+    family: impl Into<SharedString>,
+) {
+    get_or_init_variant_style(node, variant).text.font_family = Some(family.into());
+}
+
+fn set_variant_font_weight(node: &mut Node, variant: StyleVariant, weight: FontWeight) {
+    get_or_init_variant_style(node, variant).text.font_weight = Some(weight);
+}
+
+fn parse_font_weight_str(value: &str) -> Option<FontWeight> {
+    match value.trim().to_ascii_lowercase().as_str() {
+        "thin" => Some(FontWeight::Thin),
+        "extra-light" | "extralight" | "ultra-light" | "ultralight" => Some(FontWeight::ExtraLight),
+        "light" => Some(FontWeight::Light),
+        "normal" | "regular" => Some(FontWeight::Regular),
+        "medium" => Some(FontWeight::Medium),
+        "semi-bold" | "semibold" | "demi-bold" | "demibold" => Some(FontWeight::SemiBold),
+        "bold" => Some(FontWeight::Bold),
+        "extra-bold" | "extrabold" | "ultra-bold" | "ultrabold" => Some(FontWeight::ExtraBold),
+        "black" | "heavy" => Some(FontWeight::Black),
+        value => value.parse::<f32>().ok().and_then(parse_font_weight_number),
+    }
+}
+
+fn parse_font_weight_number(value: f32) -> Option<FontWeight> {
+    if !value.is_finite() {
+        return None;
+    }
+    let rounded = value.round();
+    if (value - rounded).abs() > f32::EPSILON {
+        return None;
+    }
+    let weight = rounded as i32;
+    if weight % 100 != 0 {
+        return None;
+    }
+    match weight {
+        100 => Some(FontWeight::Thin),
+        200 => Some(FontWeight::ExtraLight),
+        300 => Some(FontWeight::Light),
+        400 => Some(FontWeight::Regular),
+        500 => Some(FontWeight::Medium),
+        600 => Some(FontWeight::SemiBold),
+        700 => Some(FontWeight::Bold),
+        800 => Some(FontWeight::ExtraBold),
+        900 => Some(FontWeight::Black),
+        _ => None,
+    }
+}
+
+fn set_f32_style_prop(node: &mut Node, prop: StyleProp, v: f32) {
     match prop {
         StyleProp::Interactive => {
             node.interactivity.js_interactive = v > 0.5;
-            return StyleEffect::Applied;
         }
-        StyleProp::Scrollable => {
+        StyleProp::Scroll => {
             if v > 0.5 {
-                node.style.overflow_y = Overflow::Scroll;
+                node.style.overflow_x = Overflow::Auto;
+                node.style.overflow_y = Overflow::Auto;
+                if node.scroll_state.is_none() {
+                    node.scroll_state = Some(element::ScrollState::new());
+                }
+            } else {
+                node.style.overflow_x = Overflow::Visible;
+                node.style.overflow_y = Overflow::Visible;
+                node.scroll_state = None;
+            }
+        }
+        StyleProp::ScrollX => {
+            if v > 0.5 {
+                node.style.overflow_x = Overflow::Auto;
+                if node.scroll_state.is_none() {
+                    node.scroll_state = Some(element::ScrollState::new());
+                }
+            } else {
+                node.style.overflow_x = Overflow::Visible;
+                if node.style.overflow_y == Overflow::Visible {
+                    node.scroll_state = None;
+                }
+            }
+        }
+        StyleProp::ScrollY => {
+            if v > 0.5 {
+                node.style.overflow_y = Overflow::Auto;
                 if node.scroll_state.is_none() {
                     node.scroll_state = Some(element::ScrollState::new());
                 }
             } else {
                 node.style.overflow_y = Overflow::Visible;
-                node.scroll_state = None;
+                if node.style.overflow_x == Overflow::Visible {
+                    node.scroll_state = None;
+                }
             }
-            return StyleEffect::AppliedNeedsSync;
         }
         StyleProp::TextSelect => {
             let text_selectable = (v > 0.5).into();
             node.set_text_selectable(text_selectable);
             node.interactivity.base_style.text_selectable = Some(text_selectable);
-            return StyleEffect::Applied;
         }
         _ => {}
     }
@@ -1086,28 +1110,22 @@ fn set_f32_style_prop(node: &mut Node, prop: StyleProp, v: f32) -> StyleEffect {
     match prop {
         StyleProp::TranslateX => {
             node.style.transform.translate_x = v;
-            return StyleEffect::Applied;
         }
         StyleProp::TranslateY => {
             node.style.transform.translate_y = v;
-            return StyleEffect::Applied;
         }
         StyleProp::Rotate => {
             node.style.transform.rotate = v;
-            return StyleEffect::Applied;
         }
         StyleProp::Scale => {
             node.style.transform.scale_x = v;
             node.style.transform.scale_y = v;
-            return StyleEffect::Applied;
         }
         StyleProp::ScaleX => {
             node.style.transform.scale_x = v;
-            return StyleEffect::Applied;
         }
         StyleProp::ScaleY => {
             node.style.transform.scale_y = v;
-            return StyleEffect::Applied;
         }
         _ => {}
     }
@@ -1156,7 +1174,6 @@ fn set_f32_style_prop(node: &mut Node, prop: StyleProp, v: f32) -> StyleEffect {
             style.text.font_size = v;
             node.interactivity.base_style.text.font_size = Some(v);
         }
-        StyleProp::FontWeight => {}
         StyleProp::Rounded => style.corner_radii = Corners::uniform(v),
         StyleProp::RoundedTL => style.corner_radii.top_left = v,
         StyleProp::RoundedTR => style.corner_radii.top_right = v,
@@ -1176,6 +1193,12 @@ fn set_f32_style_prop(node: &mut Node, prop: StyleProp, v: f32) -> StyleEffect {
             outline.offset = v;
         }
         StyleProp::Opacity => style.opacity = v,
+        StyleProp::ScrollbarWidth => {
+            style.scrollbar.width = v;
+        }
+        StyleProp::ScrollbarRadius => {
+            style.scrollbar.radius = Some(v);
+        }
         StyleProp::Visibility => {
             style.visibility = if v > 0.5 {
                 Visibility::Visible
@@ -1187,123 +1210,83 @@ fn set_f32_style_prop(node: &mut Node, prop: StyleProp, v: f32) -> StyleEffect {
         StyleProp::Right => style.inset.right = Length::Px(v),
         StyleProp::Bottom => style.inset.bottom = Length::Px(v),
         StyleProp::Left => style.inset.left = Length::Px(v),
-        _ => return StyleEffect::Ignored,
+        _ => {}
     }
-    StyleEffect::AppliedNeedsSync
 }
 
-fn set_enum_style_prop(style: &mut UzStyle, prop: StyleProp, value: i32) -> bool {
+fn set_enum_style_prop_from_str(style: &mut UzStyle, prop: StyleProp, value: &str) -> bool {
+    let value = value.trim();
     match prop {
         StyleProp::FlexDir => {
             style.flex_direction = match value {
-                0 => FlexDirection::Row,
-                1 => FlexDirection::Column,
-                2 => FlexDirection::RowReverse,
-                3 => FlexDirection::ColumnReverse,
-                _ => FlexDirection::Row,
+                "row" => FlexDirection::Row,
+                "col" | "column" => FlexDirection::Column,
+                "row-reverse" => FlexDirection::RowReverse,
+                "col-reverse" | "column-reverse" => FlexDirection::ColumnReverse,
+                _ => return false,
+            };
+        }
+        StyleProp::FlexWrap => {
+            style.flex_wrap = match value {
+                "nowrap" | "no-wrap" => FlexWrap::NoWrap,
+                "wrap" => FlexWrap::Wrap,
+                "wrap-reverse" => FlexWrap::WrapReverse,
+                _ => return false,
             };
         }
         StyleProp::Items => {
             style.align_items = Some(match value {
-                0 => AlignItems::FlexStart,
-                1 => AlignItems::FlexEnd,
-                2 => AlignItems::Center,
-                3 => AlignItems::Stretch,
-                4 => AlignItems::Baseline,
-                _ => AlignItems::Stretch,
+                "flex-start" | "start" => AlignItems::FlexStart,
+                "flex-end" | "end" => AlignItems::FlexEnd,
+                "center" => AlignItems::Center,
+                "stretch" => AlignItems::Stretch,
+                "baseline" => AlignItems::Baseline,
+                _ => return false,
             });
         }
         StyleProp::Justify => {
             style.justify_content = Some(match value {
-                0 => JustifyContent::FlexStart,
-                1 => JustifyContent::FlexEnd,
-                2 => JustifyContent::Center,
-                3 => JustifyContent::SpaceBetween,
-                4 => JustifyContent::SpaceAround,
-                5 => JustifyContent::SpaceEvenly,
-                _ => JustifyContent::FlexStart,
+                "flex-start" | "start" => JustifyContent::FlexStart,
+                "flex-end" | "end" => JustifyContent::FlexEnd,
+                "center" => JustifyContent::Center,
+                "space-between" | "between" => JustifyContent::SpaceBetween,
+                "space-around" | "around" => JustifyContent::SpaceAround,
+                "space-evenly" | "evenly" => JustifyContent::SpaceEvenly,
+                _ => return false,
             });
         }
         StyleProp::Display => {
             style.display = match value {
-                0 => Display::None,
-                1 => Display::Flex,
-                2 => Display::Block,
-                _ => Display::Flex,
+                "none" => Display::None,
+                "flex" => Display::Flex,
+                "block" => Display::Block,
+                _ => return false,
             };
         }
-        StyleProp::TextWrap => set_text_wrap(style, value),
+        StyleProp::TextWrap => {
+            let Some(value) = text_wrap_value(value) else {
+                return false;
+            };
+            set_text_wrap(style, value);
+        }
         StyleProp::WordBreak => {
             style.text.word_break = match value {
-                0 => WordBreak::Normal,
-                1 => WordBreak::BreakAll,
-                2 => WordBreak::KeepAll,
-                _ => WordBreak::Normal,
+                "normal" => WordBreak::Normal,
+                "break-all" => WordBreak::BreakAll,
+                "keep-all" => WordBreak::KeepAll,
+                _ => return false,
             };
         }
         StyleProp::Position => {
             style.position = match value {
-                0 => Position::Relative,
-                1 => Position::Absolute,
-                _ => Position::Relative,
+                "relative" => Position::Relative,
+                "absolute" => Position::Absolute,
+                _ => return false,
             };
         }
         _ => return false,
     }
     true
-}
-
-fn set_enum_style_prop_from_str(style: &mut UzStyle, prop: StyleProp, value: &str) -> bool {
-    let value = value.trim();
-    let number = match prop {
-        StyleProp::FlexDir => match value {
-            "row" => 0,
-            "col" | "column" => 1,
-            "row-reverse" => 2,
-            "col-reverse" | "column-reverse" => 3,
-            _ => return false,
-        },
-        StyleProp::Items => match value {
-            "flex-start" | "start" => 0,
-            "flex-end" | "end" => 1,
-            "center" => 2,
-            "stretch" => 3,
-            "baseline" => 4,
-            _ => return false,
-        },
-        StyleProp::Justify => match value {
-            "flex-start" | "start" => 0,
-            "flex-end" | "end" => 1,
-            "center" => 2,
-            "space-between" | "between" => 3,
-            "space-around" | "around" => 4,
-            "space-evenly" | "evenly" => 5,
-            _ => return false,
-        },
-        StyleProp::Display => match value {
-            "none" => 0,
-            "flex" => 1,
-            "block" => 2,
-            _ => return false,
-        },
-        StyleProp::TextWrap => match text_wrap_value(value) {
-            Some(v) => v,
-            None => return false,
-        },
-        StyleProp::WordBreak => match value {
-            "normal" => 0,
-            "break-all" => 1,
-            "keep-all" => 2,
-            _ => return false,
-        },
-        StyleProp::Position => match value {
-            "relative" => 0,
-            "absolute" => 1,
-            _ => return false,
-        },
-        _ => return false,
-    };
-    set_enum_style_prop(style, prop, number)
 }
 
 fn remember_inherited_enum(node: &mut Node, prop: StyleProp) {
@@ -1319,11 +1302,7 @@ fn remember_inherited_enum(node: &mut Node, prop: StyleProp) {
     }
 }
 
-// ---------------------------------------------------------------------------
-// Clear style prop
-// ---------------------------------------------------------------------------
-
-fn clear_style_prop(node: &mut Node, prop: StyleProp, variant: StyleVariant) -> StyleEffect {
+fn clear_style_prop(node: &mut Node, prop: StyleProp, variant: StyleVariant) {
     if variant != StyleVariant::Base {
         return clear_variant_prop(node, prop, variant);
     }
@@ -1365,6 +1344,7 @@ fn clear_style_prop(node: &mut Node, prop: StyleProp, variant: StyleVariant) -> 
             node.style.flex_grow = default.flex_grow;
         }
         StyleProp::FlexDir => node.style.flex_direction = default.flex_direction,
+        StyleProp::FlexWrap => node.style.flex_wrap = default.flex_wrap,
         StyleProp::FlexGrow => node.style.flex_grow = default.flex_grow,
         StyleProp::FlexShrink => node.style.flex_shrink = default.flex_shrink,
         StyleProp::Items => node.style.align_items = default.align_items,
@@ -1380,6 +1360,7 @@ fn clear_style_prop(node: &mut Node, prop: StyleProp, variant: StyleVariant) -> 
             node.interactivity.base_style.text.font_size = None;
         }
         StyleProp::FontWeight => node.style.text.font_weight = default.text.font_weight,
+        StyleProp::FontFamily => node.style.text.font_family = default.text.font_family,
         StyleProp::Rounded => node.style.corner_radii = default.corner_radii,
         StyleProp::RoundedTL => node.style.corner_radii.top_left = default.corner_radii.top_left,
         StyleProp::RoundedTR => node.style.corner_radii.top_right = default.corner_radii.top_right,
@@ -1412,10 +1393,29 @@ fn clear_style_prop(node: &mut Node, prop: StyleProp, variant: StyleVariant) -> 
         StyleProp::Cursor => node.style.cursor = default.cursor,
         StyleProp::Interactive => node.interactivity.js_interactive = false,
         StyleProp::Visibility => node.style.visibility = default.visibility,
-        StyleProp::Scrollable => {
+        StyleProp::Scroll => {
+            node.style.overflow_x = default.overflow_x;
             node.style.overflow_y = default.overflow_y;
             node.scroll_state = None;
         }
+        StyleProp::ScrollX => {
+            node.style.overflow_x = default.overflow_x;
+            if node.style.overflow_y == Overflow::Visible {
+                node.scroll_state = None;
+            }
+        }
+        StyleProp::ScrollY => {
+            node.style.overflow_y = default.overflow_y;
+            if node.style.overflow_x == Overflow::Visible {
+                node.scroll_state = None;
+            }
+        }
+        StyleProp::ScrollbarWidth => node.style.scrollbar.width = default.scrollbar.width,
+        StyleProp::ScrollbarColor => node.style.scrollbar.color = default.scrollbar.color,
+        StyleProp::ScrollbarHoverColor => {
+            node.style.scrollbar.hover_color = default.scrollbar.hover_color
+        }
+        StyleProp::ScrollbarRadius => node.style.scrollbar.radius = default.scrollbar.radius,
         StyleProp::TextSelect => {
             node.set_text_selectable(default.text_selectable);
             node.interactivity.base_style.text_selectable = None;
@@ -1435,18 +1435,6 @@ fn clear_style_prop(node: &mut Node, prop: StyleProp, variant: StyleVariant) -> 
         StyleProp::Right => node.style.inset.right = default.inset.right,
         StyleProp::Bottom => node.style.inset.bottom = default.inset.bottom,
         StyleProp::Left => node.style.inset.left = default.inset.left,
-    }
-    match prop {
-        StyleProp::Interactive
-        | StyleProp::TextSelect
-        | StyleProp::Cursor
-        | StyleProp::TranslateX
-        | StyleProp::TranslateY
-        | StyleProp::Rotate
-        | StyleProp::Scale
-        | StyleProp::ScaleX
-        | StyleProp::ScaleY => StyleEffect::Applied,
-        _ => StyleEffect::AppliedNeedsSync,
     }
 }
 
@@ -1471,7 +1459,20 @@ fn get_style_prop(node: &Node, prop: StyleProp) -> Value {
             .unwrap_or(Value::Null),
         StyleProp::Opacity => json!(style.opacity),
         StyleProp::Visibility => json!(matches!(style.visibility, Visibility::Visible)),
-        StyleProp::Scrollable => json!(matches!(style.overflow_y, Overflow::Scroll)),
+        StyleProp::Scroll => json!(
+            matches!(style.overflow_x, Overflow::Auto)
+                && matches!(style.overflow_y, Overflow::Auto)
+        ),
+        StyleProp::ScrollX => json!(matches!(style.overflow_x, Overflow::Auto)),
+        StyleProp::ScrollY => json!(matches!(style.overflow_y, Overflow::Auto)),
+        StyleProp::ScrollbarWidth => json!(style.scrollbar.width),
+        StyleProp::ScrollbarColor => color_to_json(style.scrollbar.color),
+        StyleProp::ScrollbarHoverColor => color_to_json(style.scrollbar.hover_color),
+        StyleProp::ScrollbarRadius => style
+            .scrollbar
+            .radius
+            .map(|r| json!(r))
+            .unwrap_or(Value::Null),
         StyleProp::TextSelect => json!(node.is_text_selectable()),
         StyleProp::Top => length_to_json(style.inset.top),
         StyleProp::Right => length_to_json(style.inset.right),
@@ -1482,6 +1483,7 @@ fn get_style_prop(node: &Node, prop: StyleProp) -> Value {
         StyleProp::FlexGrow | StyleProp::Flex => json!(style.flex_grow),
         StyleProp::FlexShrink => json!(style.flex_shrink),
         StyleProp::FontSize => json!(style.text.font_size),
+        StyleProp::FontWeight => json!(font_weight_to_number(style.text.font_weight)),
         StyleProp::Rounded => json!(style.corner_radii.top_left),
         StyleProp::Border => json!(style.border_widths.top),
         StyleProp::TranslateX => json!(style.transform.translate_x),
@@ -1491,19 +1493,6 @@ fn get_style_prop(node: &Node, prop: StyleProp) -> Value {
         StyleProp::ScaleX => json!(style.transform.scale_x),
         StyleProp::ScaleY => json!(style.transform.scale_y),
         _ => Value::Null,
-    }
-}
-
-pub(crate) fn sync_taffy(dom: &mut UIState, node_id: UzNodeId) {
-    let Some(node) = dom.nodes.get(node_id) else {
-        return;
-    };
-    let taffy_style = node.style.to_taffy();
-    let tn = node.taffy_node;
-    let text_style = node.style.text.clone();
-    dom.taffy.set_style(tn, taffy_style).unwrap();
-    if let Some(ctx) = dom.taffy.get_node_context_mut(tn) {
-        ctx.text_style = text_style;
     }
 }
 
@@ -1535,4 +1524,114 @@ fn color_to_json(color: Color) -> Value {
         "b": color.b,
         "a": color.a,
     })
+}
+
+fn font_weight_to_number(weight: FontWeight) -> u16 {
+    match weight {
+        FontWeight::Thin => 100,
+        FontWeight::ExtraLight => 200,
+        FontWeight::Light => 300,
+        FontWeight::Regular => 400,
+        FontWeight::Medium => 500,
+        FontWeight::SemiBold => 600,
+        FontWeight::Bold => 700,
+        FontWeight::ExtraBold => 800,
+        FontWeight::Black => 900,
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::{
+        Display, FlexDirection, FontWeight, Node, Overflow, StyleVariant, UzStyle,
+        parse_font_weight_number, parse_font_weight_str, set_f32_style_prop, set_flex_string,
+        set_variant_flex_string, set_variant_number,
+    };
+
+    #[test]
+    fn parses_font_weight_names() {
+        assert_eq!(parse_font_weight_str("normal"), Some(FontWeight::Regular));
+        assert_eq!(parse_font_weight_str("bold"), Some(FontWeight::Bold));
+        assert_eq!(
+            parse_font_weight_str("semi-bold"),
+            Some(FontWeight::SemiBold)
+        );
+        assert_eq!(
+            parse_font_weight_str("extraBold"),
+            Some(FontWeight::ExtraBold)
+        );
+        assert_eq!(parse_font_weight_str("wat"), None);
+    }
+
+    #[test]
+    fn parses_exact_numeric_font_weights() {
+        assert_eq!(parse_font_weight_str("700"), Some(FontWeight::Bold));
+        assert_eq!(parse_font_weight_number(400.0), Some(FontWeight::Regular));
+        assert_eq!(parse_font_weight_number(750.0), None);
+        assert_eq!(parse_font_weight_number(0.0), None);
+    }
+
+    #[test]
+    fn flex_string_sets_display_and_direction() {
+        let mut style = UzStyle::default();
+
+        assert!(set_flex_string(&mut style, "col"));
+        assert_eq!(style.display, Display::Flex);
+        assert_eq!(style.flex_direction, FlexDirection::Column);
+
+        assert!(set_flex_string(&mut style, "row"));
+        assert_eq!(style.display, Display::Flex);
+        assert_eq!(style.flex_direction, FlexDirection::Row);
+    }
+
+    #[test]
+    fn variant_flex_string_sets_display_and_direction() {
+        let mut node = Node::new(
+            UzStyle::default(),
+            crate::element::ElementNode::new(crate::element::ElementData::None),
+        );
+
+        assert!(set_variant_flex_string(
+            &mut node,
+            StyleVariant::Hover,
+            "col"
+        ));
+
+        let hover = node.interactivity.hover_style.as_ref().unwrap();
+        assert_eq!(hover.display, Some(Display::Flex));
+        assert_eq!(hover.flex_direction, Some(FlexDirection::Column));
+    }
+
+    #[test]
+    fn scroll_sets_both_axes_to_auto() {
+        let mut node = Node::new(
+            UzStyle::default(),
+            crate::element::ElementNode::new(crate::element::ElementData::None),
+        );
+
+        set_f32_style_prop(&mut node, super::StyleProp::Scroll, 1.0);
+
+        assert_eq!(node.style.overflow_x, Overflow::Auto);
+        assert_eq!(node.style.overflow_y, Overflow::Auto);
+        assert!(node.scroll_state.is_some());
+    }
+
+    #[test]
+    fn variant_scroll_sets_both_axes_to_auto() {
+        let mut node = Node::new(
+            UzStyle::default(),
+            crate::element::ElementNode::new(crate::element::ElementData::None),
+        );
+
+        set_variant_number(
+            &mut node,
+            super::StyleProp::Scroll,
+            StyleVariant::Hover,
+            1.0,
+        );
+
+        let hover = node.interactivity.hover_style.as_ref().unwrap();
+        assert_eq!(hover.overflow_x, Some(Overflow::Auto));
+        assert_eq!(hover.overflow_y, Some(Overflow::Auto));
+    }
 }

@@ -1,9 +1,10 @@
-use parley::{LineHeight, StyleProperty};
+use parley::{FontFamily, LineHeight, StyleProperty};
 use refineable::Refineable;
 use vello::Scene;
 use vello::kurbo::{Affine, Rect, RoundedRect, RoundedRectRadii, Stroke};
 use vello::peniko::Color as VelloColor;
 
+use crate::SharedString;
 use crate::cursor::UzCursorIcon;
 use crate::text::TextBrush;
 
@@ -289,6 +290,21 @@ pub enum Overflow {
     Visible,
     Hidden,
     Scroll,
+    Auto,
+}
+
+impl Overflow {
+    /// True when content that exceeds the box should produce a scrollbar
+    /// (covers explicit `Scroll` and the `Auto` case where content overflows).
+    pub fn is_scrollable(self) -> bool {
+        matches!(self, Self::Scroll | Self::Auto)
+    }
+
+    /// True when overflowing content must be clipped to the box (everything
+    /// except `Visible`).
+    pub fn clips(self) -> bool {
+        !matches!(self, Self::Visible)
+    }
 }
 
 #[derive(Clone, Copy, Debug, Default, PartialEq, Refineable)]
@@ -337,9 +353,9 @@ impl FontWeight {
 
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
 pub enum OverflowWrap {
+    #[default]
     Normal,
     Anywhere,
-    #[default]
     BreakWord,
 }
 
@@ -375,6 +391,7 @@ impl WordBreak {
 #[refineable(Debug)]
 pub struct TextStyle {
     pub font_size: f32,
+    pub font_family: SharedString,
     pub color: Color,
     pub line_height: f32,
     pub font_weight: FontWeight,
@@ -392,6 +409,30 @@ pub struct TransformStyle {
     pub rotate: f32,
     pub scale_x: f32,
     pub scale_y: f32,
+}
+
+/// Styling for the scrollbar painted on scrollable views and multiline inputs.
+/// Defaults match the legacy hardcoded look (4px overlay thumb, white@90/140
+/// alpha, transparent track, pill-shaped via auto-radius).
+#[derive(Clone, Copy, Debug, PartialEq, Refineable)]
+#[refineable(Debug)]
+pub struct ScrollbarStyle {
+    pub width: f32,
+    pub color: Color,
+    pub hover_color: Color,
+    /// `None` = pill (radius = width / 2); `Some(v)` = explicit radius.
+    pub radius: Option<f32>,
+}
+
+impl Default for ScrollbarStyle {
+    fn default() -> Self {
+        Self {
+            width: 4.0,
+            color: Color::rgba(255, 255, 255, 90),
+            hover_color: Color::rgba(255, 255, 255, 140),
+            radius: None,
+        }
+    }
 }
 
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
@@ -422,6 +463,7 @@ impl Default for TextStyle {
     fn default() -> Self {
         Self {
             font_size: 16.0,
+            font_family: SharedString::new_static("sans-serif"),
             color: Color::WHITE,
             line_height: 1.2,
             font_weight: FontWeight::default(),
@@ -472,7 +514,10 @@ impl TextStyle {
         let word_spacing =
             (self.word_spacing != 0.0).then_some(StyleProperty::WordSpacing(self.word_spacing));
 
+        let font_family = FontFamily::from(&*self.font_family).into_owned();
+
         [
+            StyleProperty::FontFamily(font_family),
             StyleProperty::FontSize(self.font_size),
             StyleProperty::LineHeight(LineHeight::FontSizeRelative(self.line_height)),
             StyleProperty::FontWeight(self.font_weight.to_parley()),
@@ -544,6 +589,9 @@ pub struct UzStyle {
     #[refineable]
     pub transform: TransformStyle,
 
+    #[refineable]
+    pub scrollbar: ScrollbarStyle,
+
     /// Whether text within this element is selectable.
     /// None = inherit from parent (default). Some(true) = selectable, Some(false) = not.
     /// toro move to style
@@ -590,6 +638,7 @@ impl Default for UzStyle {
 
             text: TextStyle::default(),
             transform: TransformStyle::default(),
+            scrollbar: ScrollbarStyle::default(),
             text_selectable: TextSelectable::Inherit,
         }
     }
@@ -615,6 +664,10 @@ impl UzStyle {
 
     pub fn default_for_element(element_type: &str) -> Self {
         match element_type {
+            "view" => Self {
+                display: Display::Block,
+                ..Default::default()
+            },
             "button" => Self {
                 flex_shrink: 0.0,
                 align_items: Some(AlignItems::Center),
@@ -635,7 +688,8 @@ impl UzStyle {
                 },
                 ..Default::default()
             },
-            "text" | "#text" | "p" => Self {
+            "text" | "#text" => Self {
+                display: Display::Block,
                 text: TextStyle {
                     overflow_wrap: OverflowWrap::Normal,
                     word_break: WordBreak::Normal,
@@ -1019,7 +1073,7 @@ fn overflow_to_taffy(o: Overflow) -> taffy::Overflow {
     match o {
         Overflow::Visible => taffy::Overflow::Visible,
         Overflow::Hidden => taffy::Overflow::Hidden,
-        Overflow::Scroll => taffy::Overflow::Scroll,
+        Overflow::Scroll | Overflow::Auto => taffy::Overflow::Scroll,
     }
 }
 
@@ -1052,5 +1106,19 @@ fn justify_content_to_taffy(j: JustifyContent) -> taffy::JustifyContent {
         JustifyContent::SpaceBetween => taffy::JustifyContent::SpaceBetween,
         JustifyContent::SpaceAround => taffy::JustifyContent::SpaceAround,
         JustifyContent::SpaceEvenly => taffy::JustifyContent::SpaceEvenly,
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::{Display, UzStyle};
+
+    #[test]
+    fn text_elements_default_to_block_display() {
+        assert_eq!(UzStyle::default_for_element("text").display, Display::Block);
+        assert_eq!(
+            UzStyle::default_for_element("#text").display,
+            Display::Block
+        );
     }
 }

@@ -9,12 +9,16 @@ pub mod geometry;
 pub mod gpu;
 pub mod input;
 pub mod interactivity;
+mod layout;
 pub mod ops;
 pub mod selection;
+pub mod shared_string;
 pub mod style;
 pub mod text;
 pub mod ui;
 pub mod window;
+
+pub use shared_string::*;
 
 use deno_core::*;
 
@@ -59,8 +63,8 @@ extension!(
     op_request_quit,
     op_request_redraw,
     op_get_root_node,
-    op_create_core_element_node,
-    op_create_core_text_node,
+    op_create_element_node,
+    op_create_text_node,
     op_set_encoded_image_data,
     op_apply_cached_image,
     op_clear_image_data,

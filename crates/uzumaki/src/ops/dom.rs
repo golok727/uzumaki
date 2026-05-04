@@ -96,7 +96,7 @@ pub fn op_get_root_node(
 
 #[op2]
 #[cppgc]
-pub fn op_create_core_element_node(
+pub fn op_create_element_node(
     state: &mut OpState,
     #[smi] window_id: u32,
     #[string] element_type: String,
@@ -107,7 +107,7 @@ pub fn op_create_core_element_node(
 
 #[op2]
 #[cppgc]
-pub fn op_create_core_text_node(
+pub fn op_create_text_node(
     state: &mut OpState,
     #[smi] window_id: u32,
     #[string] text: String,
@@ -316,7 +316,7 @@ impl CoreNode {
             let Some(node) = entry.dom.nodes.get(self.node_id) else {
                 return Err(node_not_found());
             };
-            Ok(node.as_text_node().map(|text| text.content.clone()))
+            Ok(node.get_text_content().map(|text| text.content.clone()))
         })
     }
 
@@ -349,7 +349,7 @@ fn create_element(
         } else if element_type == "image" {
             entry.dom.create_image(style)
         } else if element_type == "text" {
-            entry.dom.create_text(String::new(), style)
+            entry.dom.create_text_element(String::new(), style)
         } else {
             let id = entry.dom.create_view(style);
             if element_type == "button"
@@ -375,7 +375,7 @@ fn create_text_node(
         };
         Ok(entry
             .dom
-            .create_text(text, UzStyle::default_for_element("#text")) as u32)
+            .create_text_node(text, UzStyle::default_for_element("#text")) as u32)
     })
 }
 
@@ -573,13 +573,17 @@ pub fn op_get_selection(
 ) -> Result<serde_json::Value, deno_error::JsErrorBox> {
     #[derive(serde::Serialize)]
     #[serde(rename_all = "camelCase")]
+    struct SelectionEndpointState {
+        node_id: u32,
+        offset: usize,
+        affinity: crate::selection::Affinity,
+    }
+
+    #[derive(serde::Serialize)]
+    #[serde(rename_all = "camelCase")]
     struct SelectionState {
-        root_node_id: u32,
-        anchor_offset: usize,
-        active_offset: usize,
-        start: usize,
-        end: usize,
-        run_length: usize,
+        anchor: SelectionEndpointState,
+        focus: SelectionEndpointState,
         is_collapsed: bool,
         text: String,
     }
@@ -593,18 +597,21 @@ pub fn op_get_selection(
         let Some(sel) = dom.get_selection() else {
             return Ok(serde_json::Value::Null);
         };
-        let Some(root) = sel.root else {
+        let (Some(anchor), Some(focus)) = (sel.anchor, sel.focus) else {
             return Ok(serde_json::Value::Null);
         };
-        let run_length = dom.selection_run_length().unwrap_or(0);
         let text = dom.selected_text();
         Ok(serde_json::to_value(SelectionState {
-            root_node_id: root as u32,
-            anchor_offset: sel.anchor(),
-            active_offset: sel.active(),
-            start: sel.start(),
-            end: sel.end(),
-            run_length,
+            anchor: SelectionEndpointState {
+                node_id: anchor.node as u32,
+                offset: anchor.offset,
+                affinity: anchor.affinity,
+            },
+            focus: SelectionEndpointState {
+                node_id: focus.node as u32,
+                offset: focus.offset,
+                affinity: focus.affinity,
+            },
             is_collapsed: sel.is_collapsed(),
             text,
         })

@@ -30,6 +30,7 @@ pub(crate) enum StyleProp {
     Mr,
     Flex,
     FlexDir,
+    FlexWrap,
     FlexGrow,
     FlexShrink,
     Items,
@@ -39,6 +40,7 @@ pub(crate) enum StyleProp {
     Color,
     FontSize,
     FontWeight,
+    FontFamily,
     Rounded,
     RoundedTL,
     RoundedTR,
@@ -58,7 +60,13 @@ pub(crate) enum StyleProp {
     Cursor,
     Interactive,
     Visibility,
-    Scrollable,
+    Scroll,
+    ScrollX,
+    ScrollY,
+    ScrollbarWidth,
+    ScrollbarColor,
+    ScrollbarHoverColor,
+    ScrollbarRadius,
     TextSelect,
     TextWrap,
     WordBreak,
@@ -148,6 +156,7 @@ impl FromStr for StyleProp {
             "mr" => Self::Mr,
             "flex" => Self::Flex,
             "flexDir" => Self::FlexDir,
+            "flexWrap" => Self::FlexWrap,
             "flexGrow" => Self::FlexGrow,
             "flexShrink" => Self::FlexShrink,
             "items" => Self::Items,
@@ -157,6 +166,7 @@ impl FromStr for StyleProp {
             "color" => Self::Color,
             "fontSize" => Self::FontSize,
             "fontWeight" => Self::FontWeight,
+            "fontFamily" => Self::FontFamily,
             "rounded" => Self::Rounded,
             "roundedTL" => Self::RoundedTL,
             "roundedTR" => Self::RoundedTR,
@@ -176,7 +186,13 @@ impl FromStr for StyleProp {
             "cursor" => Self::Cursor,
             "interactive" => Self::Interactive,
             "visibility" => Self::Visibility,
-            "scrollable" => Self::Scrollable,
+            "scroll" | "scrollable" => Self::Scroll,
+            "scrollX" | "scrollableX" => Self::ScrollX,
+            "scrollY" | "scrollableY" => Self::ScrollY,
+            "scrollbarWidth" => Self::ScrollbarWidth,
+            "scrollbarColor" => Self::ScrollbarColor,
+            "scrollbarHoverColor" => Self::ScrollbarHoverColor,
+            "scrollbarRadius" => Self::ScrollbarRadius,
             "selectable" => Self::TextSelect,
             "textWrap" => Self::TextWrap,
             "wordBreak" => Self::WordBreak,
@@ -196,6 +212,7 @@ impl FromStr for StyleProp {
     }
 }
 
+// we should move these to Core*Element
 impl FromStr for ElementProp {
     type Err = ();
 

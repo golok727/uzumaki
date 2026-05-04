@@ -1,5 +1,4 @@
 import core, { type CoreNode } from './core';
-import { eventManager } from './events';
 import { getNode, registerNode, unregisterNode } from './registry';
 // registry is keyed by (windowId, nodeId) since node ids can collide across windows.
 import type { NodeId } from './types';
@@ -92,13 +91,12 @@ export class UzNode {
       child.destroy();
       child = next;
     }
-    eventManager.clearNode(this.windowId, this.nodeId);
     unregisterNode(this.windowId, this.nodeId);
   }
 }
 
 export class UzTextNode extends UzNode {
   constructor(window: Window, text: string) {
-    super(window, core.createCoreTextNode(window.id, text));
+    super(window, core.createTextNode(window.id, text));
   }
 }

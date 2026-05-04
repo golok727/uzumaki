@@ -49,7 +49,15 @@ export function DashboardPage() {
   const fps = 60;
 
   return (
-    <view display="flex" flexDir="col" gap={0} h="full" scrollable>
+    <view
+      display="flex"
+      flexDir="col"
+      gap={0}
+      h="full"
+      scroll
+      scrollbarWidth={8}
+      scrollbarRadius={5}
+    >
       <view
         display="flex"
         flexDir="row"
@@ -60,10 +68,10 @@ export function DashboardPage() {
         borderBottom={1}
         borderColor={C.border}
       >
-        <view display="flex" flexDir="col" gap={2}>
-          <text fontSize={20} fontWeight={800} color={C.text}>
+        <view display="flex" flexDir="col" gap={8}>
+          <view fontSize={20} fontWeight={800} color={C.text}>
             System Dashboard
-          </text>
+          </view>
           <view display="flex" flexDir="row" items="center" gap={8}>
             <view px={8} py={2} bg={C.accentDim} rounded={4}>
               <text
@@ -204,7 +212,7 @@ export function DashboardPage() {
             <text fontSize={14} fontWeight={700} color={C.text}>
               CPU Bars (last 20 ticks)
             </text>
-            <view display="flex" flexDir="row" flex={1} gap={1} h={80}>
+            <view display="flex" flexDir="row" flex={1} gap={2} h={80}>
               {Array.from({ length: 20 }, (_, i) => {
                 const age = 19 - i;
                 const h = 20 + Math.abs(Math.sin((tick - age) * 0.7 + i) * 60);
@@ -216,7 +224,7 @@ export function DashboardPage() {
                     display="flex"
                     flexDir="col"
                     justify="end"
-                    w="5%"
+                    w={20}
                     h="full"
                   >
                     <view
@@ -300,7 +308,7 @@ export function DashboardPage() {
             </text>
             <Badge label="STREAMING" color={C.successHi} bg={C.successDim} />
           </view>
-          <view scrollable h={160} display="flex" flexDir="col">
+          <view scroll h={160} display="flex" flexDir="col">
             {log.map((ev, i) => (
               <view
                 key={i}

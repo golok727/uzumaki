@@ -12,7 +12,7 @@ import {
   openPositionedThemePreview,
   openTransparentPreview,
   openWindowLevelPreview,
-  playgroundWindow,
+  mainWindow,
   showHiddenPreview,
 } from '../playgroundWindow';
 
@@ -57,36 +57,36 @@ const WINDOW_BUTTONS: WindowButton[] = [
 ];
 
 function readSnapshot(): WindowSnapshot {
-  const innerSize = playgroundWindow.innerSize;
-  const outerSize = playgroundWindow.outerSize;
-  const position = playgroundWindow.position;
-  const theme = playgroundWindow.theme;
-  const scaleFactor = playgroundWindow.scaleFactor;
+  const innerSize = mainWindow.innerSize;
+  const outerSize = mainWindow.outerSize;
+  const position = mainWindow.position;
+  const theme = mainWindow.theme;
+  const scaleFactor = mainWindow.scaleFactor;
 
   return {
-    title: playgroundWindow.title,
-    width: playgroundWindow.innerWidth,
-    height: playgroundWindow.innerHeight,
-    visible: playgroundWindow.visible,
-    transparent: playgroundWindow.transparent,
-    resizable: playgroundWindow.resizable,
-    decorated: playgroundWindow.decorated,
-    maximized: playgroundWindow.maximized,
-    minimized: playgroundWindow.minimized,
-    fullscreen: playgroundWindow.fullscreen,
-    alwaysOnTop: playgroundWindow.alwaysOnTop,
-    windowLevel: playgroundWindow.windowLevel,
+    title: mainWindow.title,
+    width: mainWindow.innerWidth,
+    height: mainWindow.innerHeight,
+    visible: mainWindow.visible,
+    transparent: mainWindow.transparent,
+    resizable: mainWindow.resizable,
+    decorated: mainWindow.decorated,
+    maximized: mainWindow.maximized,
+    minimized: mainWindow.minimized,
+    fullscreen: mainWindow.fullscreen,
+    alwaysOnTop: mainWindow.alwaysOnTop,
+    windowLevel: mainWindow.windowLevel,
     position: position ? `${position.x}, ${position.y}` : 'n/a',
     innerSize: innerSize ? `${innerSize.width} x ${innerSize.height}` : 'n/a',
     outerSize: outerSize ? `${outerSize.width} x ${outerSize.height}` : 'n/a',
     scaleFactor: scaleFactor ? scaleFactor.toFixed(2) : 'n/a',
     theme: theme ?? 'n/a',
-    active: playgroundWindow.active,
-    contentProtected: playgroundWindow.contentProtected,
+    active: mainWindow.active,
+    contentProtected: mainWindow.contentProtected,
     titlebarButtons: [
-      playgroundWindow.closable ? 'closable' : 'not-closable',
-      playgroundWindow.minimizable ? 'minimizable' : 'not-minimizable',
-      playgroundWindow.maximizable ? 'maximizable' : 'not-maximizable',
+      mainWindow.closable ? 'closable' : 'not-closable',
+      mainWindow.minimizable ? 'minimizable' : 'not-minimizable',
+      mainWindow.maximizable ? 'maximizable' : 'not-maximizable',
     ].join(', '),
   };
 }
@@ -200,7 +200,7 @@ function Field({
   return (
     <input
       value={value}
-      onChangeText={onChangeText}
+      onValueChange={onChangeText}
       placeholder={placeholder}
       fontSize={14}
       color={C.text}
@@ -249,10 +249,10 @@ export function WindowPage() {
   }
 
   function blinkHide() {
-    playgroundWindow.setVisible(false);
+    mainWindow.setVisible(false);
     setNote('Window hidden briefly');
     setTimeout(() => {
-      playgroundWindow.setVisible(true);
+      mainWindow.setVisible(true);
       refresh('Window shown again');
     }, 350);
   }
@@ -263,11 +263,11 @@ export function WindowPage() {
   }
 
   function toggleTitlebarButton(button: WindowButton) {
-    const enabled = playgroundWindow[button];
+    const enabled = mainWindow[button];
     const setters = {
-      closable: playgroundWindow.setClosable.bind(playgroundWindow),
-      minimizable: playgroundWindow.setMinimizable.bind(playgroundWindow),
-      maximizable: playgroundWindow.setMaximizable.bind(playgroundWindow),
+      closable: mainWindow.setClosable.bind(mainWindow),
+      minimizable: mainWindow.setMinimizable.bind(mainWindow),
+      maximizable: mainWindow.setMaximizable.bind(mainWindow),
     };
 
     apply(() => setters[button](!enabled), `${button} button ${!enabled}`);
@@ -376,7 +376,7 @@ export function WindowPage() {
               <ActionButton
                 tone="primary"
                 onClick={() =>
-                  apply(() => playgroundWindow.setTitle(title), 'Title updated')
+                  apply(() => mainWindow.setTitle(title), 'Title updated')
                 }
               >
                 Apply Title
@@ -384,7 +384,7 @@ export function WindowPage() {
               <ActionButton
                 onClick={() =>
                   apply(
-                    () => playgroundWindow.setDecorations(!snapshot.decorated),
+                    () => mainWindow.setDecorations(!snapshot.decorated),
                     `Decorations ${!snapshot.decorated}`,
                   )
                 }
@@ -396,7 +396,7 @@ export function WindowPage() {
               <ActionButton
                 onClick={() =>
                   apply(
-                    () => playgroundWindow.setResizable(!snapshot.resizable),
+                    () => mainWindow.setResizable(!snapshot.resizable),
                     `Resizable ${!snapshot.resizable}`,
                   )
                 }
@@ -405,7 +405,7 @@ export function WindowPage() {
               </ActionButton>
               <ActionButton
                 onClick={() =>
-                  apply(() => playgroundWindow.setVisible(true), 'Window shown')
+                  apply(() => mainWindow.setVisible(true), 'Window shown')
                 }
               >
                 Force Show
@@ -413,8 +413,7 @@ export function WindowPage() {
               <ActionButton
                 onClick={() =>
                   apply(
-                    () =>
-                      playgroundWindow.setTransparent(!snapshot.transparent),
+                    () => mainWindow.setTransparent(!snapshot.transparent),
                     `Transparent ${!snapshot.transparent}`,
                   )
                 }
@@ -425,7 +424,7 @@ export function WindowPage() {
             <view display="flex" flexDir="row" gap={8}>
               <ActionButton
                 onClick={() =>
-                  apply(() => playgroundWindow.focus(), 'Focus requested')
+                  apply(() => mainWindow.focus(), 'Focus requested')
                 }
               >
                 Focus
@@ -437,7 +436,7 @@ export function WindowPage() {
         <Panel title="TITLEBAR BUTTONS">
           <view display="flex" flexDir="row" gap={8}>
             {WINDOW_BUTTONS.map((button) => {
-              const enabled = playgroundWindow[button];
+              const enabled = mainWindow[button];
 
               return (
                 <ActionButton
@@ -460,7 +459,7 @@ export function WindowPage() {
               <ActionButton
                 onClick={() =>
                   apply(
-                    () => playgroundWindow.setMaximized(!snapshot.maximized),
+                    () => mainWindow.setMaximized(!snapshot.maximized),
                     `Maximized ${!snapshot.maximized}`,
                   )
                 }
@@ -471,9 +470,7 @@ export function WindowPage() {
                 onClick={() =>
                   apply(
                     () =>
-                      playgroundWindow.setMinimized(
-                        !(snapshot.minimized ?? false),
-                      ),
+                      mainWindow.setMinimized(!(snapshot.minimized ?? false)),
                     `Minimized ${!(snapshot.minimized ?? false)}`,
                   )
                 }
@@ -483,7 +480,7 @@ export function WindowPage() {
               <ActionButton
                 onClick={() =>
                   apply(
-                    () => playgroundWindow.setFullscreen(!snapshot.fullscreen),
+                    () => mainWindow.setFullscreen(!snapshot.fullscreen),
                     `Fullscreen ${!snapshot.fullscreen}`,
                   )
                 }
@@ -495,8 +492,7 @@ export function WindowPage() {
               <ActionButton
                 onClick={() =>
                   apply(
-                    () =>
-                      playgroundWindow.setAlwaysOnTop(!snapshot.alwaysOnTop),
+                    () => mainWindow.setAlwaysOnTop(!snapshot.alwaysOnTop),
                     `Always on top ${!snapshot.alwaysOnTop}`,
                   )
                 }
@@ -507,7 +503,7 @@ export function WindowPage() {
                 onClick={() =>
                   apply(
                     () =>
-                      playgroundWindow.setContentProtected(
+                      mainWindow.setContentProtected(
                         !snapshot.contentProtected,
                       ),
                     `Content protected ${!snapshot.contentProtected}`,
@@ -527,10 +523,7 @@ export function WindowPage() {
                   active={theme === value}
                   onClick={() => {
                     setTheme(value);
-                    apply(
-                      () => playgroundWindow.setTheme(value),
-                      `Theme ${value}`,
-                    );
+                    apply(() => mainWindow.setTheme(value), `Theme ${value}`);
                   }}
                 >
                   {value}
@@ -548,7 +541,7 @@ export function WindowPage() {
                   onClick={() => {
                     setWindowLevel(value);
                     apply(
-                      () => playgroundWindow.setWindowLevel(value),
+                      () => mainWindow.setWindowLevel(value),
                       `Window level ${value}`,
                     );
                   }}
@@ -572,8 +565,7 @@ export function WindowPage() {
               tone="primary"
               onClick={() =>
                 apply(
-                  () =>
-                    playgroundWindow.setPosition(Number(posX), Number(posY)),
+                  () => mainWindow.setPosition(Number(posX), Number(posY)),
                   `Moved to ${posX}, ${posY}`,
                 )
               }
@@ -611,8 +603,7 @@ export function WindowPage() {
               <ActionButton
                 onClick={() =>
                   apply(
-                    () =>
-                      playgroundWindow.setMinSize(Number(minW), Number(minH)),
+                    () => mainWindow.setMinSize(Number(minW), Number(minH)),
                     `Min size ${minW} x ${minH}`,
                   )
                 }
@@ -622,8 +613,7 @@ export function WindowPage() {
               <ActionButton
                 onClick={() =>
                   apply(
-                    () =>
-                      playgroundWindow.setMaxSize(Number(maxW), Number(maxH)),
+                    () => mainWindow.setMaxSize(Number(maxW), Number(maxH)),
                     `Max size ${maxW} x ${maxH}`,
                   )
                 }

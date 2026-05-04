@@ -1,6 +1,6 @@
 import type {
   NodeId,
-  WindowAttributes,
+  WindowOptions,
   WindowLevel,
   WindowPosition,
   WindowSize,
@@ -74,12 +74,12 @@ export interface CoreNode {
 }
 
 interface Core {
-  createWindow(options: WindowAttributes): CoreWindow;
+  createWindow(options: WindowOptions): CoreWindow;
   requestQuit(): void;
   requestRedraw(windowId: number): void;
   getRootNode(windowId: number): CoreNode;
-  createCoreElementNode(windowId: number, elementType: string): CoreNode;
-  createCoreTextNode(windowId: number, text: string): CoreNode;
+  createElementNode(windowId: number, elementType: string): CoreNode;
+  createTextNode(windowId: number, text: string): CoreNode;
   setEncodedImageData(
     windowId: number,
     nodeId: NodeId,
@@ -96,6 +96,12 @@ interface Core {
   readClipboardText(): string | null;
   writeClipboardText(text: string): boolean;
   decodeImageSource(source: string): Promise<Uint8Array>;
+  onAppEvent(
+    handler: (
+      event: any,
+      ctx: { preventDefault(): void; readonly defaultPrevented: boolean },
+    ) => void,
+  ): () => void;
 }
 
 export interface SelectionState {

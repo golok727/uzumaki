@@ -1,10 +1,30 @@
-use parley::{Affinity, BoundingBox, Cursor, FontContext, Layout, LayoutContext, Selection};
+use parley::{
+    Affinity as ParleyAffinity, BoundingBox, Cursor, FontContext, Layout, LayoutContext, Selection,
+};
 use unicode_segmentation::UnicodeSegmentation;
 use vello::Scene;
 use vello::kurbo::Affine;
 use vello::peniko::{Brush, Color, Fill};
 
 use crate::style::TextStyle;
+
+impl From<crate::selection::Affinity> for ParleyAffinity {
+    fn from(value: crate::selection::Affinity) -> Self {
+        match value {
+            crate::selection::Affinity::Downstream => Self::Downstream,
+            crate::selection::Affinity::Upstream => Self::Upstream,
+        }
+    }
+}
+
+impl From<ParleyAffinity> for crate::selection::Affinity {
+    fn from(value: ParleyAffinity) -> Self {
+        match value {
+            ParleyAffinity::Downstream => Self::Downstream,
+            ParleyAffinity::Upstream => Self::Upstream,
+        }
+    }
+}
 
 #[derive(Debug, Clone, Copy, Default, PartialEq)]
 pub struct TextBrush;
@@ -22,12 +42,9 @@ impl Default for TextRenderer {
 
 impl TextRenderer {
     pub fn new() -> Self {
-        let mut font_ctx = FontContext::default();
+        let font_ctx = FontContext::default();
 
-        let roboto = include_bytes!("../assets/Roboto-Regular.ttf");
-        font_ctx
-            .collection
-            .register_fonts(roboto.to_vec().into(), None);
+        // todo allow registering custom fonts
 
         Self {
             font_ctx,
@@ -134,7 +151,7 @@ impl TextRenderer {
         let mut positions = Vec::with_capacity(boundaries.len());
         positions.push(0.0);
         for &byte_offset in boundaries.iter().skip(1) {
-            let cursor = Cursor::from_byte_index(&layout, byte_offset, Affinity::Downstream);
+            let cursor = Cursor::from_byte_index(&layout, byte_offset, ParleyAffinity::Downstream);
             let geom = cursor.geometry(&layout, layout_width);
             positions.push(geom.x0 as f32);
         }
@@ -164,6 +181,23 @@ impl TextRenderer {
         Self::byte_to_grapheme(&boundaries, cursor.index())
     }
 
+    pub fn hit_to_text_position(
+        &mut self,
+        text: &str,
+        style: &TextStyle,
+        wrap_width: Option<f32>,
+        x: f32,
+        y: f32,
+    ) -> (usize, crate::selection::Affinity) {
+        if text.is_empty() {
+            return (0, crate::selection::Affinity::Downstream);
+        }
+
+        let layout = self.build_layout(text, style, wrap_width);
+        let cursor = Cursor::from_point(&layout, x, y);
+        (cursor.index().min(text.len()), cursor.affinity().into())
+    }
+
     pub fn cursor_geometry(
         &mut self,
         text: &str,
@@ -174,7 +208,7 @@ impl TextRenderer {
         let layout = self.build_layout(text, style, wrap_width);
         let boundaries = Self::grapheme_boundaries(text);
         let byte_index = Self::grapheme_to_byte(&boundaries, grapheme_index);
-        let cursor = Cursor::from_byte_index(&layout, byte_index, Affinity::Downstream);
+        let cursor = Cursor::from_byte_index(&layout, byte_index, ParleyAffinity::Downstream);
         cursor.geometry(&layout, layout.width())
     }
 
@@ -200,6 +234,23 @@ impl TextRenderer {
         )
     }
 
+    pub fn word_byte_range_at_point(
+        &mut self,
+        text: &str,
+        style: &TextStyle,
+        wrap_width: Option<f32>,
+        x: f32,
+        y: f32,
+    ) -> (usize, usize) {
+        if text.is_empty() {
+            return (0, 0);
+        }
+
+        let layout = self.build_layout(text, style, wrap_width);
+        let range = Selection::word_from_point(&layout, x, y).text_range();
+        (range.start.min(text.len()), range.end.min(text.len()))
+    }
+
     pub fn line_range_at_point(
         &mut self,
         text: &str,
@@ -222,6 +273,23 @@ impl TextRenderer {
         )
     }
 
+    pub fn line_byte_range_at_point(
+        &mut self,
+        text: &str,
+        style: &TextStyle,
+        wrap_width: Option<f32>,
+        x: f32,
+        y: f32,
+    ) -> (usize, usize) {
+        if text.is_empty() {
+            return (0, 0);
+        }
+
+        let layout = self.build_layout(text, style, wrap_width);
+        let range = Selection::line_from_point(&layout, x, y).text_range();
+        (range.start.min(text.len()), range.end.min(text.len()))
+    }
+
     pub fn selection_rects(
         &mut self,
         text: &str,
@@ -235,12 +303,11 @@ impl TextRenderer {
         }
 
         let layout = self.build_layout(text, style, wrap_width);
-        let boundaries = Self::grapheme_boundaries(text);
-        let anchor = Self::grapheme_to_byte(&boundaries, start);
-        let focus = Self::grapheme_to_byte(&boundaries, end);
+        let anchor = start.min(text.len());
+        let focus = end.min(text.len());
         let selection = Selection::new(
-            Cursor::from_byte_index(&layout, anchor, Affinity::Downstream),
-            Cursor::from_byte_index(&layout, focus, Affinity::Upstream),
+            Cursor::from_byte_index(&layout, anchor, ParleyAffinity::Downstream),
+            Cursor::from_byte_index(&layout, focus, ParleyAffinity::Upstream),
         );
 
         selection
@@ -259,7 +326,7 @@ impl TextRenderer {
     ) -> (f32, f32) {
         let layout = self.build_layout(text, style, max_width);
 
-        let measured_width = layout.width();
+        let measured_width = layout.full_width();
         let measured_height = layout.height();
         let fallback_height = (style.font_size * style.line_height).round();
 

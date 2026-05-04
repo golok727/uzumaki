@@ -8,8 +8,6 @@ import type { JSX } from './jsx/runtime';
 
 import core from '../core';
 import { UzNode } from '../node';
-import { eventManager } from '../events';
-import { clearNodeRegistry } from '../registry';
 import { Window } from '../window';
 import {
   appendChild as appendHostChild,
@@ -101,171 +99,176 @@ type NoTimeout = undefined;
 type TransitionStatus = any;
 
 let currentPriority: EventPriority = DefaultEventPriority;
-const reconciler = ReactReconciler<
-  Type,
-  Props,
-  Container,
-  Instance,
-  TextInstance,
-  SuspenseInstance,
-  HydratableInstance,
-  FormInstance,
-  PublicInstance,
-  HostContext,
-  ChildSet,
-  TimeoutHandle,
-  NoTimeout,
-  TransitionStatus
->({
-  supportsMutation: true,
-  supportsPersistence: false,
 
-  createInstance(type, props, rootContainer) {
-    return createElementInstance(type, props, rootContainer.window);
-  },
+function createReconciler() {
+  return ReactReconciler<
+    Type,
+    Props,
+    Container,
+    Instance,
+    TextInstance,
+    SuspenseInstance,
+    HydratableInstance,
+    FormInstance,
+    PublicInstance,
+    HostContext,
+    ChildSet,
+    TimeoutHandle,
+    NoTimeout,
+    TransitionStatus
+  >({
+    supportsMutation: true,
+    supportsPersistence: false,
 
-  createTextInstance(text, rootContainer) {
-    return createHostInstance(rootContainer.window, '#text', {}, text);
-  },
+    createInstance(type, props, rootContainer) {
+      return createElementInstance(type, props, rootContainer.window);
+    },
 
-  shouldSetTextContent(type) {
-    return isTextElementType(type);
-  },
+    createTextInstance(text, rootContainer) {
+      return createHostInstance(rootContainer.window, '#text', {}, text);
+    },
 
-  appendInitialChild(parent, child) {
-    appendHostChild(parent, child);
-  },
+    shouldSetTextContent(type) {
+      return isTextElementType(type);
+    },
 
-  finalizeInitialChildren() {
-    return false;
-  },
+    appendInitialChild(parent, child) {
+      appendHostChild(parent, child);
+    },
 
-  appendChildToContainer(container, child) {
-    if (container.window.isDisposed) return;
-    appendHostChildToContainer(container.rootNode, child);
-  },
+    finalizeInitialChildren() {
+      return false;
+    },
 
-  appendChild(parent, child) {
-    appendHostChild(parent, child);
-  },
+    appendChildToContainer(container, child) {
+      if (container.window.isDisposed) return;
+      appendHostChildToContainer(container.rootNode, child);
+    },
 
-  insertBefore(parent, child, before) {
-    insertHostBefore(parent, child, before);
-  },
+    appendChild(parent, child) {
+      appendHostChild(parent, child);
+    },
 
-  insertInContainerBefore(container, child, before) {
-    if (container.window.isDisposed) return;
-    insertHostInContainerBefore(container.rootNode, child, before);
-  },
+    insertBefore(parent, child, before) {
+      insertHostBefore(parent, child, before);
+    },
 
-  removeChild(parent, child) {
-    if (!parent.node._window.isDisposed) {
-      removeHostChild(parent, child);
-    }
-  },
+    insertInContainerBefore(container, child, before) {
+      if (container.window.isDisposed) return;
+      insertHostInContainerBefore(container.rootNode, child, before);
+    },
 
-  removeChildFromContainer(container, child) {
-    if (!container.window.isDisposed) {
-      removeHostChildFromContainer(container.rootNode, child);
-    }
-  },
+    removeChild(parent, child) {
+      if (!parent.node._window.isDisposed) {
+        removeHostChild(parent, child);
+      }
+    },
 
-  commitUpdate(instance, _type, oldProps, newProps, _internalHandle) {
-    if (instance.node._window.isDisposed) return;
-    const normalizedNewProps = isTextElementType(instance.type)
-      ? { ...newProps, children: getTextContent(newProps.children) }
-      : newProps;
-    const normalizedOldProps = isTextElementType(instance.type)
-      ? { ...oldProps, children: getTextContent(oldProps.children) }
-      : oldProps;
-    applyReactProps(instance, normalizedNewProps, normalizedOldProps);
-  },
+    removeChildFromContainer(container, child) {
+      if (!container.window.isDisposed) {
+        removeHostChildFromContainer(container.rootNode, child);
+      }
+    },
 
-  commitTextUpdate(instance, _oldText, newText) {
-    if (instance.node._window.isDisposed) return;
-    commitTextUpdate(instance, newText);
-  },
+    commitUpdate(instance, _type, oldProps, newProps, _internalHandle) {
+      if (instance.node._window.isDisposed) return;
+      const normalizedNewProps = isTextElementType(instance.type)
+        ? { ...newProps, children: getTextContent(newProps.children) }
+        : newProps;
+      const normalizedOldProps = isTextElementType(instance.type)
+        ? { ...oldProps, children: getTextContent(oldProps.children) }
+        : oldProps;
+      applyReactProps(instance, normalizedNewProps, normalizedOldProps);
+    },
 
-  detachDeletedInstance(instance) {
-    disposeHostInstance(instance);
-  },
+    commitTextUpdate(instance, _oldText, newText) {
+      if (instance.node._window.isDisposed) return;
+      commitTextUpdate(instance, newText);
+    },
 
-  hideInstance(instance) {
-    hideHostInstance(instance);
-  },
+    detachDeletedInstance(instance) {
+      disposeHostInstance(instance);
+    },
 
-  unhideInstance(instance) {
-    unhideHostInstance(instance);
-  },
+    hideInstance(instance) {
+      hideHostInstance(instance);
+    },
 
-  hideTextInstance(instance) {
-    hideHostInstance(instance);
-  },
+    unhideInstance(instance) {
+      unhideHostInstance(instance);
+    },
 
-  unhideTextInstance(instance) {
-    unhideHostInstance(instance);
-  },
+    hideTextInstance(instance) {
+      hideHostInstance(instance);
+    },
 
-  resetTextContent(instance) {
-    resetHostTextContent(instance);
-  },
+    unhideTextInstance(instance) {
+      unhideHostInstance(instance);
+    },
 
-  clearContainer(container) {
-    const windowId = getWindowId(container);
-    core.resetDom(windowId);
-  },
+    resetTextContent(instance) {
+      resetHostTextContent(instance);
+    },
 
-  getRootHostContext: () => ({}),
-  getChildHostContext: (parentHostContext) => parentHostContext,
-  getPublicInstance: (instance) => instance.node,
+    clearContainer(container) {
+      const windowId = getWindowId(container);
+      core.resetDom(windowId);
+    },
 
-  prepareForCommit(_container) {
-    return null;
-  },
+    getRootHostContext: () => ({}),
+    getChildHostContext: (parentHostContext) => parentHostContext,
+    getPublicInstance: (instance) => instance.node,
 
-  resetAfterCommit(container) {
-    core.requestRedraw(container.window.id);
-  },
+    prepareForCommit(_container) {
+      return null;
+    },
 
-  preparePortalMount: () => {},
-  scheduleTimeout: (fn, delay) => setTimeout(fn, delay),
-  cancelTimeout: (id) => clearTimeout(id),
-  noTimeout: undefined,
-  isPrimaryRenderer: true,
-  getInstanceFromNode: () => null,
-  beforeActiveInstanceBlur: () => {},
-  afterActiveInstanceBlur: () => {},
-  prepareScopeUpdate: () => {},
-  getInstanceFromScope: () => null,
-  supportsHydration: false,
-  NotPendingTransition: undefined,
-  HostTransitionContext: {
-    $$typeof: Symbol.for('react.context'),
-    _currentValue: null,
-    _currentValue2: null,
-  } as any,
-  setCurrentUpdatePriority: (newPriority) => {
-    currentPriority = newPriority;
-  },
-  getCurrentUpdatePriority: () => currentPriority,
-  resolveUpdatePriority: () => DefaultEventPriority,
-  resetFormInstance: () => {},
-  requestPostPaintCallback: () => {},
-  shouldAttemptEagerTransition: () => false,
-  trackSchedulerEvent: () => {},
-  resolveEventType: () => null,
-  resolveEventTimeStamp: () => Date.now(),
-  maySuspendCommit: () => false,
-  preloadInstance: () => false,
-  startSuspendingCommit: () => false,
-  suspendInstance: () => {},
-  waitForCommitToBeReady: () => null,
-});
+    resetAfterCommit(container) {
+      core.requestRedraw(container.window.id);
+    },
+
+    preparePortalMount: () => {},
+    scheduleTimeout: (fn, delay) => setTimeout(fn, delay),
+    cancelTimeout: (id) => clearTimeout(id),
+    noTimeout: undefined,
+    isPrimaryRenderer: true,
+    getInstanceFromNode: () => null,
+    beforeActiveInstanceBlur: () => {},
+    afterActiveInstanceBlur: () => {},
+    prepareScopeUpdate: () => {},
+    getInstanceFromScope: () => null,
+    supportsHydration: false,
+    NotPendingTransition: undefined,
+    HostTransitionContext: {
+      $$typeof: Symbol.for('react.context'),
+      _currentValue: null,
+      _currentValue2: null,
+    } as any,
+    setCurrentUpdatePriority: (newPriority) => {
+      currentPriority = newPriority;
+    },
+    getCurrentUpdatePriority: () => currentPriority,
+    resolveUpdatePriority: () => DefaultEventPriority,
+    resetFormInstance: () => {},
+    requestPostPaintCallback: () => {},
+    shouldAttemptEagerTransition: () => false,
+    trackSchedulerEvent: () => {},
+    resolveEventType: () => null,
+    resolveEventTimeStamp: () => Date.now(),
+    maySuspendCommit: () => false,
+    preloadInstance: () => false,
+    startSuspendingCommit: () => false,
+    suspendInstance: () => {},
+    waitForCommitToBeReady: () => null,
+  });
+}
 
 const roots = new Map<string, { root: any; container: Container }>();
 
 export function render(window: Window, element: JSX.Element) {
   const container: Container = { window, rootNode: window.root };
+
+  const reconciler = createReconciler();
 
   const root = reconciler.createContainer(
     container,
@@ -293,21 +296,4 @@ export function render(window: Window, element: JSX.Element) {
   return {
     dispose,
   };
-}
-
-export function disposeRoot(windowLabel: string) {
-  const entry = roots.get(windowLabel);
-  if (entry) {
-    reconciler.updateContainer(null, entry.root, null, null);
-    roots.delete(windowLabel);
-  }
-}
-
-export function disposeAllRoots() {
-  roots.clear();
-}
-
-export function clearEventRegistry() {
-  eventManager.clear();
-  clearNodeRegistry();
 }

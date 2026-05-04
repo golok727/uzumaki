@@ -186,8 +186,8 @@ pub struct Application {
     app_root: PathBuf,
     event_loop: Option<winit::event_loop::EventLoop<UserEvent>>,
     module_loaded: bool,
-    pub tokio_runtime: Option<tokio::runtime::Runtime>,
-    global_app_event_dispatch_fn: Option<v8::Global<v8::Function>>,
+    pub(crate) tokio_runtime: tokio::runtime::Runtime,
+    global_app_event_dispatch_fn: v8::Global<v8::Function>,
     js_wake_handle: Arc<JsWakeHandle>,
 }
 
@@ -198,6 +198,13 @@ impl Application {
         args: Vec<String>,
         startup_snapshot: Option<&'static [u8]>,
     ) -> Result<Self> {
+        let tokio_runtime = tokio::runtime::Builder::new_multi_thread()
+            .worker_threads(1)
+            .enable_io()
+            .enable_time()
+            .build()
+            .expect("failed to create tokio runtime");
+
         let main_file: PathBuf = main_file.into();
         let app_root: PathBuf = app_root.into();
         let sys = sys_traits::impls::RealSys;
@@ -300,7 +307,26 @@ impl Application {
             ..Default::default()
         };
 
-        let worker = MainWorker::bootstrap_from_options(&main_module, services, options);
+        let mut worker = MainWorker::bootstrap_from_options(&main_module, services, options);
+
+        let global_app_event_dispatch_fn = {
+            let context = worker.js_runtime.main_context();
+            deno_core::scope!(scope, &mut worker.js_runtime);
+            let context_local = v8::Local::new(scope, context);
+            let global_obj = context_local.global(scope);
+
+            let key = v8::String::new_external_onebyte_static(scope, b"__uzumaki_on_app_event__")
+                .ok_or_else(|| anyhow::anyhow!("failed to create v8 string"))?;
+
+            let val = global_obj.get(scope, key.into()).ok_or_else(|| {
+                anyhow::anyhow!("__uzumaki_on_app_event__ not found on globalThis")
+            })?;
+
+            let func = v8::Local::<v8::Function>::try_from(val)
+                .map_err(|_| anyhow::anyhow!("__uzumaki_on_app_event__ is not a function"))?;
+
+            v8::Global::new(scope, func)
+        };
 
         let event_loop: winit::event_loop::EventLoop<UserEvent> =
             winit::event_loop::EventLoop::with_user_event().build()?;
@@ -341,8 +367,8 @@ impl Application {
             app_root,
             event_loop: Some(event_loop),
             module_loaded: false,
-            tokio_runtime: None,
-            global_app_event_dispatch_fn: None,
+            tokio_runtime,
+            global_app_event_dispatch_fn,
             js_wake_handle,
         })
     }
@@ -360,7 +386,7 @@ impl Application {
         let wake_handle = self.js_wake_handle.clone();
         wake_handle.clear();
 
-        let rt = self.tokio_runtime.as_ref().unwrap();
+        let rt = &self.tokio_runtime;
         let _guard = rt.enter();
         let waker = waker(wake_handle);
         let mut cx = Context::from_waker(&waker);
@@ -379,57 +405,23 @@ impl Application {
         let specifier =
             deno_core::resolve_path(self.main_file.to_str().unwrap(), &self.app_root).unwrap();
 
-        let rt = self.tokio_runtime.as_ref().unwrap();
+        let rt = &self.tokio_runtime;
         rt.block_on(async {
             self.worker.execute_main_module(&specifier).await.unwrap();
         });
         self.pump_js();
     }
 
-    fn ensure_dispatch_fn(&mut self) -> Result<()> {
-        if self.global_app_event_dispatch_fn.is_some() {
-            return Ok(());
-        }
-
-        let resolved = {
-            let context = self.worker.js_runtime.main_context();
-            deno_core::scope!(scope, &mut self.worker.js_runtime);
-            let context_local = v8::Local::new(scope, context);
-            let global_obj = context_local.global(scope);
-
-            let key = v8::String::new_external_onebyte_static(scope, b"__uzumaki_on_app_event__")
-                .ok_or_else(|| anyhow::anyhow!("failed to create v8 string"))?;
-
-            let val = global_obj
-                .get(scope, key.into())
-                .ok_or_else(|| anyhow::anyhow!("__uzumaki_dispatch__ not found on globalThis"))?;
-
-            let func = v8::Local::<v8::Function>::try_from(val)
-                .map_err(|_| anyhow::anyhow!("__uzumaki_dispatch__ is not a function"))?;
-
-            v8::Global::new(scope, func)
-        };
-        // scope dropped, safe to write to self
-        self.global_app_event_dispatch_fn = Some(resolved);
-        Ok(())
-    }
-
     /// Dispatch an event to JS. Returns true if `preventDefault()` was called.
     fn dispatch_event_to_js(&mut self, event: &event_dispatch::AppEvent) -> bool {
-        if let Err(e) = self.ensure_dispatch_fn() {
-            eprintln!("[uzumaki] dispatch fn not available: {e}");
-            return false;
-        }
-
-        let rt = self.tokio_runtime.as_ref().unwrap();
+        let rt = &self.tokio_runtime;
         // Deno's timer ops require an active Tokio runtime. App events are invoked
         // directly from winit callbacks, so we need to re-enter the runtime before
         // calling into JS event handlers.
         let _guard = rt.enter();
 
-        // Clone the Global handle so we don't hold a borrow on self
         // while the scope borrows self.worker.js_runtime
-        let dispatch_fn = self.global_app_event_dispatch_fn.clone().unwrap();
+        let dispatch_fn = &self.global_app_event_dispatch_fn;
 
         let context = self.worker.js_runtime.main_context();
         deno_core::scope!(scope, &mut self.worker.js_runtime);
@@ -438,7 +430,7 @@ impl Application {
         let context_local = v8::Local::new(scope, context);
         let _global_obj = context_local.global(scope);
 
-        let func = v8::Local::new(scope, &dispatch_fn);
+        let func = v8::Local::new(scope, dispatch_fn);
         let undefined = v8::undefined(scope);
 
         let event_val = match deno_core::serde_v8::to_v8(scope, event) {
@@ -463,7 +455,7 @@ impl Application {
 
     fn spawn_cursor_blink_timer(&self, id: WindowEntryId, generation: u64, delay: Duration) {
         let proxy = self.js_wake_handle.proxy.clone();
-        let handle = self.tokio_runtime.as_ref().unwrap().handle().clone();
+        let handle = self.tokio_runtime.handle().clone();
         handle.spawn(async move {
             tokio::time::sleep(delay).await;
             let _ = proxy.send_event(UserEvent::CursorBlink { id, generation });
@@ -484,7 +476,7 @@ impl Application {
                 .focused_node
                 .and_then(|focused_id| entry.dom.nodes.get(focused_id))
                 .and_then(|node| node.as_text_input())
-                .and_then(|input| input.next_blink_toggle_in(entry.dom.window_focused));
+                .and_then(|input| input.next_blink_toggle_in(true, entry.dom.window_focused));
 
             next_delay.map(|delay| (generation, delay))
         };
@@ -609,7 +601,7 @@ impl ApplicationHandler<UserEvent> for Application {
                                 .and_then(|focused_id| entry.dom.nodes.get(focused_id))
                                 .and_then(|node| node.as_text_input())
                                 .and_then(|input| {
-                                    input.next_blink_toggle_in(entry.dom.window_focused)
+                                    input.next_blink_toggle_in(true, entry.dom.window_focused)
                                 })
                                 .map(|_| ())
                         })
@@ -710,8 +702,12 @@ impl ApplicationHandler<UserEvent> for Application {
 
                     // 2. Update bitmask state
                     match btn_state {
-                        ElementState::Pressed => state.mouse_buttons |= button_bit,
-                        ElementState::Released => state.mouse_buttons &= !button_bit,
+                        ElementState::Pressed => {
+                            state.mouse_buttons |= button_bit;
+                        }
+                        ElementState::Released => {
+                            state.mouse_buttons &= !button_bit;
+                        }
                     }
 
                     let mouse_buttons = state.mouse_buttons;
@@ -997,14 +993,12 @@ impl ApplicationHandler<UserEvent> for Application {
                                 let node = entry.dom.nodes.get_mut(fid)?;
                                 let is = node.as_text_input_mut()?;
                                 let _edit = is.commit_ime_text(&text, &mut handle.text_renderer)?;
-                                let value = is.text();
                                 event_dispatch::update_ime_cursor_area(&mut entry.dom, handle);
                                 needs_redraw = true;
                                 Some(vec![event_dispatch::AppEvent::Input(
                                     event_dispatch::InputEventData {
                                         window_id: wid,
                                         node_id: fid,
-                                        value,
                                         input_type: "insertCompositionText".to_string(),
                                         data: Some(text.clone()),
                                     },
@@ -1063,13 +1057,21 @@ impl ApplicationHandler<UserEvent> for Application {
             }
             WindowEvent::MouseWheel { delta, .. } => {
                 let mut state = self.app_state.borrow_mut();
-                let scroll_delta_y = match delta {
-                    winit::event::MouseScrollDelta::LineDelta(_, y) => y as f64 * 40.0,
-                    winit::event::MouseScrollDelta::PixelDelta(pos) => pos.y,
+                let (mut dx, mut dy) = match delta {
+                    winit::event::MouseScrollDelta::LineDelta(x, y) => {
+                        ((x as f64) * 40.0, (y as f64) * 40.0)
+                    }
+                    winit::event::MouseScrollDelta::PixelDelta(pos) => (pos.x, pos.y),
                 };
+                // Shift+wheel translates a vertical scroll into a horizontal
+                // one — the standard convention for mice without a tilt wheel.
+                if state.modifiers & 4 != 0 && dx == 0.0 {
+                    dx = dy;
+                    dy = 0.0;
+                }
                 if let Some(entry) = state.windows.get_mut(&wid)
                     && let Some(handle) = entry.handle.as_mut()
-                    && event_dispatch::handle_mouse_wheel(&mut entry.dom, handle, scroll_delta_y)
+                    && event_dispatch::handle_mouse_wheel(&mut entry.dom, handle, dx, dy)
                 {
                     needs_redraw = true;
                 }

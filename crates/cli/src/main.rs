@@ -45,19 +45,11 @@ fn main() {
 }
 
 fn run_launch_mode(mode: standalone::LaunchMode) {
-    let tokio_runtime = tokio::runtime::Builder::new_multi_thread()
-        .worker_threads(1)
-        .enable_io()
-        .enable_time()
-        .build()
-        .expect("failed to create tokio runtime");
     let entry = mode.entry_path().to_path_buf();
     let app_root = mode.app_root().to_path_buf();
     let args = mode.args().to_vec();
-    let mut app = tokio_runtime.block_on(async {
-        Application::new_with_root(entry, app_root, args, UZUMAKI_SNAPSHOT)
-            .expect("error creating application")
-    });
-    app.tokio_runtime = Some(tokio_runtime);
+    let mut app = Application::new_with_root(entry, app_root, args, UZUMAKI_SNAPSHOT)
+        .expect("error creating application");
+
     app.run().expect("error running application");
 }

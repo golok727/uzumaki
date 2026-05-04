@@ -57,28 +57,6 @@ function getOrCreateWindow(
   return window;
 }
 
-export const playgroundWindow = new Window('main', {
-  width: 1100,
-  height: 700,
-  title: 'Uzumaki - playground',
-  rootStyles: {
-    bg: C.bg,
-    color: C.text,
-    fontSize: 14,
-  },
-});
-
-playgroundWindow.on('windowload', () => {
-  console.log(
-    'Window loaded width =',
-    playgroundWindow.innerWidth,
-    'height =',
-    playgroundWindow.innerHeight,
-    'title =',
-    playgroundWindow.title,
-  );
-});
-
 export function openTransparentPreview() {
   getOrCreateWindow(
     'transparent-preview',
@@ -212,3 +190,25 @@ export function showHiddenPreview() {
   hiddenWindow?.setVisible(true);
   hiddenWindow?.focus();
 }
+
+export const mainWindow = new Window('main', {
+  width: 1100,
+  height: 700,
+  title: 'Uzumaki - playground',
+  rootStyles: {
+    bg: C.bg,
+    color: C.text,
+    fontSize: 14,
+  },
+});
+
+mainWindow.on('load', () => {
+  console.log(
+    'Window loaded width =',
+    mainWindow.innerWidth,
+    'height =',
+    mainWindow.innerHeight,
+    'title =',
+    mainWindow.title,
+  );
+});

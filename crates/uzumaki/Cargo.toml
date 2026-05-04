@@ -20,6 +20,8 @@ pollster.workspace = true
 anyhow.workspace = true
 arboard = "3.6.1"
 tokio = { workspace = true, features = ["rt", "time"] }
+smol_str = "0.3.6"
+
 # Deno deps
 deno_runtime = { workspace = true, features = ["include_js_files_for_snapshotting"] }
 deno_core = { workspace = true, features = ["include_js_files_for_snapshotting"] }

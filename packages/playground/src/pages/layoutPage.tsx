@@ -130,7 +130,15 @@ export function LayoutPage() {
   const [padding, setPadding] = useState(12);
 
   return (
-    <view display="flex" flexDir="col" gap={0} h="full" scrollable>
+    <view
+      display="flex"
+      flexDir="col"
+      gap={0}
+      h="full"
+      scroll
+      scrollbarWidth={8}
+      scrollbarRadius={5}
+    >
       <view
         display="flex"
         flexDir="col"
@@ -138,13 +146,14 @@ export function LayoutPage() {
         py={16}
         borderBottom={1}
         borderColor={C.border}
+        gap={8}
       >
-        <text fontSize={20} fontWeight={800} color={C.text}>
+        <view fontSize={20} fontWeight={800} color={C.text}>
           Layout Lab
-        </text>
-        <text fontSize={12} color={C.textMuted}>
+        </view>
+        <view fontSize={12} color={C.textMuted}>
           Flex, nesting, borders, rounding, opacity, visibility
-        </text>
+        </view>
       </view>
 
       <view display="flex" flexDir="col" gap={24} p={24}>
@@ -929,7 +938,196 @@ export function LayoutPage() {
 
         <Divider />
 
+        <ScrollDemo />
+
+        <Divider />
+
         <AbsolutePositioningDemo />
+      </view>
+    </view>
+  );
+}
+
+function ScrollDemo() {
+  return (
+    <view display="flex" flexDir="col" gap={12}>
+      <view display="flex" flexDir="col" gap={4}>
+        <text fontSize={14} fontWeight={700} color={C.text}>
+          Scroll props
+        </text>
+        <text fontSize={12} color={C.textMuted}>
+          `scroll` enables auto overflow on both axes, while `scrollX` and
+          `scrollY` let you opt into each axis separately.
+        </text>
+      </view>
+
+      <view display="flex" flexDir="col" gap={16}>
+        <view display="flex" flexDir="col" gap={8}>
+          <text fontSize={12} fontWeight={600} color={C.textMuted}>
+            scroll
+          </text>
+          <view
+            h={200}
+            scroll
+            bg={C.surface2}
+            rounded={8}
+            border={1}
+            borderColor={C.border}
+            p={12}
+            display="flex"
+            flexDir="col"
+            gap={8}
+          >
+            {Array.from({ length: 12 }, (_, i) => (
+              <view key={i} display="flex" flexDir="row" gap={10}>
+                {Array.from({ length: 6 }, (_, j) => (
+                  <view
+                    key={`${i}-${j}`}
+                    w={140}
+                    flexShrink={0}
+                    p={10}
+                    bg={(i + j) % 2 === 0 ? C.surface3 : C.surface4}
+                    rounded={6}
+                    display="flex"
+                    items="center"
+                    justify="between"
+                  >
+                    <text fontSize={12} fontWeight={600} color={C.text}>
+                      Row {i + 1}
+                    </text>
+                    <text fontSize={11} color={C.textMuted}>
+                      Col {j + 1}
+                    </text>
+                  </view>
+                ))}
+              </view>
+            ))}
+          </view>
+        </view>
+
+        <view display="flex" flexDir="col" gap={8}>
+          <text fontSize={12} fontWeight={600} color={C.textMuted}>
+            scrollX
+          </text>
+          <view
+            h={108}
+            scrollX
+            bg={C.surface2}
+            rounded={8}
+            border={1}
+            borderColor={C.border}
+            p={12}
+            display="flex"
+            flexDir="row"
+            scrollbarColor={C.accentDim}
+            scrollbarHoverColor={C.warningDim}
+            gap={10}
+          >
+            {Array.from({ length: 10 }, (_, i) => (
+              <view
+                key={i}
+                w={140}
+                h={80}
+                textWrap="nowrap"
+                bg={i % 2 === 0 ? C.primaryDim : C.accentDim}
+                rounded={8}
+                p={10}
+                display="flex"
+                flexDir="col"
+                textWrap="nowrap"
+                justify="between"
+              >
+                <text fontSize={12} fontWeight={700} color={C.text}>
+                  Card #{i + 1}
+                </text>
+                <text fontSize={11} color={C.textMuted}>
+                  Horizontal overflow only
+                </text>
+              </view>
+            ))}
+          </view>
+        </view>
+
+        <view display="flex" flexDir="col" gap={8}>
+          <text fontSize={12} fontWeight={600} color={C.textMuted}>
+            scrollY
+          </text>
+          <view
+            h={220}
+            scrollY
+            bg={C.surface2}
+            rounded={8}
+            border={1}
+            borderColor={C.border}
+            p={12}
+            display="flex"
+            flexDir="col"
+            gap={10}
+            scrollbarColor={C.accentDim}
+            scrollbarHoverColor={C.warningDim}
+          >
+            {Array.from({ length: 14 }, (_, i) => (
+              <view
+                key={i}
+                p={12}
+                bg={i % 2 === 0 ? C.successDim : C.warningDim}
+                rounded={8}
+                display="flex"
+                flexDir="col"
+                gap={4}
+              >
+                <text fontSize={12} fontWeight={700} color={C.text}>
+                  Log entry #{i + 1}
+                </text>
+                <text fontSize={10} color={C.textMuted}>
+                  Vertical overflow only
+                </text>
+              </view>
+            ))}
+          </view>
+        </view>
+
+        <view display="flex" flexDir="col" gap={8}>
+          <text fontSize={12} fontWeight={600} color={C.textMuted}>
+            scrollbar styling
+          </text>
+          <text fontSize={11} color={C.textMuted}>
+            scrollbarWidth / Color / HoverColor / TrackColor / Radius
+          </text>
+          <view
+            h={220}
+            scrollY
+            bg={C.surface2}
+            rounded={8}
+            border={1}
+            borderColor={C.border}
+            p={12}
+            display="flex"
+            flexDir="col"
+            gap={10}
+            scrollbarHoverColor={C.primary}
+            scrollbarRadius={5}
+          >
+            {Array.from({ length: 14 }, (_, i) => (
+              <view
+                key={i}
+                p={12}
+                bg={i % 2 === 0 ? C.surface3 : C.surface4}
+                rounded={8}
+                display="flex"
+                flexDir="col"
+                gap={4}
+              >
+                <text fontSize={12} fontWeight={700} color={C.text}>
+                  Item #{i + 1}
+                </text>
+                <text fontSize={10} color={C.textMuted}>
+                  Hover the thumb to see the hover color
+                </text>
+              </view>
+            ))}
+          </view>
+        </view>
       </view>
     </view>
   );

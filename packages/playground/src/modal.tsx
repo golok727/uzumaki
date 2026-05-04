@@ -140,26 +140,6 @@ export function Modal({ onClose }: { onClose: () => void }) {
             </text>
             <ModalCounter />
           </view>
-
-          <view display="flex" flexDir="col" gap={6}>
-            <text fontSize={13} fontWeight={600} color={C.text}>
-              Info
-            </text>
-            <view
-              p={12}
-              bg={C.surface2}
-              rounded={8}
-              border={1}
-              borderColor={C.border}
-            >
-              <text fontSize={12} color={C.textMuted}>
-                This modal uses position="absolute" with all insets set to 0 on
-                the backdrop, and flexbox centering for the card. The modal
-                renders at the App root so it covers the entire window including
-                the sidebar.
-              </text>
-            </view>
-          </view>
         </view>
 
         <view

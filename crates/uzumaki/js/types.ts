@@ -13,7 +13,7 @@ export interface WindowSize {
 export type WindowTheme = 'light' | 'dark' | 'system';
 export type WindowLevel = 'normal' | 'alwaysOnTop' | 'alwaysOnBottom';
 
-export interface WindowAttributes {
+export interface WindowOptions {
   width?: number;
   height?: number;
   title?: string;

@@ -3,20 +3,21 @@ use slab::Slab;
 use crate::{
     cursor::UzCursorIcon,
     element::{
-        ElementData, ElementNode, ImageData, ImageMeasureInfo, ImageNode, Node, NodeContext,
-        ScrollDragState, ScrollThumbRect, TextNode, TextRunEntry, TextSelectRun, UzNodeId, render,
+        ElementData, ElementNode, ImageData, ImageNode, Node, ScrollDragState, ScrollThumbRect,
+        TextContent, TextNode, TextRunEntry, TextSelectRun, UzNodeId,
     },
     input::InputState,
     interactivity::{HitTestState, HitboxStore},
+    layout::LayoutEngine,
     selection::TextSelection,
-    style::{Length, TextStyle, UzStyle},
+    style::{Length, UzStyle},
     text::TextRenderer,
 };
 
 pub struct UIState {
     pub nodes: Slab<Node>,
 
-    pub taffy: taffy::TaffyTree<NodeContext>,
+    pub layout_engine: LayoutEngine,
     pub root: Option<UzNodeId>,
     /// Hitboxes registered during the last paint pass.
     pub hitbox_store: HitboxStore,
@@ -64,7 +65,7 @@ impl UIState {
     pub fn new() -> Self {
         Self {
             nodes: Slab::new(),
-            taffy: taffy::TaffyTree::new(),
+            layout_engine: LayoutEngine::new(),
             root: None,
             hitbox_store: HitboxStore::default(),
             hit_state: HitTestState::default(),
@@ -148,81 +149,35 @@ impl UIState {
 
     /// Create a View element with a style.
     pub fn create_view(&mut self, style: UzStyle) -> UzNodeId {
-        let taffy_style = style.to_taffy();
-        let taffy_node = self.taffy.new_leaf(taffy_style).unwrap();
-        let node_id = self.nodes.insert(Node::new(
-            taffy_node,
-            style,
-            ElementNode::new(ElementData::None),
-        ));
-
-        self.taffy
-            .set_node_context(
-                taffy_node,
-                Some(NodeContext {
-                    dom_id: node_id,
-                    text: None,
-                    text_style: TextStyle::default(),
-                    is_input: false,
-                    image: None,
-                }),
-            )
-            .unwrap();
-        node_id
+        self.nodes
+            .insert(Node::new(style, ElementNode::new(ElementData::None)))
     }
 
-    /// Create a Text element.
-    pub fn create_text(&mut self, content: String, style: UzStyle) -> UzNodeId {
-        let taffy_style = style.to_taffy();
-        let taffy_node = self.taffy.new_leaf(taffy_style).unwrap();
-        let text = TextNode {
+    // leaf text node
+    pub fn create_text_node(&mut self, content: String, style: UzStyle) -> UzNodeId {
+        let text = TextContent {
             content: content.clone(),
         };
-        let text_style = style.text.clone();
-        let node_id = self
-            .nodes
-            .insert(Node::new(taffy_node, style, TextNode::new(content)));
+        self.nodes
+            .insert(Node::new(style, TextNode::new(text.clone())))
+    }
 
-        self.taffy
-            .set_node_context(
-                taffy_node,
-                Some(NodeContext {
-                    dom_id: node_id,
-                    text: Some(text),
-                    text_style,
-                    is_input: false,
-                    image: None,
-                }),
-            )
-            .unwrap();
-        node_id
+    /// Create a Text element. <text>
+    pub fn create_text_element(&mut self, content: String, style: UzStyle) -> UzNodeId {
+        let text = TextContent {
+            content: content.clone(),
+        };
+        self.nodes
+            .insert(Node::new(style, ElementNode::new_text(text.clone())))
     }
 
     /// Create an Input element.
     pub fn create_input(&mut self, style: UzStyle) -> UzNodeId {
-        let taffy_style = style.to_taffy();
-        let taffy_node = self.taffy.new_leaf(taffy_style).unwrap();
-        let text_style = style.text.clone();
         let is = InputState::new_single_line();
 
-        let node_id = self.nodes.insert(Node::new(
-            taffy_node,
-            style,
-            ElementNode::new_text_input(is),
-        ));
-
-        self.taffy
-            .set_node_context(
-                taffy_node,
-                Some(NodeContext {
-                    dom_id: node_id,
-                    text: None,
-                    text_style,
-                    is_input: true,
-                    image: None,
-                }),
-            )
-            .unwrap();
+        let node_id = self
+            .nodes
+            .insert(Node::new(style, ElementNode::new_text_input(is)));
         // Input always needs a hitbox for click-to-focus
         self.nodes[node_id].interactivity.js_interactive = true;
         self.nodes[node_id]
@@ -233,27 +188,10 @@ impl UIState {
     }
 
     pub fn create_image(&mut self, style: UzStyle) -> UzNodeId {
-        let taffy_style = style.to_taffy();
-        let taffy_node = self.taffy.new_leaf(taffy_style).unwrap();
-        let node_id = self.nodes.insert(Node::new(
-            taffy_node,
+        self.nodes.insert(Node::new(
             style,
             ElementNode::new_image(ImageNode::default()),
-        ));
-
-        self.taffy
-            .set_node_context(
-                taffy_node,
-                Some(NodeContext {
-                    dom_id: node_id,
-                    text: None,
-                    text_style: TextStyle::default(),
-                    is_input: false,
-                    image: None,
-                }),
-            )
-            .unwrap();
-        node_id
+        ))
     }
 
     pub fn create_checkbox(&mut self, mut style: UzStyle) -> UzNodeId {
@@ -264,26 +202,9 @@ impl UIState {
             style.size.height = Length::Px(18.0);
         }
 
-        let taffy_style = style.to_taffy();
-        let taffy_node = self.taffy.new_leaf(taffy_style).unwrap();
-        let node_id = self.nodes.insert(Node::new(
-            taffy_node,
-            style,
-            ElementNode::new_checkbox_input(false),
-        ));
-
-        self.taffy
-            .set_node_context(
-                taffy_node,
-                Some(NodeContext {
-                    dom_id: node_id,
-                    text: None,
-                    text_style: TextStyle::default(),
-                    is_input: false,
-                    image: None,
-                }),
-            )
-            .unwrap();
+        let node_id = self
+            .nodes
+            .insert(Node::new(style, ElementNode::new_checkbox_input(false)));
 
         self.nodes[node_id].interactivity.js_interactive = true;
         self.nodes[node_id]
@@ -293,12 +214,10 @@ impl UIState {
         node_id
     }
 
-    /// Update a node's style (also syncs taffy).
+    /// Update a node's style. Layout state is rebuilt on the next frame.
     pub fn set_style(&mut self, node_id: UzNodeId, style: UzStyle) {
         let node = &mut self.nodes[node_id];
-        let taffy_style = style.to_taffy();
         node.style = style;
-        self.taffy.set_style(node.taffy_node, taffy_style).unwrap();
     }
 
     pub fn set_root(&mut self, node_id: UzNodeId) {
@@ -309,11 +228,11 @@ impl UIState {
         if parent_id == child_id {
             return;
         }
-        self.detach_from_parent(child_id);
+        if self.nodes[parent_id].get_text_content().is_some() {
+            return;
+        }
 
-        let parent_taffy = self.nodes[parent_id].taffy_node;
-        let child_taffy = self.nodes[child_id].taffy_node;
-        self.taffy.add_child(parent_taffy, child_taffy).unwrap();
+        self.detach_from_parent(child_id);
 
         let old_last = self.nodes[parent_id].last_child;
         self.nodes[child_id].parent = Some(parent_id);
@@ -332,20 +251,10 @@ impl UIState {
         if child_id == before_id || parent_id == child_id {
             return;
         }
+        if self.nodes[parent_id].get_text_content().is_some() {
+            return;
+        }
         self.detach_from_parent(child_id);
-
-        let parent_taffy = self.nodes[parent_id].taffy_node;
-        let child_taffy = self.nodes[child_id].taffy_node;
-        let before_taffy = self.nodes[before_id].taffy_node;
-
-        let children = self.taffy.children(parent_taffy).unwrap();
-        let idx = children
-            .iter()
-            .position(|&c| c == before_taffy)
-            .expect("before node not found in parent");
-        self.taffy
-            .insert_child_at_index(parent_taffy, idx, child_taffy)
-            .unwrap();
 
         let prev = self.nodes[before_id].prev_sibling;
         self.nodes[child_id].parent = Some(parent_id);
@@ -364,10 +273,6 @@ impl UIState {
         let Some(parent_id) = self.nodes[child_id].parent else {
             return;
         };
-
-        let parent_taffy = self.nodes[parent_id].taffy_node;
-        let child_taffy = self.nodes[child_id].taffy_node;
-        let _ = self.taffy.remove_child(parent_taffy, child_taffy);
 
         let prev = self.nodes[child_id].prev_sibling;
         let next = self.nodes[child_id].next_sibling;
@@ -420,7 +325,16 @@ impl UIState {
         {
             self.scroll_lock = None;
         }
-        if self.text_selection.root == Some(id) {
+        if self
+            .text_selection
+            .anchor
+            .is_some_and(|endpoint| endpoint.node == id)
+            || self
+                .text_selection
+                .focus
+                .is_some_and(|endpoint| endpoint.node == id)
+            || self.selection_root(&self.text_selection) == Some(id)
+        {
             self.text_selection.clear();
         }
 
@@ -441,10 +355,6 @@ impl UIState {
     }
 
     pub fn remove_child(&mut self, parent_id: UzNodeId, child_id: UzNodeId) {
-        let parent_taffy = self.nodes[parent_id].taffy_node;
-        let child_taffy = self.nodes[child_id].taffy_node;
-        self.taffy.remove_child(parent_taffy, child_taffy).unwrap();
-
         let prev = self.nodes[child_id].prev_sibling;
         let next = self.nodes[child_id].next_sibling;
 
@@ -460,6 +370,8 @@ impl UIState {
             self.nodes[parent_id].last_child = prev;
         }
 
+        // FIXME: (URGENT) dont remove only detach ( clean up on gc )
+        //
         // Collect the entire subtree rooted at child_id (BFS)
         let mut to_remove = Vec::new();
         let mut stack = vec![child_id];
@@ -472,10 +384,8 @@ impl UIState {
             }
         }
 
-        // remove taffy and slab nodes
+        // Remove slab nodes and scrub stale NodeId references first.
         for nid in to_remove {
-            let tn = self.nodes[nid].taffy_node;
-            let _ = self.taffy.remove(tn);
             self.on_node_removed(nid);
             self.nodes.remove(nid);
         }
@@ -484,28 +394,9 @@ impl UIState {
     /// Update a text node's content.
     pub fn set_text_content(&mut self, node_id: UzNodeId, text: String) {
         let node = &mut self.nodes[node_id];
-        let tc = TextNode {
-            content: text.clone(),
-        };
-
-        if let Some(text_node) = node.as_text_node_mut() {
+        if let Some(text_node) = node.text_content_mut() {
             text_node.content = text;
         }
-
-        let taffy_node = node.taffy_node;
-        let text_style = node.style.text.clone();
-        self.taffy
-            .set_node_context(
-                taffy_node,
-                Some(NodeContext {
-                    dom_id: node_id,
-                    text: Some(tc),
-                    text_style,
-                    is_input: false,
-                    image: None,
-                }),
-            )
-            .unwrap();
     }
 
     pub fn set_image_data(&mut self, node_id: UzNodeId, data: ImageData) {
@@ -515,17 +406,7 @@ impl UIState {
         let Some(image_node) = node.as_image_mut() else {
             return;
         };
-        let measure = data.natural_size().map(|(w, h)| ImageMeasureInfo {
-            width: w,
-            height: h,
-        });
         image_node.data = data;
-
-        let taffy_node = node.taffy_node;
-        if let Some(ctx) = self.taffy.get_node_context_mut(taffy_node) {
-            ctx.image = measure;
-        }
-        let _ = self.taffy.mark_dirty(taffy_node);
     }
 
     pub fn clear_image_data(&mut self, node_id: UzNodeId) {
@@ -536,16 +417,10 @@ impl UIState {
             return;
         };
         image_node.clear();
-
-        let taffy_node = node.taffy_node;
-        if let Some(ctx) = self.taffy.get_node_context_mut(taffy_node) {
-            ctx.image = None;
-        }
-        let _ = self.taffy.mark_dirty(taffy_node);
     }
 
     /// Remove all children (and their descendants) from `parent_id`, clearing
-    /// the taffy tree and slotmap entries.  The parent node itself is kept.
+    /// the retained node entries. The parent node itself is kept.
     pub fn clear_children(&mut self, parent_id: UzNodeId) {
         // Collect every descendant via BFS
         let mut to_remove = Vec::new();
@@ -565,17 +440,8 @@ impl UIState {
             }
         }
 
-        // Detach all taffy children from parent
-        let parent_taffy = self.nodes[parent_id].taffy_node;
-        let taffy_children: Vec<_> = self.taffy.children(parent_taffy).unwrap();
-        for tc in taffy_children {
-            let _ = self.taffy.remove_child(parent_taffy, tc);
-        }
-
-        // Remove descendants from taffy + slab; scrub stale NodeId references first.
+        // Remove descendants from slab; scrub stale NodeId references first.
         for nid in to_remove {
-            let tn = self.nodes[nid].taffy_node;
-            let _ = self.taffy.remove(tn);
             self.on_node_removed(nid);
             self.nodes.remove(nid);
         }
@@ -586,36 +452,15 @@ impl UIState {
     }
 
     pub fn compute_layout(&mut self, width: f32, height: f32, text_renderer: &mut TextRenderer) {
-        let Some(root) = self.root else { return };
-        let taffy_root = self.nodes[root].taffy_node;
-
-        let mut computed_styles = Vec::new();
-        self.collect_computed_styles(root, None, &mut computed_styles);
-
-        for (taffy_node, taffy_style, text_style) in computed_styles {
-            self.taffy.set_style(taffy_node, taffy_style).unwrap();
-            if let Some(ctx) = self.taffy.get_node_context_mut(taffy_node) {
-                ctx.text_style = text_style;
-            }
-        }
-
-        self.taffy
-            .compute_layout_with_measure(
-                taffy_root,
-                taffy::Size {
-                    width: taffy::AvailableSpace::Definite(width),
-                    height: taffy::AvailableSpace::Definite(height),
-                },
-                |known_dimensions, available_space, _node_id, node_context, _style| {
-                    render::measure(
-                        text_renderer,
-                        known_dimensions,
-                        available_space,
-                        node_context,
-                    )
-                },
-            )
-            .unwrap();
+        self.layout_engine.compute_layout(
+            &self.nodes,
+            self.root,
+            &self.hit_state,
+            self.focused_node,
+            width,
+            height,
+            text_renderer,
+        );
     }
 
     pub(crate) fn computed_style(&self, node_id: UzNodeId, parent: Option<&UzStyle>) -> UzStyle {
@@ -628,23 +473,6 @@ impl UIState {
             &self.hit_state,
             self.focused_node == Some(node_id),
         )
-    }
-
-    fn collect_computed_styles(
-        &self,
-        node_id: UzNodeId,
-        parent: Option<&UzStyle>,
-        out: &mut Vec<(taffy::NodeId, taffy::Style, TextStyle)>,
-    ) {
-        let style = self.computed_style(node_id, parent);
-        let node = &self.nodes[node_id];
-        out.push((node.taffy_node, style.to_taffy(), style.text.clone()));
-
-        let mut child = node.first_child;
-        while let Some(child_id) = child {
-            self.collect_computed_styles(child_id, Some(&style), out);
-            child = self.nodes[child_id].next_sibling;
-        }
     }
 
     /// Run hit test at the given mouse position and update hit_state.
@@ -778,7 +606,11 @@ impl UIState {
 #[cfg(test)]
 mod tests {
     use super::UIState;
-    use crate::{cursor::UzCursorIcon, style::Bounds};
+    use crate::{
+        cursor::UzCursorIcon,
+        style::{Bounds, Length, Size, UzStyle},
+        text::TextRenderer,
+    };
     use std::sync::{
         Arc,
         atomic::{AtomicUsize, Ordering},
@@ -822,12 +654,77 @@ mod tests {
     fn plain_text_inherits_cursor_from_parent() {
         let mut dom = UIState::new();
         let parent = dom.create_view(Default::default());
-        let child = dom.create_text("pointer".into(), Default::default());
+        let child = dom.create_text_element("pointer".into(), Default::default());
 
         dom.append_child(parent, child);
         dom.nodes[parent].style.cursor = Some(UzCursorIcon::Pointer);
 
         assert_eq!(dom.resolve_cursor(child), UzCursorIcon::Pointer);
+    }
+
+    #[test]
+    fn append_child_to_text_node_is_noop() {
+        let mut dom = UIState::new();
+        let parent = dom.create_view(Default::default());
+        let text = dom.create_text_element("leaf".into(), Default::default());
+        let child = dom.create_view(Default::default());
+
+        dom.append_child(parent, child);
+        dom.append_child(text, child);
+
+        assert_eq!(dom.nodes[text].first_child, None);
+        assert_eq!(dom.nodes[text].last_child, None);
+        assert_eq!(dom.nodes[child].parent, Some(parent));
+    }
+
+    #[test]
+    fn insert_before_into_text_node_is_noop() {
+        let mut dom = UIState::new();
+        let parent = dom.create_view(Default::default());
+        let text = dom.create_text_element("leaf".into(), Default::default());
+        let child = dom.create_view(Default::default());
+        let before = dom.create_view(Default::default());
+
+        dom.append_child(parent, child);
+        dom.insert_before(text, child, before);
+
+        assert_eq!(dom.nodes[text].first_child, None);
+        assert_eq!(dom.nodes[text].last_child, None);
+        assert_eq!(dom.nodes[child].parent, Some(parent));
+    }
+
+    #[test]
+    fn view_default_stacks_child_views_vertically() {
+        let mut dom = UIState::new();
+        let mut renderer = TextRenderer::new();
+
+        let mut parent_style = UzStyle::default_for_element("view");
+        parent_style.size = Size {
+            width: Length::Px(100.0),
+            height: Length::Px(100.0),
+        };
+
+        let mut child_style = UzStyle::default_for_element("view");
+        child_style.size = Size {
+            width: Length::Px(20.0),
+            height: Length::Px(10.0),
+        };
+
+        let parent = dom.create_view(parent_style);
+        let first = dom.create_view(child_style.clone());
+        let second = dom.create_view(child_style);
+
+        dom.set_root(parent);
+        dom.append_child(parent, first);
+        dom.append_child(parent, second);
+        dom.compute_layout(100.0, 100.0, &mut renderer);
+
+        let first_layout = dom.layout_engine.layout(first).unwrap();
+        let second_layout = dom.layout_engine.layout(second).unwrap();
+
+        assert_eq!(first_layout.location.y, 0.0);
+        assert_eq!(second_layout.location.y, first_layout.size.height);
+        assert_eq!(second_layout.location.x, 0.0);
     }
 
     #[test]

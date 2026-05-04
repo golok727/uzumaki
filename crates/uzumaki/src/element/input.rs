@@ -6,12 +6,6 @@ use vello::peniko::{Color as VelloColor, Fill};
 use crate::style::{Bounds, Color, Corners, Edges, TextStyle, UzStyle};
 use crate::text::TextRenderer;
 
-pub struct InputContentInfo {
-    pub content_height: f64,
-    pub visible_height: f64,
-    pub scroll_offset_y: f64,
-}
-
 pub struct InputRenderInfo {
     pub display_text: String,
     pub placeholder: String,
@@ -34,7 +28,6 @@ pub struct PreeditRenderInfo {
 }
 
 /// Paint an input element with its text, selection highlight, and cursor.
-/// Returns the content height for multiline inputs (for scrollbar rendering).
 pub fn paint_input(
     scene: &mut Scene,
     text_renderer: &mut TextRenderer,
@@ -42,7 +35,7 @@ pub fn paint_input(
     style: &UzStyle,
     input: &InputRenderInfo,
     transform: Affine,
-) -> Option<InputContentInfo> {
+) {
     let pad_l = style.padding.left as f64;
     let pad_r = style.padding.right as f64;
     let pad_t = style.padding.top as f64;
@@ -248,15 +241,4 @@ pub fn paint_input(
     }
 
     scene.pop_layer();
-
-    if input.multiline {
-        let content_height = input.layout_height as f64 + pad_t + pad_b;
-        Some(InputContentInfo {
-            content_height,
-            visible_height: content_h,
-            scroll_offset_y: scroll_y,
-        })
-    } else {
-        None
-    }
 }
