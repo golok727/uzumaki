@@ -8,9 +8,8 @@ use crate::element::checkbox::CheckboxRenderInfo;
 use crate::element::image::ImageRenderInfo;
 use crate::element::input::InputRenderInfo;
 use crate::element::scroll::{self, ScrollAxisInfo, ThumbGeometry};
-use crate::element::{
-    ImageMeasureInfo, NodeContext, ScrollAxis, ScrollState, ScrollThumbRect, UzNodeId,
-};
+use crate::element::{ImageMeasureInfo, ScrollAxis, ScrollState, ScrollThumbRect, UzNodeId};
+use crate::layout::NodeContext;
 use crate::style::{Bounds, TextStyle, UzStyle, Visibility};
 use crate::text::{
     TextRenderer, apply_text_style_to_editor, secure_cursor_geometry, secure_selection_geometry,
@@ -905,7 +904,8 @@ fn available_as_option(space: taffy::AvailableSpace) -> Option<f32> {
 #[cfg(test)]
 mod tests {
     use super::measure;
-    use crate::element::{ImageMeasureInfo, NodeContext};
+    use crate::element::ImageMeasureInfo;
+    use crate::layout::NodeContext;
     use crate::style::TextStyle;
     use crate::text::TextRenderer;
 

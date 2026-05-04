@@ -8,6 +8,13 @@ use crate::{SharedString, cursor};
 
 use crate::parse::*;
 
+// TODO
+// - attribute parser  and (simplify code)
+//
+//
+//
+//
+//
 impl WindowEntry {
     pub fn set_str_attribute(&mut self, node_id: UzNodeId, name: &str, value: &str) {
         let Some(kind) = name.parse::<AttributeKind>().ok() else {
@@ -154,7 +161,7 @@ fn set_element_str(node: &mut Node, prop: ElementProp, value: &str, _rem_base: f
         | ElementProp::Secure
         | ElementProp::Checked
         | ElementProp::Focusable => {
-            return set_element_bool(node, prop, parse_bool(value));
+            set_element_bool(node, prop, parse_bool(value));
         }
     }
 }
@@ -171,7 +178,7 @@ fn set_element_number(node: &mut Node, prop: ElementProp, value: f32) {
         | ElementProp::Secure
         | ElementProp::Checked
         | ElementProp::Focusable => {
-            return set_element_bool(node, prop, value > 0.5);
+            set_element_bool(node, prop, value > 0.5);
         }
         _ => {}
     }

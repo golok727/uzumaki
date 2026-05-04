@@ -9,6 +9,7 @@ pub mod geometry;
 pub mod gpu;
 pub mod input;
 pub mod interactivity;
+mod layout;
 pub mod ops;
 pub mod selection;
 pub mod shared_string;
