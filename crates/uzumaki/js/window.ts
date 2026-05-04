@@ -227,6 +227,10 @@ export class Window {
     return this.windowLevel === 'alwaysOnTop';
   }
 
+  get alwaysOnBottom(): boolean {
+    return this.windowLevel === 'alwaysOnBottom';
+  }
+
   get windowLevel(): WindowLevel {
     return this._native.windowLevel ?? DEFAULT_WINDOW_LEVEL;
   }

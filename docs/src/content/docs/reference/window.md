@@ -22,11 +22,16 @@ const window = new Window('main', {
   resizable: true,
   decorations: true,
   theme: 'system',
+
+  // applied to root element directly
+  rootStyles: {
+    bg: '#0f0f0f',
+  },
 });
 
 function App() {
   return (
-    <view w="full" h="full" bg="#0f0f0f">
+    <view w="full" h="full">
       <text color="#e4e4e7">Hello</text>
     </view>
   );
@@ -35,68 +40,79 @@ function App() {
 render(window, <App />);
 ```
 
+---
+
 ## Window options
 
-| Option                   | Type                                            | Description                                         |
-| ------------------------ | ----------------------------------------------- | --------------------------------------------------- |
-| `width`                  | `number`                                        | Initial window width in logical pixels              |
-| `height`                 | `number`                                        | Initial window height in logical pixels             |
-| `title`                  | `string`                                        | Window title bar text                               |
-| `visible`                | `boolean`                                       | Whether the window starts visible                   |
-| `resizable`              | `boolean`                                       | Whether the window can be resized                   |
-| `decorations`            | `boolean`                                       | Whether native titlebar and borders are shown       |
-| `transparent`            | `boolean`                                       | Whether the window background supports transparency |
-| `maximized`              | `boolean`                                       | Whether the window starts maximized                 |
-| `minimized`              | `boolean`                                       | Whether the window is minimized after creation      |
-| `fullscreen`             | `boolean`                                       | Whether the window starts in borderless fullscreen  |
-| `windowLevel`            | `'normal' \| 'alwaysOnTop' \| 'alwaysOnBottom'` | Requested z-level hint                              |
-| `minWidth` / `minHeight` | `number`                                        | Minimum size when both are provided                 |
-| `maxWidth` / `maxHeight` | `number`                                        | Maximum size when both are provided                 |
-| `position`               | `{ x: number; y: number }`                      | Initial window position                             |
-| `theme`                  | `'light' \| 'dark' \| 'system'`                 | Preferred native window theme                       |
-| `active`                 | `boolean`                                       | Whether the window should request initial focus     |
-| `contentProtected`       | `boolean`                                       | Requests screen-capture protection where supported  |
-| `closable`               | `boolean`                                       | Whether the native close titlebar button is enabled |
-| `minimizable`            | `boolean`                                       | Whether the native minimize button is enabled       |
-| `maximizable`            | `boolean`                                       | Whether the native maximize button is enabled       |
+| Option                   | Type                                            | Description                        |
+| ------------------------ | ----------------------------------------------- | ---------------------------------- |
+| `width`                  | `number`                                        | Initial window width (logical px)  |
+| `height`                 | `number`                                        | Initial window height (logical px) |
+| `title`                  | `string`                                        | Window title                       |
+| `visible`                | `boolean`                                       | Start visible                      |
+| `resizable`              | `boolean`                                       | Allow resizing                     |
+| `decorations`            | `boolean`                                       | Native titlebar + borders          |
+| `transparent`            | `boolean`                                       | Enable transparency                |
+| `maximized`              | `boolean`                                       | Start maximized                    |
+| `minimized`              | `boolean`                                       | Start minimized                    |
+| `fullscreen`             | `boolean`                                       | Borderless fullscreen              |
+| `windowLevel`            | `'normal' \| 'alwaysOnTop' \| 'alwaysOnBottom'` | Z-order hint                       |
+| `minWidth` / `minHeight` | `number`                                        | Minimum size                       |
+| `maxWidth` / `maxHeight` | `number`                                        | Maximum size                       |
+| `position`               | `{ x: number; y: number }`                      | Initial position                   |
+| `theme`                  | `'light' \| 'dark' \| 'system'`                 | Native theme                       |
+| `active`                 | `boolean`                                       | Request focus on start             |
+| `contentProtected`       | `boolean`                                       | Screen capture protection          |
+| `closable`               | `boolean`                                       | Enable close button                |
+| `minimizable`            | `boolean`                                       | Enable minimize button             |
+| `maximizable`            | `boolean`                                       | Enable maximize button             |
+| `rootStyles`             | `Record<string, unknown>`                       | Applied directly to root element   |
 
-The first argument to `new Window()` is a window identifier string (e.g. `'main'`).
-Use `getWindow(label)` to retrieve an existing window when you want to reuse or focus it instead of creating a duplicate.
+---
 
-## Runtime APIs
+## Runtime API
 
-You can update several window properties after creation:
+### Property-based updates
+
+All major window attributes are updated via direct property assignment:
 
 ```ts
-window.setTitle('Renamed');
-window.setVisible(true);
-window.setResizable(false);
-window.setDecorations(false);
-window.setTransparent(true);
-window.setMaximized(true);
-window.setMinimized(false);
-window.setFullscreen(false);
-window.setAlwaysOnTop(true);
-window.setWindowLevel('normal');
+window.title = 'Renamed';
+window.visible = true;
+window.resizable = false;
+window.decorations = false;
+window.transparent = true;
+window.maximized = true;
+window.minimized = false;
+window.fullscreen = false;
+window.windowLevel = 'normal';
+window.theme = 'dark';
+window.contentProtected = true;
+window.closable = true;
+window.minimizable = true;
+window.maximizable = false;
+```
+
+### Methods (only where needed)
+
+```ts
+window.focus();
+
 window.setMinSize(640, 480);
 window.setMaxSize(1440, 900);
 window.setPosition(120, 80);
-window.setTheme('dark');
-window.focus();
-window.setContentProtected(true);
-window.setClosable(true);
-window.setMinimizable(true);
-window.setMaximizable(false);
 ```
 
-Read back common state through getters:
+---
+
+## Getters
 
 ```ts
 window.title;
 window.visible;
 window.transparent;
 window.resizable;
-window.decorated;
+window.decorations;
 window.maximized;
 window.minimized;
 window.fullscreen;
@@ -114,8 +130,24 @@ window.minimizable;
 window.maximizable;
 ```
 
-## Notes
+---
 
-- Sizes and positions use logical pixels.
-- `fullscreen: true` uses borderless fullscreen.
-- `windowLevel`, `contentProtected`, `closable`, `minimizable`, `maximizable`, `active`, and runtime transparency are best-effort platform hints. The underlying OS or window manager may ignore them.
+## Window lifecycle
+
+```ts
+window.on('load', () => {});
+window.on('resize', (e) => {});
+window.on('close', (e) => {});
+```
+
+---
+
+## Multiple windows
+
+```ts
+import { getWindow } from 'uzumaki-ui';
+
+const existing = getWindow('main');
+```
+
+Creating a window with the same label will throw.
