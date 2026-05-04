@@ -4,7 +4,6 @@ use crate::app::WindowEntry;
 use crate::element::{self, Node, UzNodeId};
 use crate::prop_keys::{AttributeKind, ElementProp, StyleProp, StyleVariant};
 use crate::style::*;
-use crate::ui::UIState;
 use crate::{SharedString, cursor};
 
 use crate::parse::*;
@@ -15,7 +14,7 @@ impl WindowEntry {
             return;
         };
 
-        let effect = match kind {
+        match kind {
             AttributeKind::Element(ep) => {
                 let Some(node) = self.dom.nodes.get_mut(node_id) else {
                     return;
@@ -30,7 +29,7 @@ impl WindowEntry {
             }
         };
 
-        self.apply_side_effects(node_id, &kind, effect);
+        self.apply_side_effects(node_id, &kind);
     }
 
     pub fn set_number_attribute(&mut self, node_id: UzNodeId, name: &str, value: f64) {
@@ -38,7 +37,7 @@ impl WindowEntry {
             return;
         };
 
-        let effect = match kind {
+        match kind {
             AttributeKind::Element(ep) => {
                 let Some(node) = self.dom.nodes.get_mut(node_id) else {
                     return;
@@ -53,7 +52,7 @@ impl WindowEntry {
             }
         };
 
-        self.apply_side_effects(node_id, &kind, effect);
+        self.apply_side_effects(node_id, &kind);
     }
 
     pub fn set_bool_attribute(&mut self, node_id: UzNodeId, name: &str, value: bool) {
@@ -61,7 +60,7 @@ impl WindowEntry {
             return;
         };
 
-        let effect = match kind {
+        match kind {
             AttributeKind::Element(ep) => {
                 let Some(node) = self.dom.nodes.get_mut(node_id) else {
                     return;
@@ -76,7 +75,7 @@ impl WindowEntry {
             }
         };
 
-        self.apply_side_effects(node_id, &kind, effect);
+        self.apply_side_effects(node_id, &kind);
     }
 
     pub fn clear_attribute(&mut self, node_id: UzNodeId, name: &str) {
@@ -84,7 +83,7 @@ impl WindowEntry {
             return;
         };
 
-        let effect = match kind {
+        match kind {
             AttributeKind::Element(ep) => {
                 let Some(node) = self.dom.nodes.get_mut(node_id) else {
                     return;
@@ -99,7 +98,7 @@ impl WindowEntry {
             }
         };
 
-        self.apply_side_effects(node_id, &kind, effect);
+        self.apply_side_effects(node_id, &kind);
     }
 
     pub fn get_attribute(&self, node_id: UzNodeId, name: &str) -> Value {
@@ -117,10 +116,7 @@ impl WindowEntry {
         }
     }
 
-    fn apply_side_effects(&mut self, node_id: UzNodeId, kind: &AttributeKind, effect: StyleEffect) {
-        if matches!(effect, StyleEffect::AppliedNeedsSync) {
-            sync_taffy(&mut self.dom, node_id);
-        }
+    fn apply_side_effects(&mut self, _node_id: UzNodeId, kind: &AttributeKind) {
         if matches!(kind, AttributeKind::Style(StyleProp::Cursor, _)) {
             self.update_cursor();
         }
@@ -136,30 +132,21 @@ impl WindowEntry {
     }
 }
 
-pub(crate) enum StyleEffect {
-    Ignored,
-    Applied,
-    AppliedNeedsSync,
-}
-
-fn set_element_str(node: &mut Node, prop: ElementProp, value: &str, _rem_base: f32) -> StyleEffect {
+fn set_element_str(node: &mut Node, prop: ElementProp, value: &str, _rem_base: f32) {
     match prop {
         ElementProp::Value => {
             if let Some(input) = node.as_text_input_mut() {
                 input.set_value(value);
-                return StyleEffect::Applied;
             }
         }
         ElementProp::Placeholder => {
             if let Some(input) = node.as_text_input_mut() {
                 input.placeholder = value.to_string();
-                return StyleEffect::Applied;
             }
         }
         ElementProp::MaxLength => {
             if let Some(input) = node.as_text_input_mut() {
                 input.max_length = parse_max_length(value.parse::<f32>().unwrap_or(-1.0));
-                return StyleEffect::Applied;
             }
         }
         ElementProp::Disabled
@@ -170,15 +157,13 @@ fn set_element_str(node: &mut Node, prop: ElementProp, value: &str, _rem_base: f
             return set_element_bool(node, prop, parse_bool(value));
         }
     }
-    StyleEffect::Ignored
 }
 
-fn set_element_number(node: &mut Node, prop: ElementProp, value: f32) -> StyleEffect {
+fn set_element_number(node: &mut Node, prop: ElementProp, value: f32) {
     match prop {
         ElementProp::MaxLength => {
             if let Some(input) = node.as_text_input_mut() {
                 input.max_length = parse_max_length(value);
-                return StyleEffect::Applied;
             }
         }
         ElementProp::Disabled
@@ -190,98 +175,82 @@ fn set_element_number(node: &mut Node, prop: ElementProp, value: f32) -> StyleEf
         }
         _ => {}
     }
-    StyleEffect::Ignored
 }
 
-fn set_element_bool(node: &mut Node, prop: ElementProp, value: bool) -> StyleEffect {
+fn set_element_bool(node: &mut Node, prop: ElementProp, value: bool) {
     match prop {
         ElementProp::Disabled => {
             if let Some(input) = node.as_text_input_mut() {
                 input.disabled = value;
-                return StyleEffect::Applied;
             }
         }
         ElementProp::Multiline => {
             if let Some(input) = node.as_text_input_mut() {
                 input.multiline = value;
-                return StyleEffect::Applied;
             }
         }
         ElementProp::Secure => {
             if let Some(input) = node.as_text_input_mut() {
                 input.secure = value;
-                return StyleEffect::Applied;
             }
         }
         ElementProp::Checked => {
             if let Some(checked) = node.as_checkbox_input_mut() {
                 *checked = value;
-                return StyleEffect::Applied;
             }
         }
         ElementProp::Focusable => {
             if let Some(element) = node.as_element_mut() {
                 element.set_focussable(value);
-                return StyleEffect::Applied;
             }
         }
         _ => {}
     }
-    StyleEffect::Ignored
 }
 
-fn clear_element_prop(node: &mut Node, prop: ElementProp) -> StyleEffect {
+fn clear_element_prop(node: &mut Node, prop: ElementProp) {
     match prop {
         ElementProp::Value => {
             if let Some(input) = node.as_text_input_mut() {
                 input.set_value("");
-                return StyleEffect::Applied;
             }
         }
         ElementProp::Placeholder => {
             if let Some(input) = node.as_text_input_mut() {
                 input.placeholder.clear();
-                return StyleEffect::Applied;
             }
         }
         ElementProp::Disabled => {
             if let Some(input) = node.as_text_input_mut() {
                 input.disabled = false;
-                return StyleEffect::Applied;
             }
         }
         ElementProp::MaxLength => {
             if let Some(input) = node.as_text_input_mut() {
                 input.max_length = None;
-                return StyleEffect::Applied;
             }
         }
         ElementProp::Multiline => {
             if let Some(input) = node.as_text_input_mut() {
                 input.multiline = false;
-                return StyleEffect::Applied;
             }
         }
         ElementProp::Secure => {
             if let Some(input) = node.as_text_input_mut() {
                 input.secure = false;
-                return StyleEffect::Applied;
             }
         }
         ElementProp::Checked => {
             if let Some(checked) = node.as_checkbox_input_mut() {
                 *checked = false;
-                return StyleEffect::Applied;
             }
         }
         ElementProp::Focusable => {
             if let Some(element) = node.as_element_mut() {
                 element.set_focussable(false);
-                return StyleEffect::Applied;
             }
         }
     }
-    StyleEffect::Ignored
 }
 
 fn get_element_prop(node: &Node, prop: ElementProp) -> Value {
@@ -327,7 +296,7 @@ fn set_style_str(
     variant: StyleVariant,
     value: &str,
     rem_base: f32,
-) -> StyleEffect {
+) {
     if variant != StyleVariant::Base {
         return set_variant_style_str(node, prop, variant, value, rem_base);
     }
@@ -371,14 +340,12 @@ fn set_style_str(
         | StyleProp::Position => {
             if set_enum_style_prop_from_str(&mut node.style, prop, value) {
                 remember_inherited_enum(node, prop);
-                StyleEffect::AppliedNeedsSync
             } else {
                 clear_style_prop(node, prop, variant)
             }
         }
         StyleProp::Cursor => {
             node.style.cursor = cursor::UzCursorIcon::parse(value);
-            StyleEffect::Applied
         }
         StyleProp::FontWeight => {
             if let Some(weight) = parse_font_weight_str(value) {
@@ -396,16 +363,14 @@ fn set_style_str(
             if value == "visible" { 1.0 } else { 0.0 },
         ),
         StyleProp::Flex => {
-            if set_flex_string(&mut node.style, value) {
-                StyleEffect::AppliedNeedsSync
-            } else {
+            if !set_flex_string(&mut node.style, value) {
                 let v = parse_px_scalar(value, rem_base).unwrap_or_default();
-                set_f32_style_prop(node, prop, v)
+                set_f32_style_prop(node, prop, v); // flex={v} flex = true, flex_grow = v
             }
         }
         _ => {
-            let v = parse_px_scalar(value, rem_base).unwrap_or_default();
-            set_f32_style_prop(node, prop, v)
+            let v = parse_px_scalar(value, rem_base).unwrap_or_default(); // parse with unit
+            set_f32_style_prop(node, prop, v);
         }
     }
 }
@@ -416,7 +381,7 @@ fn set_variant_style_str(
     variant: StyleVariant,
     value: &str,
     rem_base: f32,
-) -> StyleEffect {
+) {
     match prop {
         StyleProp::W
         | StyleProp::H
@@ -454,21 +419,14 @@ fn set_variant_style_str(
         | StyleProp::TextWrap
         | StyleProp::WordBreak
         | StyleProp::Position => {
-            if set_variant_enum_from_str(node, prop, variant, value) {
-                StyleEffect::Applied
-            } else {
-                clear_style_prop(node, prop, variant)
-            }
+            set_variant_enum_from_str(node, prop, variant, value);
         }
         StyleProp::Cursor => {
             get_or_init_variant_style(node, variant).cursor = cursor::UzCursorIcon::parse(value);
-            StyleEffect::Applied
         }
         StyleProp::FontWeight => {
             if let Some(weight) = parse_font_weight_str(value) {
                 set_variant_font_weight(node, variant, weight)
-            } else {
-                clear_style_prop(node, prop, variant)
             }
         }
         StyleProp::FontFamily => set_variant_font_family(node, variant, value),
@@ -479,9 +437,7 @@ fn set_variant_style_str(
             if value == "visible" { 1.0 } else { 0.0 },
         ),
         StyleProp::Flex => {
-            if set_variant_flex_string(node, variant, value) {
-                StyleEffect::Applied
-            } else {
+            if !set_variant_flex_string(node, variant, value) {
                 let v = parse_px_scalar(value, rem_base).unwrap_or_default();
                 set_variant_number(node, prop, variant, v)
             }
@@ -503,12 +459,7 @@ fn set_variant_style_str(
     }
 }
 
-fn set_style_number(
-    node: &mut Node,
-    prop: StyleProp,
-    variant: StyleVariant,
-    value: f32,
-) -> StyleEffect {
+fn set_style_number(node: &mut Node, prop: StyleProp, variant: StyleVariant, value: f32) {
     if variant != StyleVariant::Base {
         return set_variant_number(node, prop, variant, value);
     }
@@ -523,27 +474,17 @@ fn set_style_number(
         | StyleProp::Bottom
         | StyleProp::Left => set_length_style_prop(&mut node.style, prop, Length::Px(value)),
         StyleProp::Gap => set_gap_style_prop(&mut node.style, DefiniteLength::Px(value)),
-        StyleProp::FlexDir
-        | StyleProp::FlexWrap
-        | StyleProp::Items
-        | StyleProp::Justify
-        | StyleProp::Display
-        | StyleProp::TextWrap
-        | StyleProp::WordBreak
-        | StyleProp::Position => StyleEffect::Ignored,
         StyleProp::Visibility => {
+            // show we allow this ?
             node.style.visibility = if value > 0.5 {
                 Visibility::Visible
             } else {
                 Visibility::Hidden
             };
-            StyleEffect::AppliedNeedsSync
         }
         StyleProp::FontWeight => {
             if let Some(weight) = parse_font_weight_number(value) {
                 set_font_weight(node, weight)
-            } else {
-                StyleEffect::Ignored
             }
         }
         _ => set_f32_style_prop(node, prop, value),
@@ -572,12 +513,7 @@ fn get_or_init_variant_style(node: &mut Node, variant: StyleVariant) -> &mut UzS
     }
 }
 
-fn set_variant_color(
-    node: &mut Node,
-    prop: StyleProp,
-    variant: StyleVariant,
-    color: Color,
-) -> StyleEffect {
+fn set_variant_color(node: &mut Node, prop: StyleProp, variant: StyleVariant, color: Color) {
     let r = get_or_init_variant_style(node, variant);
     match prop {
         StyleProp::Bg => r.background = Some(color),
@@ -587,17 +523,13 @@ fn set_variant_color(
             let outline = r.outline.get_or_insert(Outline::FOCUS_RING);
             outline.color = color;
         }
-        _ => return StyleEffect::Ignored,
+        _ => {
+            // rest doesnt affect color
+        }
     }
-    StyleEffect::Applied
 }
 
-fn set_variant_length(
-    node: &mut Node,
-    prop: StyleProp,
-    variant: StyleVariant,
-    length: Length,
-) -> StyleEffect {
+fn set_variant_length(node: &mut Node, prop: StyleProp, variant: StyleVariant, length: Length) {
     let r = get_or_init_variant_style(node, variant);
     match prop {
         StyleProp::W => r.size.width = Some(length),
@@ -608,16 +540,16 @@ fn set_variant_length(
         StyleProp::Right => r.inset.right = Some(length),
         StyleProp::Bottom => r.inset.bottom = Some(length),
         StyleProp::Left => r.inset.left = Some(length),
-        _ => return StyleEffect::Ignored,
+        _ => {
+            // rest doesnt affect length
+        }
     }
-    StyleEffect::Applied
 }
 
-fn set_variant_gap(node: &mut Node, variant: StyleVariant, length: DefiniteLength) -> StyleEffect {
+fn set_variant_gap(node: &mut Node, variant: StyleVariant, length: DefiniteLength) {
     let r = get_or_init_variant_style(node, variant);
     r.gap.width = Some(length);
     r.gap.height = Some(length);
-    StyleEffect::Applied
 }
 
 fn text_wrap_value(value: &str) -> Option<i32> {
@@ -648,12 +580,7 @@ fn set_text_wrap_refinement(style: &mut UzStyleRefinement, value: i32) {
     style.text.word_break = Some(resolved.text.word_break);
 }
 
-fn set_variant_number(
-    node: &mut Node,
-    prop: StyleProp,
-    variant: StyleVariant,
-    value: f32,
-) -> StyleEffect {
+fn set_variant_number(node: &mut Node, prop: StyleProp, variant: StyleVariant, value: f32) {
     match prop {
         StyleProp::W
         | StyleProp::H
@@ -666,15 +593,7 @@ fn set_variant_number(
             return set_variant_length(node, prop, variant, Length::Px(value));
         }
         StyleProp::Gap => return set_variant_gap(node, variant, DefiniteLength::Px(value)),
-        StyleProp::FlexDir
-        | StyleProp::FlexWrap
-        | StyleProp::Items
-        | StyleProp::Justify
-        | StyleProp::Display
-        | StyleProp::TextWrap
-        | StyleProp::WordBreak
-        | StyleProp::Position => return StyleEffect::Ignored,
-        _ => {}
+        _ => { /* These props doesnt support number values */ }
     }
 
     let r = get_or_init_variant_style(node, variant);
@@ -706,10 +625,9 @@ fn set_variant_number(
             r.text_selectable = Some((value > 0.5).into());
         }
         StyleProp::FontWeight => {
-            let Some(weight) = parse_font_weight_number(value) else {
-                return StyleEffect::Ignored;
+            if let Some(weight) = parse_font_weight_number(value) {
+                r.text.font_weight = Some(weight);
             };
-            r.text.font_weight = Some(weight);
         }
         StyleProp::TranslateX => r.transform.translate_x = Some(value),
         StyleProp::TranslateY => r.transform.translate_y = Some(value),
@@ -807,10 +725,8 @@ fn set_variant_number(
                 Visibility::Hidden
             });
         }
-        StyleProp::Interactive => return StyleEffect::Ignored,
-        _ => return StyleEffect::Ignored,
+        _ => {}
     }
-    StyleEffect::Applied
 }
 
 fn set_variant_enum_from_str(
@@ -907,13 +823,14 @@ fn set_variant_flex_string(node: &mut Node, variant: StyleVariant, value: &str) 
     true
 }
 
-fn clear_variant_prop(node: &mut Node, prop: StyleProp, variant: StyleVariant) -> StyleEffect {
+fn clear_variant_prop(node: &mut Node, prop: StyleProp, variant: StyleVariant) {
     let style = match variant {
         StyleVariant::Hover => node.interactivity.hover_style.as_mut(),
         StyleVariant::Active => node.interactivity.active_style.as_mut(),
         StyleVariant::Focus => node.interactivity.focus_style.as_mut(),
         StyleVariant::Base => unreachable!(),
     };
+
     if let Some(style) = style {
         match prop {
             StyleProp::W => style.size.width = None,
@@ -1009,14 +926,13 @@ fn clear_variant_prop(node: &mut Node, prop: StyleProp, variant: StyleVariant) -
             StyleProp::ScaleY => style.transform.scale_y = None,
         }
     }
-    StyleEffect::Applied
 }
 
 // ---------------------------------------------------------------------------
 // Base style prop helpers
 // ---------------------------------------------------------------------------
 
-fn set_length_style_prop(style: &mut UzStyle, prop: StyleProp, length: Length) -> StyleEffect {
+fn set_length_style_prop(style: &mut UzStyle, prop: StyleProp, length: Length) {
     match prop {
         StyleProp::W => style.size.width = length,
         StyleProp::H => style.size.height = length,
@@ -1026,71 +942,57 @@ fn set_length_style_prop(style: &mut UzStyle, prop: StyleProp, length: Length) -
         StyleProp::Right => style.inset.right = length,
         StyleProp::Bottom => style.inset.bottom = length,
         StyleProp::Left => style.inset.left = length,
-        _ => return StyleEffect::Ignored,
+        _ => {}
     }
-    StyleEffect::AppliedNeedsSync
 }
 
-fn set_gap_style_prop(style: &mut UzStyle, length: DefiniteLength) -> StyleEffect {
+fn set_gap_style_prop(style: &mut UzStyle, length: DefiniteLength) {
     style.gap = GapSize {
         width: length,
         height: length,
     };
-    StyleEffect::AppliedNeedsSync
 }
 
-fn set_color_style_prop(node: &mut Node, prop: StyleProp, color: Color) -> StyleEffect {
+fn set_color_style_prop(node: &mut Node, prop: StyleProp, color: Color) {
     match prop {
         StyleProp::Bg => {
             node.style.background = Some(color);
-            StyleEffect::AppliedNeedsSync
         }
         StyleProp::Color => {
             node.style.text.color = color;
             node.interactivity.base_style.text.color = Some(color);
-            StyleEffect::AppliedNeedsSync
         }
         StyleProp::BorderColor => {
             node.style.border_color = Some(color);
-            StyleEffect::AppliedNeedsSync
         }
         StyleProp::OutlineColor => {
             let outline = node.style.outline.get_or_insert(Outline::FOCUS_RING);
             outline.color = color;
-            StyleEffect::Applied
         }
-        _ => StyleEffect::Ignored,
+        _ => {}
     }
 }
 
-fn set_font_weight(node: &mut Node, weight: FontWeight) -> StyleEffect {
+fn set_font_weight(node: &mut Node, weight: FontWeight) {
     node.style.text.font_weight = weight;
     node.interactivity.base_style.text.font_weight = Some(weight);
-    StyleEffect::AppliedNeedsSync
 }
 
-fn set_font_family(node: &mut Node, font_family: impl Into<SharedString>) -> StyleEffect {
+fn set_font_family(node: &mut Node, font_family: impl Into<SharedString>) {
     let font_family: SharedString = font_family.into();
     node.interactivity.base_style.text.font_family = Some(font_family);
-    StyleEffect::AppliedNeedsSync
 }
 
 fn set_variant_font_family(
     node: &mut Node,
     variant: StyleVariant,
     family: impl Into<SharedString>,
-) -> StyleEffect {
+) {
     get_or_init_variant_style(node, variant).text.font_family = Some(family.into());
-    StyleEffect::Applied
 }
 
-fn set_variant_font_weight(
-    node: &mut Node,
-    variant: StyleVariant,
-    weight: FontWeight,
-) -> StyleEffect {
+fn set_variant_font_weight(node: &mut Node, variant: StyleVariant, weight: FontWeight) {
     get_or_init_variant_style(node, variant).text.font_weight = Some(weight);
-    StyleEffect::Applied
 }
 
 fn parse_font_weight_str(value: &str) -> Option<FontWeight> {
@@ -1134,11 +1036,10 @@ fn parse_font_weight_number(value: f32) -> Option<FontWeight> {
     }
 }
 
-fn set_f32_style_prop(node: &mut Node, prop: StyleProp, v: f32) -> StyleEffect {
+fn set_f32_style_prop(node: &mut Node, prop: StyleProp, v: f32) {
     match prop {
         StyleProp::Interactive => {
             node.interactivity.js_interactive = v > 0.5;
-            return StyleEffect::Applied;
         }
         StyleProp::Scroll => {
             if v > 0.5 {
@@ -1152,7 +1053,6 @@ fn set_f32_style_prop(node: &mut Node, prop: StyleProp, v: f32) -> StyleEffect {
                 node.style.overflow_y = Overflow::Visible;
                 node.scroll_state = None;
             }
-            return StyleEffect::AppliedNeedsSync;
         }
         StyleProp::ScrollX => {
             if v > 0.5 {
@@ -1166,7 +1066,6 @@ fn set_f32_style_prop(node: &mut Node, prop: StyleProp, v: f32) -> StyleEffect {
                     node.scroll_state = None;
                 }
             }
-            return StyleEffect::AppliedNeedsSync;
         }
         StyleProp::ScrollY => {
             if v > 0.5 {
@@ -1180,13 +1079,11 @@ fn set_f32_style_prop(node: &mut Node, prop: StyleProp, v: f32) -> StyleEffect {
                     node.scroll_state = None;
                 }
             }
-            return StyleEffect::AppliedNeedsSync;
         }
         StyleProp::TextSelect => {
             let text_selectable = (v > 0.5).into();
             node.set_text_selectable(text_selectable);
             node.interactivity.base_style.text_selectable = Some(text_selectable);
-            return StyleEffect::Applied;
         }
         _ => {}
     }
@@ -1194,28 +1091,22 @@ fn set_f32_style_prop(node: &mut Node, prop: StyleProp, v: f32) -> StyleEffect {
     match prop {
         StyleProp::TranslateX => {
             node.style.transform.translate_x = v;
-            return StyleEffect::Applied;
         }
         StyleProp::TranslateY => {
             node.style.transform.translate_y = v;
-            return StyleEffect::Applied;
         }
         StyleProp::Rotate => {
             node.style.transform.rotate = v;
-            return StyleEffect::Applied;
         }
         StyleProp::Scale => {
             node.style.transform.scale_x = v;
             node.style.transform.scale_y = v;
-            return StyleEffect::Applied;
         }
         StyleProp::ScaleX => {
             node.style.transform.scale_x = v;
-            return StyleEffect::Applied;
         }
         StyleProp::ScaleY => {
             node.style.transform.scale_y = v;
-            return StyleEffect::Applied;
         }
         _ => {}
     }
@@ -1294,9 +1185,8 @@ fn set_f32_style_prop(node: &mut Node, prop: StyleProp, v: f32) -> StyleEffect {
         StyleProp::Right => style.inset.right = Length::Px(v),
         StyleProp::Bottom => style.inset.bottom = Length::Px(v),
         StyleProp::Left => style.inset.left = Length::Px(v),
-        _ => return StyleEffect::Ignored,
+        _ => {}
     }
-    StyleEffect::AppliedNeedsSync
 }
 
 fn set_enum_style_prop_from_str(style: &mut UzStyle, prop: StyleProp, value: &str) -> bool {
@@ -1387,7 +1277,7 @@ fn remember_inherited_enum(node: &mut Node, prop: StyleProp) {
     }
 }
 
-fn clear_style_prop(node: &mut Node, prop: StyleProp, variant: StyleVariant) -> StyleEffect {
+fn clear_style_prop(node: &mut Node, prop: StyleProp, variant: StyleVariant) {
     if variant != StyleVariant::Base {
         return clear_variant_prop(node, prop, variant);
     }
@@ -1515,18 +1405,6 @@ fn clear_style_prop(node: &mut Node, prop: StyleProp, variant: StyleVariant) -> 
         StyleProp::Bottom => node.style.inset.bottom = default.inset.bottom,
         StyleProp::Left => node.style.inset.left = default.inset.left,
     }
-    match prop {
-        StyleProp::Interactive
-        | StyleProp::TextSelect
-        | StyleProp::Cursor
-        | StyleProp::TranslateX
-        | StyleProp::TranslateY
-        | StyleProp::Rotate
-        | StyleProp::Scale
-        | StyleProp::ScaleX
-        | StyleProp::ScaleY => StyleEffect::Applied,
-        _ => StyleEffect::AppliedNeedsSync,
-    }
 }
 
 fn get_style_prop(node: &Node, prop: StyleProp) -> Value {
@@ -1577,10 +1455,6 @@ fn get_style_prop(node: &Node, prop: StyleProp) -> Value {
         StyleProp::ScaleY => json!(style.transform.scale_y),
         _ => Value::Null,
     }
-}
-
-pub(crate) fn sync_taffy(dom: &mut UIState, node_id: UzNodeId) {
-    let _ = (dom, node_id);
 }
 
 fn set_flex_string(style: &mut UzStyle, value: &str) -> bool {
@@ -1696,9 +1570,8 @@ mod tests {
             crate::element::ElementNode::new(crate::element::ElementData::None),
         );
 
-        let effect = set_f32_style_prop(&mut node, super::StyleProp::Scroll, 1.0);
+        set_f32_style_prop(&mut node, super::StyleProp::Scroll, 1.0);
 
-        assert!(matches!(effect, super::StyleEffect::AppliedNeedsSync));
         assert_eq!(node.style.overflow_x, Overflow::Auto);
         assert_eq!(node.style.overflow_y, Overflow::Auto);
         assert!(node.scroll_state.is_some());
@@ -1711,14 +1584,13 @@ mod tests {
             crate::element::ElementNode::new(crate::element::ElementData::None),
         );
 
-        let effect = set_variant_number(
+        set_variant_number(
             &mut node,
             super::StyleProp::Scroll,
             StyleVariant::Hover,
             1.0,
         );
 
-        assert!(matches!(effect, super::StyleEffect::Applied));
         let hover = node.interactivity.hover_style.as_ref().unwrap();
         assert_eq!(hover.overflow_x, Some(Overflow::Auto));
         assert_eq!(hover.overflow_y, Some(Overflow::Auto));
