@@ -1026,12 +1026,12 @@ function ScrollDemo() {
                 textWrap="nowrap"
                 justify="between"
               >
-                <view fontSize={12} fontWeight={700} color={C.text}>
+                <text fontSize={12} fontWeight={700} color={C.text}>
                   Card #{i + 1}
-                </view>
-                <view fontSize={11} color={C.textMuted}>
+                </text>
+                <text fontSize={11} color={C.textMuted}>
                   Horizontal overflow only
-                </view>
+                </text>
               </view>
             ))}
           </view>
