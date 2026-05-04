@@ -68,6 +68,26 @@ enum UzWindowLevel {
     AlwaysOnBottom,
 }
 
+impl UzWindowLevel {
+    fn as_str(&self) -> &str {
+        match self {
+            UzWindowLevel::Normal => "normal",
+            UzWindowLevel::AlwaysOnTop => "alwaysOnTop",
+            UzWindowLevel::AlwaysOnBottom => "alwaysOnBottom",
+        }
+    }
+}
+
+impl WindowTheme {
+    fn as_str(&self) -> &str {
+        match self {
+            WindowTheme::Light => "light",
+            WindowTheme::Dark => "dark",
+            WindowTheme::System => "system",
+        }
+    }
+}
+
 #[derive(Clone, Copy, Debug, PartialEq, Eq, serde::Serialize)]
 #[serde(rename_all = "camelCase")]
 struct WindowSize {
@@ -120,6 +140,30 @@ impl UzWindowLevel {
             WindowLevel::Normal => Self::Normal,
             WindowLevel::AlwaysOnTop => Self::AlwaysOnTop,
             WindowLevel::AlwaysOnBottom => Self::AlwaysOnBottom,
+        }
+    }
+}
+
+impl<'a> From<&'a str> for UzWindowLevel {
+    fn from(value: &'a str) -> Self {
+        match value {
+            "normal" => UzWindowLevel::Normal,
+            "alwaysOnTop" => UzWindowLevel::AlwaysOnTop,
+            "alwaysOnBottom" => UzWindowLevel::AlwaysOnBottom,
+            _ => UzWindowLevel::Normal, // default to normal if unrecognized
+        }
+    }
+}
+
+// convert string to WindowTheme, defaulting to System if unrecognized
+
+impl<'a> From<&'a str> for WindowTheme {
+    fn from(value: &'a str) -> Self {
+        match value {
+            "light" => WindowTheme::Light,
+            "dark" => WindowTheme::Dark,
+            "system" => WindowTheme::System,
+            _ => WindowTheme::System, // default to system if unrecognized
         }
     }
 }
@@ -593,15 +637,18 @@ impl CoreWindow {
         })
     }
 
-    // todo change to string
+    // todo change to int
     #[getter]
-    #[serde]
-    pub fn windowLevel(&self, state: &OpState) -> Option<UzWindowLevel> {
+    #[string]
+    pub fn windowLevel(&self, state: &OpState) -> Option<String> {
         self.with_window_entry(state, |entry| UzWindowLevel::from_winit(entry.window_level))
+            .map(|level| level.as_str().into())
     }
 
+    #[fast]
     #[setter]
-    pub fn windowLevel(&self, state: &OpState, #[serde] level: UzWindowLevel) -> bool {
+    pub fn windowLevel(&self, state: &OpState, #[string] level: &str) -> bool {
+        let level = UzWindowLevel::from(level);
         self.set_window_level_state(state, level.to_winit())
     }
 
@@ -663,12 +710,17 @@ impl CoreWindow {
     }
 
     #[getter]
-    #[serde]
-    pub fn theme(&self, state: &OpState) -> Option<WindowTheme> {
+    #[string]
+    pub fn theme(&self, state: &OpState) -> Option<String> {
         self.with_winit_window_option(state, |window| window.theme().map(WindowTheme::from_winit))
+            .map(|theme| theme.as_str().into())
     }
 
-    pub fn setTheme(&self, state: &OpState, #[serde] theme: WindowTheme) -> bool {
+    // todo use int
+    #[fast]
+    #[setter]
+    pub fn theme(&self, state: &OpState, #[string] theme: &str) -> bool {
+        let theme = WindowTheme::from(theme);
         self.update_winit_window(state, |window| {
             window.set_theme(theme.to_winit());
         })
