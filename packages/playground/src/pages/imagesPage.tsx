@@ -49,10 +49,16 @@ function ImageCard({
       border={1}
       borderColor={C.border}
     >
-      <view display="flex" flexDir="row" items="center" justify="between">
-        <text fontSize={15} fontWeight={800} color={C.text}>
-          {title}
-        </text>
+      <view
+        display="flex"
+        flexDir="row"
+        items="center"
+        justify="between"
+        fontSize={15}
+        fontWeight={800}
+        color={C.text}
+      >
+        {title}
         {statusBadge(status)}
       </view>
       <image
@@ -92,15 +98,16 @@ export function ImagesPage() {
         flexDir="col"
         px={24}
         py={16}
+        gap={8}
         borderBottom={1}
         borderColor={C.border}
       >
-        <text fontSize={20} fontWeight={800} color={C.text}>
+        <view fontSize={20} fontWeight={800} color={C.text}>
           Images
-        </text>
-        <text fontSize={12} color={C.textMuted}>
+        </view>
+        <view fontSize={12} color={C.textMuted}>
           Raster, SVG, and lifecycle event handling
-        </text>
+        </view>
       </view>
 
       <view display="flex" flexDir="col" gap={20} p={24}>

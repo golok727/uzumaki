@@ -40,6 +40,7 @@ pub(crate) enum StyleProp {
     Color,
     FontSize,
     FontWeight,
+    FontFamily,
     Rounded,
     RoundedTL,
     RoundedTR,
@@ -161,6 +162,7 @@ impl FromStr for StyleProp {
             "color" => Self::Color,
             "fontSize" => Self::FontSize,
             "fontWeight" => Self::FontWeight,
+            "fontFamily" => Self::FontFamily,
             "rounded" => Self::Rounded,
             "roundedTL" => Self::RoundedTL,
             "roundedTR" => Self::RoundedTR,
@@ -202,6 +204,7 @@ impl FromStr for StyleProp {
     }
 }
 
+// we should move these to Core*Element
 impl FromStr for ElementProp {
     type Err = ();
 

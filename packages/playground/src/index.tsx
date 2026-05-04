@@ -7,7 +7,7 @@ import { RUNTIME_VERSION } from 'uzumaki';
 console.log('Uzumaki Version:', RUNTIME_VERSION);
 
 const window = new Window('main', {
-  width: 1100,
+  width: 1200,
   height: 700,
   title: 'Uzumaki - playground',
   rootStyles: {

@@ -138,13 +138,14 @@ export function LayoutPage() {
         py={16}
         borderBottom={1}
         borderColor={C.border}
+        gap={8}
       >
-        <text fontSize={20} fontWeight={800} color={C.text}>
+        <view fontSize={20} fontWeight={800} color={C.text}>
           Layout Lab
-        </text>
-        <text fontSize={12} color={C.textMuted}>
+        </view>
+        <view fontSize={12} color={C.textMuted}>
           Flex, nesting, borders, rounding, opacity, visibility
-        </text>
+        </view>
       </view>
 
       <view display="flex" flexDir="col" gap={24} p={24}>

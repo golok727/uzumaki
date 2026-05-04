@@ -42,12 +42,9 @@ impl Default for TextRenderer {
 
 impl TextRenderer {
     pub fn new() -> Self {
-        let mut font_ctx = FontContext::default();
+        let font_ctx = FontContext::default();
 
-        let roboto = include_bytes!("../assets/Roboto-Regular.ttf");
-        font_ctx
-            .collection
-            .register_fonts(roboto.to_vec().into(), None);
+        // todo allow registering custom fonts
 
         Self {
             font_ctx,

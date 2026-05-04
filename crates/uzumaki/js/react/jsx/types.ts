@@ -47,6 +47,7 @@ interface ElementStyles {
   color?: string;
   fontSize?: number | string;
   fontWeight?: string | number;
+  fontFamily?: string;
   textWrap?: 'wrap' | 'nowrap' | 'anywhere' | 'break-word';
   wordBreak?: 'normal' | 'break-all' | 'keep-all';
   rounded?: number | string;

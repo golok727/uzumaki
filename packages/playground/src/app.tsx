@@ -37,6 +37,7 @@ export function App() {
       h="full"
       bg={C.bg}
       position="relative"
+      fontFamily="system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, Cantarell, 'Open Sans', 'Helvetica Neue', sans-serif"
     >
       <Sidebar
         w="200px"

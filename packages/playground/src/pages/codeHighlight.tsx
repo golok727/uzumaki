@@ -71,6 +71,7 @@ export function ShikiPage() {
           gap={2}
           flex={1}
           scroll
+          fontFamily="Geist Mono, monospace"
         >
           {lineTokens.map((tokens, i) => (
             <LineRenderer key={i} tokens={tokens} lineNumber={i + 1} />

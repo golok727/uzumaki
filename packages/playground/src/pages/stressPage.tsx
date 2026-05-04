@@ -32,7 +32,7 @@ export function StressPage() {
         const next = [...prev];
         for (let i = 0; i < 5; i++) {
           const idx = Math.floor(Math.random() * tileCount);
-          next[idx] = colors12[Math.floor(Math.random() * colors12.length)];
+          next[idx] = colors12[Math.floor(Math.random() * colors12.length)]!;
         }
         return next;
       });
@@ -45,7 +45,7 @@ export function StressPage() {
       Array.from(
         { length: tileCount },
         (_, i) => colors12[i % colors12.length],
-      ),
+      ) as string[],
     );
   }, [tileCount, colors12]);
 
@@ -58,13 +58,14 @@ export function StressPage() {
         py={16}
         borderBottom={1}
         borderColor={C.border}
+        gap={8}
       >
-        <text fontSize={20} fontWeight={800} color={C.text}>
+        <view fontSize={20} fontWeight={800} color={C.text}>
           Stress Test
-        </text>
-        <text fontSize={12} color={C.textMuted}>
+        </view>
+        <view fontSize={12} color={C.textMuted}>
           High-frequency updates · Large node counts · cursor kinds
-        </text>
+        </view>
       </view>
 
       <view display="flex" flexDir="col" gap={24} p={24}>

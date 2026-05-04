@@ -81,7 +81,6 @@ export function Sidebar({
                   {t.label}
                 </text>
               </view>
-              {isActive && <view w={4} h={4} bg={C.accentHi} rounded={4} />}
             </button>
           );
         })}

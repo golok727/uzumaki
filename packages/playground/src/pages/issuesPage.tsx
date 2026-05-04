@@ -80,19 +80,26 @@ export function IssuesPage() {
       <view
         display="flex"
         flexDir="col"
+        gap={8}
         px={24}
         py={16}
         borderBottom={1}
         borderColor={C.border}
       >
-        <view display="flex" flexDir="row" items="center" gap={12}>
-          <text fontSize={20} fontWeight={800} color={C.text}>
-            GitHub Issues
-          </text>
+        <view
+          display="flex"
+          flexDir="row"
+          items="center"
+          gap={12}
+          fontSize={20}
+          fontWeight={800}
+          color={C.text}
+        >
+          GitHub Issues
         </view>
-        <text fontSize={12} color={C.textMuted}>
+        <view fontSize={12} color={C.textMuted}>
           Fetching from https://github.com/golok727/uzumaki/issues
-        </text>
+        </view>
       </view>
 
       <view display="flex" flexDir="col" gap={20} p={24}>

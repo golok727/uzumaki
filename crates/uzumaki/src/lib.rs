@@ -11,10 +11,13 @@ pub mod input;
 pub mod interactivity;
 pub mod ops;
 pub mod selection;
+pub mod shared_string;
 pub mod style;
 pub mod text;
 pub mod ui;
 pub mod window;
+
+pub use shared_string::*;
 
 use deno_core::*;
 

@@ -1,9 +1,10 @@
-use parley::{LineHeight, StyleProperty};
+use parley::{FontFamily, LineHeight, StyleProperty};
 use refineable::Refineable;
 use vello::Scene;
 use vello::kurbo::{Affine, Rect, RoundedRect, RoundedRectRadii, Stroke};
 use vello::peniko::Color as VelloColor;
 
+use crate::SharedString;
 use crate::cursor::UzCursorIcon;
 use crate::text::TextBrush;
 
@@ -390,6 +391,7 @@ impl WordBreak {
 #[refineable(Debug)]
 pub struct TextStyle {
     pub font_size: f32,
+    pub font_family: SharedString,
     pub color: Color,
     pub line_height: f32,
     pub font_weight: FontWeight,
@@ -437,6 +439,7 @@ impl Default for TextStyle {
     fn default() -> Self {
         Self {
             font_size: 16.0,
+            font_family: SharedString::new_static("sans-serif"),
             color: Color::WHITE,
             line_height: 1.2,
             font_weight: FontWeight::default(),
@@ -487,7 +490,10 @@ impl TextStyle {
         let word_spacing =
             (self.word_spacing != 0.0).then_some(StyleProperty::WordSpacing(self.word_spacing));
 
+        let font_family = FontFamily::from(&*self.font_family).into_owned();
+
         [
+            StyleProperty::FontFamily(font_family),
             StyleProperty::FontSize(self.font_size),
             StyleProperty::LineHeight(LineHeight::FontSizeRelative(self.line_height)),
             StyleProperty::FontWeight(self.font_weight.to_parley()),
@@ -624,17 +630,7 @@ impl UzStyle {
     }
 
     pub fn inherit_from(&mut self, parent: &Self) {
-        // Per-field cascade. `overflow_wrap` and `word_break` are intentionally
-        // NOT inherited: `default_for_element` sets them per element type
-        // (e.g. text/button/input use Normal while views use BreakWord), and a
-        // wholesale `self.text = parent.text` would clobber those defaults
-        // before `refine(&base_style)` ever runs.
-        self.text.font_size = parent.text.font_size;
-        self.text.color = parent.text.color;
-        self.text.font_weight = parent.text.font_weight;
-        self.text.line_height = parent.text.line_height;
-        self.text.letter_spacing = parent.text.letter_spacing;
-        self.text.word_spacing = parent.text.word_spacing;
+        self.text = parent.text.clone();
         self.text_selectable = parent.text_selectable;
     }
 

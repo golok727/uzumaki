@@ -1,11 +1,11 @@
 use serde_json::{Value, json};
 
 use crate::app::WindowEntry;
-use crate::cursor;
 use crate::element::{self, Node, UzNodeId};
 use crate::prop_keys::{AttributeKind, ElementProp, StyleProp, StyleVariant};
 use crate::style::*;
 use crate::ui::UIState;
+use crate::{SharedString, cursor};
 
 use crate::parse::*;
 
@@ -387,6 +387,8 @@ fn set_style_str(
                 clear_style_prop(node, prop, variant)
             }
         }
+        StyleProp::FontFamily => set_font_family(node, value),
+
         StyleProp::Visibility => set_style_number(
             node,
             prop,
@@ -469,6 +471,7 @@ fn set_variant_style_str(
                 clear_style_prop(node, prop, variant)
             }
         }
+        StyleProp::FontFamily => set_variant_font_family(node, variant, value),
         StyleProp::Visibility => set_variant_number(
             node,
             prop,
@@ -958,6 +961,7 @@ fn clear_variant_prop(node: &mut Node, prop: StyleProp, variant: StyleVariant) -
             StyleProp::Color => style.text.color = None,
             StyleProp::FontSize => style.text.font_size = None,
             StyleProp::FontWeight => style.text.font_weight = None,
+            StyleProp::FontFamily => style.text.font_family = None,
             StyleProp::Rounded => style.corner_radii = CornersRefinement::default(),
             StyleProp::RoundedTL => style.corner_radii.top_left = None,
             StyleProp::RoundedTR => style.corner_radii.top_right = None,
@@ -1063,6 +1067,21 @@ fn set_font_weight(node: &mut Node, weight: FontWeight) -> StyleEffect {
     node.style.text.font_weight = weight;
     node.interactivity.base_style.text.font_weight = Some(weight);
     StyleEffect::AppliedNeedsSync
+}
+
+fn set_font_family(node: &mut Node, font_family: impl Into<SharedString>) -> StyleEffect {
+    let font_family: SharedString = font_family.into();
+    node.interactivity.base_style.text.font_family = Some(font_family);
+    StyleEffect::AppliedNeedsSync
+}
+
+fn set_variant_font_family(
+    node: &mut Node,
+    variant: StyleVariant,
+    family: impl Into<SharedString>,
+) -> StyleEffect {
+    get_or_init_variant_style(node, variant).text.font_family = Some(family.into());
+    StyleEffect::Applied
 }
 
 fn set_variant_font_weight(
@@ -1368,10 +1387,6 @@ fn remember_inherited_enum(node: &mut Node, prop: StyleProp) {
     }
 }
 
-// ---------------------------------------------------------------------------
-// Clear style prop
-// ---------------------------------------------------------------------------
-
 fn clear_style_prop(node: &mut Node, prop: StyleProp, variant: StyleVariant) -> StyleEffect {
     if variant != StyleVariant::Base {
         return clear_variant_prop(node, prop, variant);
@@ -1430,6 +1445,7 @@ fn clear_style_prop(node: &mut Node, prop: StyleProp, variant: StyleVariant) -> 
             node.interactivity.base_style.text.font_size = None;
         }
         StyleProp::FontWeight => node.style.text.font_weight = default.text.font_weight,
+        StyleProp::FontFamily => node.style.text.font_family = default.text.font_family,
         StyleProp::Rounded => node.style.corner_radii = default.corner_radii,
         StyleProp::RoundedTL => node.style.corner_radii.top_left = default.corner_radii.top_left,
         StyleProp::RoundedTR => node.style.corner_radii.top_right = default.corner_radii.top_right,

@@ -31,17 +31,18 @@ export function EventsPage() {
       <view
         display="flex"
         flexDir="col"
+        gap={8}
         px={24}
         py={16}
         borderBottom={1}
         borderColor={C.border}
       >
-        <text fontSize={20} fontWeight={800} color={C.text}>
+        <view fontSize={20} fontWeight={800} color={C.text}>
           Mouse Events
-        </text>
-        <text fontSize={12} color={C.textMuted}>
+        </view>
+        <view fontSize={12} color={C.textMuted}>
           onClick · onMouseDown · onMouseUp · hover:* · active:*
-        </text>
+        </view>
       </view>
 
       <view display="flex" flexDir="col" gap={24} p={24}>

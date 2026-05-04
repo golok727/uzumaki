@@ -60,10 +60,10 @@ export function DashboardPage() {
         borderBottom={1}
         borderColor={C.border}
       >
-        <view display="flex" flexDir="col" gap={2}>
-          <text fontSize={20} fontWeight={800} color={C.text}>
+        <view display="flex" flexDir="col" gap={8}>
+          <view fontSize={20} fontWeight={800} color={C.text}>
             System Dashboard
-          </text>
+          </view>
           <view display="flex" flexDir="row" items="center" gap={8}>
             <view px={8} py={2} bg={C.accentDim} rounded={4}>
               <text
