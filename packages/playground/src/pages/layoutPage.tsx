@@ -1023,14 +1023,15 @@ function ScrollDemo() {
                 p={10}
                 display="flex"
                 flexDir="col"
+                textWrap="nowrap"
                 justify="between"
               >
-                <text fontSize={12} fontWeight={700} color={C.text}>
+                <view fontSize={12} fontWeight={700} color={C.text}>
                   Card #{i + 1}
-                </text>
-                <text fontSize={11} color={C.textMuted}>
+                </view>
+                <view fontSize={11} color={C.textMuted}>
                   Horizontal overflow only
-                </text>
+                </view>
               </view>
             ))}
           </view>

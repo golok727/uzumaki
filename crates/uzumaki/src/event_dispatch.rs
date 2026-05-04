@@ -128,7 +128,7 @@ pub fn input_layout_meta(dom: &UIState, focused_id: UzNodeId) -> Option<FocusedI
         .interactivity
         .hitbox_id
         .and_then(|hid| dom.hitbox_store.get(hid))?;
-    let layout = dom.taffy.layout(node.taffy_node).ok()?;
+    let layout = dom.layout_engine.layout(focused_id)?;
     Some(FocusedInputLayoutMeta {
         taffy_x: hb.bounds.x,
         taffy_y: hb.bounds.y,

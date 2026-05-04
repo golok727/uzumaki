@@ -526,8 +526,6 @@ pub struct Node {
 
     pub prev_sibling: Option<UzNodeId>,
 
-    pub taffy_node: taffy::NodeId,
-
     pub data: NodeData,
 
     /// The base style for this element. Converted to taffy for layout.
@@ -541,14 +539,13 @@ pub struct Node {
 }
 
 impl Node {
-    pub fn new(taffy_node: taffy::NodeId, style: UzStyle, data: impl Into<NodeData>) -> Self {
+    pub fn new(style: UzStyle, data: impl Into<NodeData>) -> Self {
         Self {
             parent: None,
             first_child: None,
             last_child: None,
             next_sibling: None,
             prev_sibling: None,
-            taffy_node,
             data: data.into(),
             style,
             interactivity: Interactivity::new(),

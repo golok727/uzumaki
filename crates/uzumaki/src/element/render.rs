@@ -35,6 +35,9 @@ impl<'a> Painter<'a> {
     pub fn prepaint(mut self) -> PaintList {
         self.dom.hitbox_store.clear();
         self.dom.scroll_thumbs.clear();
+        for (_, node) in self.dom.nodes.iter_mut() {
+            node.interactivity.hitbox_id = None;
+        }
         self.dom.build_text_select_runs();
 
         let text_selections = self.compute_text_selections_map();
@@ -83,9 +86,9 @@ impl<'a> Painter<'a> {
             None => return,
         };
 
-        let layout = match self.dom.taffy.layout(snap.taffy_node) {
-            Ok(l) => LayoutSnapshot::from(l),
-            Err(_) => return,
+        let layout = match self.dom.layout_engine.layout(node_id) {
+            Some(l) => LayoutSnapshot::from(l),
+            None => return,
         };
 
         let x = parent_x + layout.location_x;
@@ -220,7 +223,6 @@ impl<'a> Painter<'a> {
         }
 
         let node = &self.dom.nodes[node_id];
-        let taffy_node = node.taffy_node;
         let first_child = node.first_child;
 
         let text = node
@@ -255,7 +257,6 @@ impl<'a> Painter<'a> {
         });
 
         Some(NodeSnapshot {
-            taffy_node,
             computed_style,
             first_child,
             text,
@@ -723,7 +724,6 @@ fn paint_node(
 // ---------------------------------------------------------------------------
 
 struct NodeSnapshot {
-    taffy_node: taffy::NodeId,
     computed_style: UzStyle,
     first_child: Option<UzNodeId>,
     text: Option<(String, TextStyle)>,

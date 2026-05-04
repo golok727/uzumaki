@@ -1580,16 +1580,7 @@ fn get_style_prop(node: &Node, prop: StyleProp) -> Value {
 }
 
 pub(crate) fn sync_taffy(dom: &mut UIState, node_id: UzNodeId) {
-    let Some(node) = dom.nodes.get(node_id) else {
-        return;
-    };
-    let taffy_style = node.style.to_taffy();
-    let tn = node.taffy_node;
-    let text_style = node.style.text.clone();
-    dom.taffy.set_style(tn, taffy_style).unwrap();
-    if let Some(ctx) = dom.taffy.get_node_context_mut(tn) {
-        ctx.text_style = text_style;
-    }
+    let _ = (dom, node_id);
 }
 
 fn set_flex_string(style: &mut UzStyle, value: &str) -> bool {
@@ -1683,7 +1674,6 @@ mod tests {
     #[test]
     fn variant_flex_string_sets_display_and_direction() {
         let mut node = Node::new(
-            taffy::NodeId::from(0usize),
             UzStyle::default(),
             crate::element::ElementNode::new(crate::element::ElementData::None),
         );
@@ -1702,7 +1692,6 @@ mod tests {
     #[test]
     fn scroll_sets_both_axes_to_auto() {
         let mut node = Node::new(
-            taffy::NodeId::from(0usize),
             UzStyle::default(),
             crate::element::ElementNode::new(crate::element::ElementData::None),
         );
@@ -1718,7 +1707,6 @@ mod tests {
     #[test]
     fn variant_scroll_sets_both_axes_to_auto() {
         let mut node = Node::new(
-            taffy::NodeId::from(0usize),
             UzStyle::default(),
             crate::element::ElementNode::new(crate::element::ElementData::None),
         );
