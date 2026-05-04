@@ -1,6 +1,5 @@
 import { getWindow, Window } from 'uzumaki-ui';
 import { render } from 'uzumaki-ui/react';
-import { C } from './theme';
 
 function WindowPreview({
   title,
@@ -192,25 +191,3 @@ export function showHiddenPreview() {
     hiddenWindow.focus();
   }
 }
-
-export const mainWindow = new Window('main', {
-  width: 1100,
-  height: 700,
-  title: 'Uzumaki - playground',
-  rootStyles: {
-    bg: C.bg,
-    color: C.text,
-    fontSize: 14,
-  },
-});
-
-mainWindow.on('load', () => {
-  console.log(
-    'Window loaded width =',
-    mainWindow.innerWidth,
-    'height =',
-    mainWindow.innerHeight,
-    'title =',
-    mainWindow.title,
-  );
-});
