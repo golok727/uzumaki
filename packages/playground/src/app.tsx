@@ -11,7 +11,6 @@ import { EventsPage } from './pages/eventsPage';
 import { IssuesPage } from './pages/issuesPage';
 import { ImagesPage } from './pages/imagesPage';
 import { TimerPage } from './pages/timerPage';
-import { WindowPage } from './pages/windowPage';
 import { ShikiPage } from './pages/codeHighlight';
 
 export function App() {
@@ -24,7 +23,6 @@ export function App() {
     layout: <LayoutPage />,
     stress: <StressPage />,
     events: <EventsPage />,
-    window: <WindowPage />,
     issues: <IssuesPage />,
     images: <ImagesPage />,
     timer: <TimerPage />,

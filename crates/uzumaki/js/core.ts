@@ -8,47 +8,44 @@ import type {
 } from './types';
 
 export interface CoreWindow {
-  close(): void;
   readonly id: number;
+
+  close(): void;
+
   readonly innerWidth: number | null;
   readonly innerHeight: number | null;
-  readonly title: string | null;
-  setTitle(title: string): boolean;
-  readonly visible: boolean | null;
-  setVisible(visible: boolean): boolean;
-  readonly transparent: boolean | null;
-  setTransparent(transparent: boolean): boolean;
-  readonly resizable: boolean | null;
-  setResizable(resizable: boolean): boolean;
-  readonly decorated: boolean | null;
-  setDecorations(decorations: boolean): boolean;
-  readonly maximized: boolean | null;
-  setMaximized(maximized: boolean): boolean;
-  readonly minimized: boolean | null;
-  setMinimized(minimized: boolean): boolean;
-  readonly fullscreen: boolean | null;
-  setFullscreen(fullscreen: boolean): boolean;
-  readonly windowLevel: WindowLevel | null;
-  setWindowLevel(level: WindowLevel): boolean;
+
+  title: string | null;
+  visible: boolean | null;
+  transparent: boolean | null;
+  resizable: boolean | null;
+  decorations: boolean | null;
+  maximized: boolean | null;
+  minimized: boolean | null;
+  fullscreen: boolean | null;
+  windowLevel: WindowLevel | null;
+
   setMinSize(width: number, height: number): boolean;
   setMaxSize(width: number, height: number): boolean;
+
   readonly innerSize: WindowSize | null;
   readonly outerSize: WindowSize | null;
   readonly position: WindowPosition | null;
+
   setPosition(x: number, y: number): boolean;
+
   readonly scaleFactor: number | null;
-  readonly theme: WindowTheme | null;
-  setTheme(theme: WindowTheme): boolean;
+
+  theme: WindowTheme | null;
+
   readonly active: boolean | null;
   focus(): boolean;
-  readonly contentProtected: boolean | null;
-  setContentProtected(contentProtected: boolean): boolean;
-  readonly closable: boolean | null;
-  setClosable(closable: boolean): boolean;
-  readonly minimizable: boolean | null;
-  setMinimizable(minimizable: boolean): boolean;
-  readonly maximizable: boolean | null;
-  setMaximizable(maximizable: boolean): boolean;
+
+  contentProtected: boolean | null;
+  closable: boolean | null;
+  minimizable: boolean | null;
+  maximizable: boolean | null;
+
   remBase: number;
 }
 

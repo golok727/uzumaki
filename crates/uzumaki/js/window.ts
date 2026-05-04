@@ -107,44 +107,40 @@ export class Window {
     return windowsById.get(id);
   }
 
-  setTitle(title: string): void {
-    this._native.setTitle(title);
+  set title(title: string) {
+    this._native.title = title;
   }
 
-  setVisible(visible: boolean): void {
-    this._native.setVisible(visible);
+  set decorations(decorations: boolean) {
+    this._native.decorations = decorations;
   }
 
-  setTransparent(transparent: boolean): void {
-    this._native.setTransparent(transparent);
+  set visible(visible: boolean) {
+    this._native.visible = visible;
   }
 
-  setResizable(resizable: boolean): void {
-    this._native.setResizable(resizable);
+  set transparent(transparent: boolean) {
+    this._native.transparent = transparent;
   }
 
-  setDecorations(decorations: boolean): void {
-    this._native.setDecorations(decorations);
+  set resizable(resizable: boolean) {
+    this._native.resizable = resizable;
   }
 
-  setMaximized(maximized: boolean): void {
-    this._native.setMaximized(maximized);
+  set maximized(maximized: boolean) {
+    this._native.maximized = maximized;
   }
 
-  setMinimized(minimized: boolean): void {
-    this._native.setMinimized(minimized);
+  set minimized(minimized: boolean) {
+    this._native.minimized = minimized;
   }
 
-  setFullscreen(fullscreen: boolean): void {
-    this._native.setFullscreen(fullscreen);
+  set fullscreen(fullscreen: boolean) {
+    this._native.fullscreen = fullscreen;
   }
 
-  setAlwaysOnTop(alwaysOnTop: boolean): void {
-    this.setWindowLevel(alwaysOnTop ? 'alwaysOnTop' : 'normal');
-  }
-
-  setWindowLevel(windowLevel: WindowLevel): void {
-    this._native.setWindowLevel(windowLevel);
+  set windowLevel(windowLevel: WindowLevel) {
+    this._native.windowLevel = windowLevel;
   }
 
   setMinSize(width: number, height: number): void {
@@ -159,28 +155,28 @@ export class Window {
     this._native.setPosition(x, y);
   }
 
-  setTheme(theme: WindowTheme): void {
-    this._native.setTheme(theme);
+  set theme(theme: WindowTheme) {
+    this._native.theme = theme;
   }
 
   focus(): void {
     this._native.focus();
   }
 
-  setContentProtected(contentProtected: boolean): void {
-    this._native.setContentProtected(contentProtected);
+  set contentProtected(contentProtected: boolean) {
+    this._native.contentProtected = contentProtected;
   }
 
-  setClosable(closable: boolean): void {
-    this._native.setClosable(closable);
+  set closable(closable: boolean) {
+    this._native.closable = closable;
   }
 
-  setMinimizable(minimizable: boolean): void {
-    this._native.setMinimizable(minimizable);
+  set minimizable(minimizable: boolean) {
+    this._native.minimizable = minimizable;
   }
 
-  setMaximizable(maximizable: boolean): void {
-    this._native.setMaximizable(maximizable);
+  set maximizable(value: boolean) {
+    this._native.maximizable = value;
   }
 
   get scaleFactor(): number {
@@ -211,8 +207,8 @@ export class Window {
     return this._native.resizable ?? true;
   }
 
-  get decorated(): boolean {
-    return this._native.decorated ?? true;
+  get decorations(): boolean {
+    return this._native.decorations ?? true;
   }
 
   get maximized(): boolean {

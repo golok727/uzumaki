@@ -502,7 +502,8 @@ impl CoreWindow {
     }
 
     #[fast]
-    pub fn setTitle(&self, state: &OpState, #[string] title: String) -> bool {
+    #[setter]
+    pub fn title(&self, state: &OpState, #[string] title: String) -> bool {
         self.update_winit_window(state, |window| window.set_title(&title))
     }
 
@@ -512,7 +513,8 @@ impl CoreWindow {
     }
 
     #[fast]
-    pub fn setVisible(&self, state: &OpState, visible: bool) -> bool {
+    #[setter]
+    pub fn visible(&self, state: &OpState, visible: bool) -> bool {
         self.update_winit_window(state, |window| window.set_visible(visible))
     }
 
@@ -522,7 +524,8 @@ impl CoreWindow {
     }
 
     #[fast]
-    pub fn setTransparent(&self, state: &OpState, transparent: bool) -> bool {
+    #[setter]
+    pub fn transparent(&self, state: &OpState, transparent: bool) -> bool {
         self.with_window_entry_mut(state, |entry| {
             entry.transparent = transparent;
             if let Some(handle) = entry.handle.as_mut() {
@@ -538,17 +541,19 @@ impl CoreWindow {
     }
 
     #[fast]
-    pub fn setResizable(&self, state: &OpState, resizable: bool) -> bool {
+    #[setter]
+    pub fn resizable(&self, state: &OpState, resizable: bool) -> bool {
         self.update_winit_window(state, |window| window.set_resizable(resizable))
     }
 
     #[getter]
-    pub fn decorated(&self, state: &OpState) -> Option<bool> {
+    pub fn decorations(&self, state: &OpState) -> Option<bool> {
         self.with_winit_window(state, |window| window.is_decorated())
     }
 
     #[fast]
-    pub fn setDecorations(&self, state: &OpState, decorations: bool) -> bool {
+    #[setter]
+    pub fn decorations(&self, state: &OpState, decorations: bool) -> bool {
         self.update_winit_window(state, |window| window.set_decorations(decorations))
     }
 
@@ -558,7 +563,8 @@ impl CoreWindow {
     }
 
     #[fast]
-    pub fn setMaximized(&self, state: &OpState, maximized: bool) -> bool {
+    #[setter]
+    pub fn maximized(&self, state: &OpState, maximized: bool) -> bool {
         self.update_winit_window(state, |window| window.set_maximized(maximized))
     }
 
@@ -568,7 +574,8 @@ impl CoreWindow {
     }
 
     #[fast]
-    pub fn setMinimized(&self, state: &OpState, minimized: bool) -> bool {
+    #[setter]
+    pub fn minimized(&self, state: &OpState, minimized: bool) -> bool {
         self.update_winit_window(state, |window| window.set_minimized(minimized))
     }
 
@@ -578,20 +585,23 @@ impl CoreWindow {
     }
 
     #[fast]
-    pub fn setFullscreen(&self, state: &OpState, fullscreen: bool) -> bool {
+    #[setter]
+    pub fn fullscreen(&self, state: &OpState, fullscreen: bool) -> bool {
         self.update_winit_window(state, |window| {
             let target = fullscreen.then_some(Fullscreen::Borderless(None));
             window.set_fullscreen(target);
         })
     }
 
+    // todo change to string
     #[getter]
     #[serde]
     pub fn windowLevel(&self, state: &OpState) -> Option<UzWindowLevel> {
         self.with_window_entry(state, |entry| UzWindowLevel::from_winit(entry.window_level))
     }
 
-    pub fn setWindowLevel(&self, state: &OpState, #[serde] level: UzWindowLevel) -> bool {
+    #[setter]
+    pub fn windowLevel(&self, state: &OpState, #[serde] level: UzWindowLevel) -> bool {
         self.set_window_level_state(state, level.to_winit())
     }
 
@@ -696,7 +706,8 @@ impl CoreWindow {
     }
 
     #[fast]
-    pub fn setClosable(&self, state: &OpState, closable: bool) -> bool {
+    #[setter]
+    pub fn closable(&self, state: &OpState, closable: bool) -> bool {
         self.set_window_button_state(state, WindowButtons::CLOSE, closable)
     }
 
@@ -706,7 +717,8 @@ impl CoreWindow {
     }
 
     #[fast]
-    pub fn setMinimizable(&self, state: &OpState, minimizable: bool) -> bool {
+    #[setter]
+    pub fn minimizable(&self, state: &OpState, minimizable: bool) -> bool {
         self.set_window_button_state(state, WindowButtons::MINIMIZE, minimizable)
     }
 
@@ -716,7 +728,8 @@ impl CoreWindow {
     }
 
     #[fast]
-    pub fn setMaximizable(&self, state: &OpState, maximizable: bool) -> bool {
+    #[setter]
+    pub fn maximizable(&self, state: &OpState, maximizable: bool) -> bool {
         self.set_window_button_state(state, WindowButtons::MAXIMIZE, maximizable)
     }
 

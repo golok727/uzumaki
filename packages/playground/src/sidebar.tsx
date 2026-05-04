@@ -8,7 +8,7 @@ const TABS: { id: Tab; label: string; icon: string }[] = [
   { id: 'layout', label: 'Layout Lab', icon: 'layout-grid' },
   { id: 'stress', label: 'Stress Test', icon: 'zap' },
   { id: 'events', label: 'Mouse Events', icon: 'mouse-pointer-click' },
-  { id: 'window', label: 'Window Lab', icon: 'square-stack' },
+  // { id: 'window', label: 'Window Lab', icon: 'square-stack' },
   { id: 'timer', label: 'Timers', icon: 'timer' },
   { id: 'issues', label: 'GitHub Issues', icon: 'circle-dot' },
   { id: 'images', label: 'Images', icon: 'image' },

@@ -7,5 +7,5 @@ export type Tab =
   | 'issues'
   | 'images'
   | 'timer'
-  | 'window'
+  // | 'window'
   | 'shiki';

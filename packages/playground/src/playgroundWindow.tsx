@@ -42,7 +42,7 @@ function getOrCreateWindow(
 ) {
   const existing = getWindow(label);
   if (existing) {
-    existing.setVisible(true);
+    existing.visible = true;
     existing.focus();
     return existing;
   }
@@ -187,8 +187,10 @@ export function createHiddenPreview() {
 
 export function showHiddenPreview() {
   const hiddenWindow = getWindow('hidden-preview');
-  hiddenWindow?.setVisible(true);
-  hiddenWindow?.focus();
+  if (hiddenWindow) {
+    hiddenWindow.visible = true;
+    hiddenWindow.focus();
+  }
 }
 
 export const mainWindow = new Window('main', {
