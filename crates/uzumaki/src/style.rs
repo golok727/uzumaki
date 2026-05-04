@@ -353,9 +353,9 @@ impl FontWeight {
 
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
 pub enum OverflowWrap {
+    #[default]
     Normal,
     Anywhere,
-    #[default]
     BreakWord,
 }
 
