@@ -2,6 +2,8 @@ use crate::cursor::UzCursorIcon;
 use crate::input::InputState;
 use crate::interactivity::Interactivity;
 use crate::style::{Bounds, TextSelectable, UzStyle};
+use crate::text::TextBrush;
+use parley::Layout as ParleyLayout;
 use std::ops::{Deref, DerefMut};
 use std::sync::Arc;
 use vello::peniko::Blob;
@@ -521,6 +523,15 @@ pub struct Node {
     pub scroll_state: Option<ScrollState>,
     // not used now todo use this :3
     pub transform: Option<Affine>,
+    /// Cached parley layout for text-bearing nodes (text node or `<text>`
+    /// element). Refreshed once per frame after taffy compute, then reused by
+    /// paint, selection geometry and hit-testing instead of rebuilding parley
+    /// layouts on every read.
+    pub text_layout: Option<ParleyLayout<TextBrush>>,
+    /// Cached taffy layout for this node, copied here after `compute_layout`
+    /// runs. Reading `node.final_layout` avoids the
+    /// `layout_engine.layout(node_id)` two-level lookup on the paint hot path.
+    pub final_layout: taffy::Layout,
 }
 
 impl Node {
@@ -533,6 +544,8 @@ impl Node {
             interactivity: Interactivity::new(),
             scroll_state: None,
             transform: None,
+            text_layout: None,
+            final_layout: taffy::Layout::new(),
         }
     }
 }

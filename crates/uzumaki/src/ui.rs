@@ -461,6 +461,60 @@ impl UIState {
             height,
             text_renderer,
         );
+        self.copy_final_layouts();
+        self.refresh_text_layouts(text_renderer);
+    }
+
+    /// Copy taffy's layout result onto each node so the paint pass can read
+    /// `node.final_layout` directly without going through the layout engine's
+    /// id → taffy_id → slab indirection.
+    fn copy_final_layouts(&mut self) {
+        for (node_id, node) in self.nodes.iter_mut() {
+            node.final_layout = self
+                .layout_engine
+                .layout(node_id)
+                .copied()
+                .unwrap_or_else(taffy::Layout::new);
+        }
+    }
+
+    /// Rebuild cached parley layouts for every text-bearing node at its final
+    /// taffy width. Runs once per frame after layout. Paint / selection /
+    /// hit-test then reuse `node.text_layout` instead of rebuilding.
+    fn refresh_text_layouts(&mut self, text_renderer: &mut TextRenderer) {
+        let Some(root) = self.root else { return };
+        self.refresh_text_layouts_at(root, None, text_renderer);
+    }
+
+    fn refresh_text_layouts_at(
+        &mut self,
+        node_id: UzNodeId,
+        parent_style: Option<&UzStyle>,
+        text_renderer: &mut TextRenderer,
+    ) {
+        let computed = self.computed_style(node_id, parent_style);
+        let children = self.nodes[node_id].children.clone();
+
+        let is_input = self.nodes[node_id].is_text_input();
+        let text = (!is_input)
+            .then(|| {
+                self.nodes[node_id]
+                    .get_text_content()
+                    .map(|t| t.content.clone())
+            })
+            .flatten();
+
+        if let Some(text) = text {
+            let width = Some(self.nodes[node_id].final_layout.size.width);
+            let layout = text_renderer.build_layout(&text, &computed.text, width);
+            self.nodes[node_id].text_layout = Some(layout);
+        } else {
+            self.nodes[node_id].text_layout = None;
+        }
+
+        for cid in children {
+            self.refresh_text_layouts_at(cid, Some(&computed), text_renderer);
+        }
     }
 
     pub(crate) fn computed_style(&self, node_id: UzNodeId, parent: Option<&UzStyle>) -> UzStyle {
@@ -717,8 +771,8 @@ mod tests {
         dom.append_child(parent, second);
         dom.compute_layout(100.0, 100.0, &mut renderer);
 
-        let first_layout = dom.layout_engine.layout(first).unwrap();
-        let second_layout = dom.layout_engine.layout(second).unwrap();
+        let first_layout = &dom.nodes[first].final_layout;
+        let second_layout = &dom.nodes[second].final_layout;
 
         assert_eq!(first_layout.location.y, 0.0);
         assert_eq!(second_layout.location.y, first_layout.size.height);

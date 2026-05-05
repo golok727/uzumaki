@@ -86,12 +86,13 @@ impl<'a> Painter<'a> {
             parent_style,
         } = frame;
 
-        // Copy layout out first so we don't hold a borrow into dom while we
-        // mutate hitboxes / scroll state below.
-        let layout = match self.dom.layout_engine.layout(node_id) {
-            Some(l) => LayoutSnapshot::from(l),
-            None => return,
+        // Read the cached final layout directly off the node. Populated by
+        // `UIState::compute_layout` after taffy compute so paint never hits
+        // the layout engine.
+        let Some(node_ref) = self.dom.nodes.get(node_id) else {
+            return;
         };
+        let layout = LayoutSnapshot::from(&node_ref.final_layout);
 
         let computed_style = self.dom.computed_style(node_id, parent_style.as_deref());
 
@@ -249,39 +250,32 @@ impl<'a> Painter<'a> {
             crate::element::image::paint_image(scene, bounds, style, &info, transform);
         } else if let Some(tc) = node.get_text_content() {
             let sel = text_selections.get(&node_id).copied();
-            Self::paint_text_node(
-                self.text_renderer,
-                scene,
-                bounds,
-                style,
-                &tc.content,
-                transform,
-                sel,
-            );
+            let text_len = tc.content.len();
+            // Cached parley layout (built once per frame in refresh_text_layouts).
+            // If absent (shouldn't happen for nodes with text content), skip.
+            if let Some(layout) = node.text_layout.as_ref() {
+                Self::paint_text_node(scene, bounds, style, layout, text_len, transform, sel);
+            }
         } else {
             crate::element::view::paint_view(scene, bounds, style, transform, |_| {});
         }
     }
 
-    /// Draw a text node, optionally with a selection highlight.
+    /// Draw a text node from its cached parley layout, optionally with a
+    /// selection highlight.
     fn paint_text_node(
-        text_renderer: &mut TextRenderer,
         scene: &mut Scene,
         bounds: Bounds,
         style: &UzStyle,
-        text: &str,
+        layout: &parley::Layout<crate::text::TextBrush>,
+        text_len: usize,
         transform: Affine,
         selection: Option<(usize, usize)>,
     ) {
-        if let Some((sel_start, sel_end)) = selection {
-            style.paint(bounds, scene, transform, |scene| {
-                let rects = text_renderer.selection_rects(
-                    text,
-                    &style.text,
-                    Some(bounds.width as f32),
-                    sel_start,
-                    sel_end,
-                );
+        style.paint(bounds, scene, transform, |scene| {
+            if let Some((sel_start, sel_end)) = selection {
+                let rects =
+                    crate::text::selection_rects_from_layout(layout, text_len, sel_start, sel_end);
                 let sel_color = VelloColor::from_rgba8(56, 121, 185, 128);
                 for rect in rects {
                     scene.fill(
@@ -292,29 +286,15 @@ impl<'a> Painter<'a> {
                         &Rect::new(rect.x0, rect.y0, rect.x1, rect.y1),
                     );
                 }
-                text_renderer.draw_text(
-                    scene,
-                    text,
-                    &style.text,
-                    bounds.width as f32,
-                    bounds.height as f32,
-                    (0.0, 0.0),
-                    style.text.color.to_vello(),
-                    transform,
-                );
-            });
-        } else {
-            crate::element::text::paint_text(
+            }
+            crate::text::draw_layout(
                 scene,
-                text_renderer,
-                bounds,
-                style,
-                text,
-                &style.text,
-                style.text.color,
+                layout,
+                (0.0, 0.0),
+                style.text.color.to_vello(),
                 transform,
             );
-        }
+        });
     }
 
     fn build_input_render_info(

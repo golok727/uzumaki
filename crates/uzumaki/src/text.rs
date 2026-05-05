@@ -52,7 +52,7 @@ impl TextRenderer {
         }
     }
 
-    fn build_layout(
+    pub(crate) fn build_layout(
         &mut self,
         text: &str,
         style: &TextStyle,
@@ -107,36 +107,7 @@ impl TextRenderer {
     ) {
         let _ = height;
         let layout = self.build_layout(text, style, Some(width));
-        let (px, py) = position;
-
-        for line in layout.lines() {
-            for item in line.items() {
-                if let parley::PositionedLayoutItem::GlyphRun(glyph_run) = item {
-                    let run = glyph_run.run();
-                    let font = run.font().clone();
-                    let run_font_size = run.font_size();
-                    let synthesis = run.synthesis();
-                    let glyph_xform = synthesis
-                        .skew()
-                        .map(|angle| Affine::skew(angle.to_radians().tan() as f64, 0.0));
-
-                    scene
-                        .draw_glyphs(&font)
-                        .font_size(run_font_size)
-                        .transform(transform)
-                        .glyph_transform(glyph_xform)
-                        .brush(&Brush::Solid(color))
-                        .draw(
-                            Fill::NonZero,
-                            glyph_run.positioned_glyphs().map(|g| vello::Glyph {
-                                id: g.id,
-                                x: px + g.x,
-                                y: py + g.y,
-                            }),
-                        );
-                }
-            }
-        }
+        draw_layout(scene, &layout, position, color, transform);
     }
 
     pub fn grapheme_x_positions(&mut self, text: &str, style: &TextStyle) -> Vec<f32> {
@@ -344,6 +315,70 @@ impl TextRenderer {
 
         (w.ceil(), h.ceil())
     }
+}
+
+/// Draw a parley layout that has already been built. Pure draw — no layout
+/// rebuild. Used by the painter against `Node::text_layout`.
+pub fn draw_layout(
+    scene: &mut Scene,
+    layout: &Layout<TextBrush>,
+    position: (f32, f32),
+    color: Color,
+    transform: Affine,
+) {
+    let (px, py) = position;
+    for line in layout.lines() {
+        for item in line.items() {
+            if let parley::PositionedLayoutItem::GlyphRun(glyph_run) = item {
+                let run = glyph_run.run();
+                let font = run.font().clone();
+                let run_font_size = run.font_size();
+                let synthesis = run.synthesis();
+                let glyph_xform = synthesis
+                    .skew()
+                    .map(|angle| Affine::skew(angle.to_radians().tan() as f64, 0.0));
+
+                scene
+                    .draw_glyphs(&font)
+                    .font_size(run_font_size)
+                    .transform(transform)
+                    .glyph_transform(glyph_xform)
+                    .brush(&Brush::Solid(color))
+                    .draw(
+                        Fill::NonZero,
+                        glyph_run.positioned_glyphs().map(|g| vello::Glyph {
+                            id: g.id,
+                            x: px + g.x,
+                            y: py + g.y,
+                        }),
+                    );
+            }
+        }
+    }
+}
+
+/// Selection rects from a prebuilt parley layout. `start`/`end` are byte
+/// offsets into the layout's source text.
+pub fn selection_rects_from_layout(
+    layout: &Layout<TextBrush>,
+    text_len: usize,
+    start: usize,
+    end: usize,
+) -> Vec<BoundingBox> {
+    if start >= end {
+        return Vec::new();
+    }
+    let anchor = start.min(text_len);
+    let focus = end.min(text_len);
+    let selection = Selection::new(
+        Cursor::from_byte_index(layout, anchor, ParleyAffinity::Downstream),
+        Cursor::from_byte_index(layout, focus, ParleyAffinity::Upstream),
+    );
+    selection
+        .geometry(layout)
+        .into_iter()
+        .map(|(rect, _)| rect)
+        .collect()
 }
 
 pub fn apply_text_style_to_editor(editor: &mut parley::PlainEditor<TextBrush>, style: &TextStyle) {
