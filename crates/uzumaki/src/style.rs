@@ -1,9 +1,10 @@
-use parley::{LineHeight, StyleProperty};
+use parley::{FontFamily, LineHeight, StyleProperty};
 use refineable::Refineable;
 use vello::Scene;
 use vello::kurbo::{Affine, Rect, RoundedRect, RoundedRectRadii, Stroke};
 use vello::peniko::Color as VelloColor;
 
+use crate::SharedString;
 use crate::cursor::UzCursorIcon;
 use crate::text::TextBrush;
 
@@ -163,6 +164,25 @@ pub struct BoxShadow {
     pub spread_radius: f32,
 }
 
+/// Focus/decoration outline. Painted outside the element bounds, doesn't affect
+/// layout. `offset` is the gap between border edge and outline; the outline is
+/// stroked at `width` outside that.
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub struct Outline {
+    pub color: Color,
+    pub width: f32,
+    pub offset: f32,
+}
+
+impl Outline {
+    /// Default focus ring used when a focused element has no explicit outline.
+    pub const FOCUS_RING: Self = Self {
+        color: Color::rgba(86, 156, 214, 255),
+        width: 2.0,
+        offset: 2.0,
+    };
+}
+
 #[derive(Clone, Copy, Debug, PartialEq, Default)]
 pub enum Length {
     #[default]
@@ -270,6 +290,21 @@ pub enum Overflow {
     Visible,
     Hidden,
     Scroll,
+    Auto,
+}
+
+impl Overflow {
+    /// True when content that exceeds the box should produce a scrollbar
+    /// (covers explicit `Scroll` and the `Auto` case where content overflows).
+    pub fn is_scrollable(self) -> bool {
+        matches!(self, Self::Scroll | Self::Auto)
+    }
+
+    /// True when overflowing content must be clipped to the box (everything
+    /// except `Visible`).
+    pub fn clips(self) -> bool {
+        !matches!(self, Self::Visible)
+    }
 }
 
 #[derive(Clone, Copy, Debug, Default, PartialEq, Refineable)]
@@ -318,9 +353,9 @@ impl FontWeight {
 
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
 pub enum OverflowWrap {
+    #[default]
     Normal,
     Anywhere,
-    #[default]
     BreakWord,
 }
 
@@ -356,6 +391,7 @@ impl WordBreak {
 #[refineable(Debug)]
 pub struct TextStyle {
     pub font_size: f32,
+    pub font_family: SharedString,
     pub color: Color,
     pub line_height: f32,
     pub font_weight: FontWeight,
@@ -373,6 +409,30 @@ pub struct TransformStyle {
     pub rotate: f32,
     pub scale_x: f32,
     pub scale_y: f32,
+}
+
+/// Styling for the scrollbar painted on scrollable views and multiline inputs.
+/// Defaults match the legacy hardcoded look (4px overlay thumb, white@90/140
+/// alpha, transparent track, pill-shaped via auto-radius).
+#[derive(Clone, Copy, Debug, PartialEq, Refineable)]
+#[refineable(Debug)]
+pub struct ScrollbarStyle {
+    pub width: f32,
+    pub color: Color,
+    pub hover_color: Color,
+    /// `None` = pill (radius = width / 2); `Some(v)` = explicit radius.
+    pub radius: Option<f32>,
+}
+
+impl Default for ScrollbarStyle {
+    fn default() -> Self {
+        Self {
+            width: 4.0,
+            color: Color::rgba(255, 255, 255, 90),
+            hover_color: Color::rgba(255, 255, 255, 140),
+            radius: None,
+        }
+    }
 }
 
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
@@ -403,6 +463,7 @@ impl Default for TextStyle {
     fn default() -> Self {
         Self {
             font_size: 16.0,
+            font_family: SharedString::new_static("sans-serif"),
             color: Color::WHITE,
             line_height: 1.2,
             font_weight: FontWeight::default(),
@@ -453,7 +514,10 @@ impl TextStyle {
         let word_spacing =
             (self.word_spacing != 0.0).then_some(StyleProperty::WordSpacing(self.word_spacing));
 
+        let font_family = FontFamily::from(&*self.font_family).into_owned();
+
         [
+            StyleProperty::FontFamily(font_family),
             StyleProperty::FontSize(self.font_size),
             StyleProperty::LineHeight(LineHeight::FontSizeRelative(self.line_height)),
             StyleProperty::FontWeight(self.font_weight.to_parley()),
@@ -514,6 +578,7 @@ pub struct UzStyle {
     pub corner_radii: Corners,
     pub opacity: f32,
     pub box_shadow: Option<BoxShadow>,
+    pub outline: Option<Outline>,
 
     pub cursor: Option<UzCursorIcon>,
 
@@ -523,6 +588,9 @@ pub struct UzStyle {
 
     #[refineable]
     pub transform: TransformStyle,
+
+    #[refineable]
+    pub scrollbar: ScrollbarStyle,
 
     /// Whether text within this element is selectable.
     /// None = inherit from parent (default). Some(true) = selectable, Some(false) = not.
@@ -564,17 +632,87 @@ impl Default for UzStyle {
             corner_radii: Corners::default(),
             opacity: 1.0,
             box_shadow: None,
+            outline: None,
 
             cursor: None,
 
             text: TextStyle::default(),
             transform: TransformStyle::default(),
+            scrollbar: ScrollbarStyle::default(),
             text_selectable: TextSelectable::Inherit,
         }
     }
 }
 
 impl UzStyle {
+    pub fn root() -> Self {
+        Self {
+            display: Display::Flex,
+            size: Size {
+                width: Length::Percent(1.0),
+                height: Length::Percent(1.0),
+            },
+            text_selectable: TextSelectable::False,
+            ..Default::default()
+        }
+    }
+
+    pub fn inherit_from(&mut self, parent: &Self) {
+        /*Fixme: this is a work around  */
+        let overflow_wrap = self.text.overflow_wrap;
+        let word_break = self.text.word_break;
+
+        self.text = parent.text.clone();
+        self.text.overflow_wrap = overflow_wrap;
+        self.text.word_break = word_break;
+        self.text_selectable = parent.text_selectable;
+    }
+
+    pub fn default_for_element(element_type: &str) -> Self {
+        match element_type {
+            "view" => Self {
+                display: Display::Block,
+                ..Default::default()
+            },
+            "button" => Self {
+                flex_shrink: 0.0,
+                align_items: Some(AlignItems::Center),
+                justify_content: Some(JustifyContent::Center),
+                cursor: Some(UzCursorIcon::Pointer),
+                text: TextStyle {
+                    overflow_wrap: OverflowWrap::Normal,
+                    word_break: WordBreak::KeepAll,
+                    ..Default::default()
+                },
+                ..Default::default()
+            },
+            "input" => Self {
+                // Multiline inputs wrap aggressively, char-by-char, so a
+                // long line never overflows the box horizontally — the
+                // editor only ever scrolls vertically. `BreakAll` makes
+                // every character a break opportunity (instead of only
+                // word boundaries); `Anywhere` keeps min-content small so
+                // the input can shrink inside flex containers.
+                text: TextStyle {
+                    overflow_wrap: OverflowWrap::Anywhere,
+                    word_break: WordBreak::BreakAll,
+                    ..Default::default()
+                },
+                ..Default::default()
+            },
+            "text" | "#text" => Self {
+                display: Display::Block,
+                text: TextStyle {
+                    overflow_wrap: OverflowWrap::Normal,
+                    word_break: WordBreak::Normal,
+                    ..Default::default()
+                },
+                ..Default::default()
+            },
+            _ => Default::default(),
+        }
+    }
+
     pub fn to_taffy(&self) -> taffy::Style {
         taffy::Style {
             display: match self.display {
@@ -685,6 +823,48 @@ impl UzStyle {
             } else {
                 self.paint_rect_borders(bounds, scene, vbc, transform);
             }
+        }
+
+        // 5. Outline (drawn outside the box, doesn't affect layout)
+        if let Some(outline) = self.outline
+            && outline.width > 0.0
+            && !outline.color.is_transparent()
+        {
+            self.paint_outline(bounds, scene, outline, opacity, transform);
+        }
+    }
+
+    fn paint_outline(
+        &self,
+        bounds: Bounds,
+        scene: &mut Scene,
+        outline: Outline,
+        opacity: f32,
+        transform: Affine,
+    ) {
+        let color = outline.color.with_opacity(opacity).to_vello();
+        // Stroke is centered on the path, so push the path outward by
+        // `offset + width/2` to land its inner edge `offset` away from the box.
+        let inset = -(outline.offset as f64 + outline.width as f64 / 2.0);
+        let outer = Bounds::new(
+            bounds.x + inset,
+            bounds.y + inset,
+            bounds.width - 2.0 * inset,
+            bounds.height - 2.0 * inset,
+        );
+        let stroke = Stroke::new(outline.width as f64);
+        if self.corner_radii.any_nonzero() {
+            let grow = outline.offset + outline.width / 2.0;
+            let grown = Corners {
+                top_left: (self.corner_radii.top_left + grow).max(0.0),
+                top_right: (self.corner_radii.top_right + grow).max(0.0),
+                bottom_right: (self.corner_radii.bottom_right + grow).max(0.0),
+                bottom_left: (self.corner_radii.bottom_left + grow).max(0.0),
+            };
+            let shape = rounded_rect(outer, &grown);
+            scene.stroke(&stroke, transform, color, None, &shape);
+        } else {
+            scene.stroke(&stroke, transform, color, None, &outer.to_rect());
         }
     }
 
@@ -905,7 +1085,7 @@ fn overflow_to_taffy(o: Overflow) -> taffy::Overflow {
     match o {
         Overflow::Visible => taffy::Overflow::Visible,
         Overflow::Hidden => taffy::Overflow::Hidden,
-        Overflow::Scroll => taffy::Overflow::Scroll,
+        Overflow::Scroll | Overflow::Auto => taffy::Overflow::Scroll,
     }
 }
 
@@ -938,5 +1118,19 @@ fn justify_content_to_taffy(j: JustifyContent) -> taffy::JustifyContent {
         JustifyContent::SpaceBetween => taffy::JustifyContent::SpaceBetween,
         JustifyContent::SpaceAround => taffy::JustifyContent::SpaceAround,
         JustifyContent::SpaceEvenly => taffy::JustifyContent::SpaceEvenly,
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::{Display, UzStyle};
+
+    #[test]
+    fn text_elements_default_to_block_display() {
+        assert_eq!(UzStyle::default_for_element("text").display, Display::Block);
+        assert_eq!(
+            UzStyle::default_for_element("#text").display,
+            Display::Block
+        );
     }
 }

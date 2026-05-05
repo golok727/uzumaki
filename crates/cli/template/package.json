@@ -12,8 +12,8 @@
     "react": "^19.2.4"
   },
   "devDependencies": {
+    "uzumaki-types": "latest",
     "@types/react": "^19.2.14",
-    "bun-types": "latest",
     "typescript": "^5.8.3"
   }
 }

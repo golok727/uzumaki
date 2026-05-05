@@ -1,6 +1,7 @@
 import { useState } from 'react';
 import { C } from '../theme';
 import { Divider, Badge } from '../components';
+import { Icon } from '../icon';
 
 export function InputsPage() {
   const [username, setUsername] = useState('');
@@ -11,11 +12,25 @@ export function InputsPage() {
   const [search, setSearch] = useState('');
   const [submitted, setSubmitted] = useState(false);
 
+  const [noRounding, setNoRounding] = useState(false);
+  const [rounded, setRounded] = useState(true);
+  const [circle, setCircle] = useState(false);
+
+  const inputPadding = 8;
+
   const pwMatch = password === confirm && confirm.length > 0;
   const pwMismatch = confirm.length > 0 && password !== confirm;
 
   return (
-    <view display="flex" flexDir="col" gap={0} h="full" scrollable>
+    <view
+      display="flex"
+      flexDir="col"
+      gap={0}
+      h="full"
+      scroll
+      scrollbarWidth={8}
+      scrollbarRadius={5}
+    >
       <view
         display="flex"
         flexDir="col"
@@ -36,12 +51,12 @@ export function InputsPage() {
           </text>
           <input
             value={search}
-            onChangeText={setSearch}
+            onValueChange={setSearch}
             placeholder="Search anything... (try IME input)"
             fontSize={15}
             color={C.text}
             bg={C.surface2}
-            p={4}
+            p={inputPadding}
             rounded={8}
             border={1}
             borderColor={search.length > 0 ? C.accent : C.border}
@@ -72,12 +87,12 @@ export function InputsPage() {
             </text>
             <input
               value={username}
-              onChangeText={setUsername}
+              onValueChange={setUsername}
               placeholder="johndoe"
               fontSize={14}
               color={C.text}
               bg={C.surface2}
-              p={4}
+              p={inputPadding}
               rounded={8}
               border={1}
               borderColor={C.border}
@@ -90,12 +105,12 @@ export function InputsPage() {
             </text>
             <input
               value={email}
-              onChangeText={setEmail}
+              onValueChange={setEmail}
               placeholder="john@example.com"
               fontSize={14}
               color={C.text}
               bg={C.surface2}
-              p={4}
+              p={inputPadding}
               rounded={8}
               border={1}
               borderColor={C.border}
@@ -112,12 +127,12 @@ export function InputsPage() {
             <input
               secure
               value={password}
-              onChangeText={setPassword}
+              onValueChange={setPassword}
               placeholder="Enter password"
               fontSize={14}
               color={C.text}
               bg={C.surface2}
-              p={4}
+              p={inputPadding}
               rounded={8}
               border={1}
               borderColor={C.border}
@@ -131,12 +146,12 @@ export function InputsPage() {
             <input
               secure
               value={confirm}
-              onChangeText={setConfirm}
+              onValueChange={setConfirm}
               placeholder="Repeat password"
               fontSize={14}
               color={C.text}
               bg={C.surface2}
-              p={4}
+              p={inputPadding}
               rounded={8}
               border={1}
               borderColor={
@@ -150,9 +165,14 @@ export function InputsPage() {
               </text>
             )}
             {pwMatch && (
-              <text fontSize={11} color={C.success}>
-                ✓ Passwords match
-              </text>
+              <>
+                <view gap={2}>
+                  <text fontSize={11} color={C.success}>
+                    Passwords match
+                  </text>
+                  <Icon name="check" color={C.success} size={12} />
+                </view>
+              </>
             )}
           </view>
         </view>
@@ -172,9 +192,9 @@ export function InputsPage() {
           <input
             multiline
             value={bio}
-            onChangeText={setBio}
+            onValueChange={setBio}
             placeholder="Tell us about yourself... (multiline input, try pasting long text)"
-            fontSize={14}
+            fontSize={16}
             color={C.text}
             bg={C.surface2}
             p={12}
@@ -244,9 +264,13 @@ export function InputsPage() {
             flexDir="col"
             gap={4}
           >
-            <text fontSize={14} fontWeight={700} color={C.successHi}>
-              ✓ Form submitted
-            </text>
+            <view gap={2}>
+              <text fontSize={14} fontWeight={700} color={C.successHi}>
+                Form submitted
+              </text>
+              <Icon name="check" color={C.success} size={12} />
+            </view>
+
             <text fontSize={12} color={C.success}>
               user={username || '(empty)'} · email={email || '(empty)'} · bio=
               {bio.length} chars
@@ -254,6 +278,69 @@ export function InputsPage() {
           </view>
         )}
 
+        <Divider />
+
+        <view display="flex" flexDir="col" gap={12}>
+          <text fontSize={14} fontWeight={700} color={C.text}>
+            Checkboxes
+          </text>
+          <view
+            display="flex"
+            flexDir="col"
+            p={16}
+            gap={14}
+            bg={C.surface2}
+            rounded={8}
+            border={1}
+            borderColor={C.border}
+          >
+            <view display="flex" items="center" gap={12}>
+              <checkbox
+                checked={noRounding}
+                onValueChange={setNoRounding}
+                bg={C.accent}
+                borderColor={noRounding ? C.accent : C.border}
+                color="#ffffff"
+                w={20}
+                h={20}
+                hover:opacity={0.9}
+              />
+              <text fontSize={14} color={C.text}>
+                Square checkbox{noRounding ? ' [selected]' : ''}
+              </text>
+            </view>
+            <view display="flex" items="center" gap={12}>
+              <checkbox
+                checked={rounded}
+                onValueChange={setRounded}
+                bg={C.success}
+                borderColor={rounded ? C.success : C.border}
+                color="#08110a"
+                rounded={4}
+                w={20}
+                h={20}
+              />
+              <text fontSize={14} color={C.text}>
+                Rounded checkbox{rounded ? ' [selected]' : ''}
+              </text>
+            </view>
+            <view display="flex" items="center" gap={12}>
+              <checkbox
+                checked={circle}
+                onValueChange={setCircle}
+                bg={C.warning}
+                borderColor={circle ? C.warning : C.border}
+                color="#1b1104"
+                rounded={10}
+                w={20}
+                h={20}
+              />
+              <text fontSize={14} color={C.text}>
+                Circular checkbox{circle ? ' [selected]' : ''}
+              </text>
+            </view>
+          </view>
+        </view>
         <Divider />
 
         <view display="flex" flexDir="col" gap={8}>
@@ -270,14 +357,12 @@ export function InputsPage() {
             rounded={8}
             border={1}
             borderColor={C.borderHi}
-            overflowX="hidden"
           >
             <text fontSize={13} color={C.textDim} w="100%">
               The quick brown fox jumps over the lazy dog. Pack my box with five
               dozen liquor jugs. How valiantly the strong and quick brown fox
               leaps over the sleeping lazy hound dog! Try selecting this text
-              with your mouse — this tests the selectable prop and focus element
-              behavior.
+              with your mouse.
             </text>
           </view>
         </view>

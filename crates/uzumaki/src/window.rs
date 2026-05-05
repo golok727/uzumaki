@@ -18,13 +18,19 @@ pub struct Window {
     pub(crate) renderer: vello::Renderer,
     pub(crate) scene: Scene,
     pub(crate) text_renderer: TextRenderer,
+    gpu: GpuContext,
     current_cursor: UzCursorIcon,
+    transparent: bool,
     valid_surface: bool,
     vello_target: Option<(wgpu::Texture, wgpu::TextureView)>,
 }
 
 impl Window {
-    pub fn new(gpu: &GpuContext, winit_window: Arc<WinitWindow>) -> Result<Self> {
+    pub fn new(
+        gpu: &GpuContext,
+        winit_window: Arc<WinitWindow>,
+        transparent: bool,
+    ) -> Result<Self> {
         let surface = gpu
             .instance
             .create_surface(winit_window.clone())
@@ -46,6 +52,7 @@ impl Window {
                 )
             })
             .unwrap_or(wgpu::TextureFormat::Bgra8Unorm);
+        let alpha_mode = choose_alpha_mode(&surface_caps.alpha_modes, transparent);
 
         let surface_config = wgpu::SurfaceConfiguration {
             usage: wgpu::TextureUsages::RENDER_ATTACHMENT,
@@ -54,14 +61,12 @@ impl Window {
             height: size.height.max(1),
             present_mode: wgpu::PresentMode::Fifo,
             desired_maximum_frame_latency: 2,
-            alpha_mode: surface_caps.alpha_modes[0],
+            alpha_mode,
             view_formats: vec![format],
         };
 
         surface.configure(&gpu.device, &surface_config);
 
-        // let renderer = vello::Renderer::new(&gpu.device, RendererOptions::default())
-        //     .context("Error creating renderer")?;
         let renderer = vello::Renderer::new(
             &gpu.device,
             RendererOptions {
@@ -80,7 +85,9 @@ impl Window {
             surface_config,
             scene,
             text_renderer: TextRenderer::new(),
+            gpu: gpu.clone(),
             current_cursor: UzCursorIcon::Default,
+            transparent,
             valid_surface,
             vello_target: None,
         })
@@ -88,6 +95,28 @@ impl Window {
 
     pub fn id(&self) -> winit::window::WindowId {
         self.winit_window.id()
+    }
+
+    pub fn scale_factor(&self) -> f64 {
+        self.winit_window.scale_factor()
+    }
+
+    pub fn set_transparent(&mut self, transparent: bool) {
+        if self.transparent == transparent {
+            return;
+        }
+        self.transparent = transparent;
+        self.reconfigure_surface_alpha();
+        if self.valid_surface {
+            self.surface
+                .configure(&self.gpu.device, &self.surface_config);
+        }
+        self.winit_window.set_transparent(transparent);
+        self.winit_window.request_redraw();
+    }
+
+    pub fn inner_size(&self) -> winit::dpi::PhysicalSize<u32> {
+        self.winit_window.inner_size()
     }
 
     pub(crate) fn set_cursor(&mut self, icon: UzCursorIcon) {
@@ -98,16 +127,13 @@ impl Window {
         self.winit_window.set_cursor(icon.to_winit());
     }
 
-    pub(crate) fn paint_and_present(
-        &mut self,
-        device: &wgpu::Device,
-        queue: &wgpu::Queue,
-        dom: &mut UIState,
-    ) {
+    pub(crate) fn paint_and_present(&mut self, dom: &mut UIState) {
         if !self.valid_surface {
             return;
         }
 
+        let device = &self.gpu.device;
+        let queue = &self.gpu.queue;
         let width = self.surface_config.width;
         let height = self.surface_config.height;
 
@@ -120,16 +146,18 @@ impl Window {
             height as f32 / scale as f32,
             &mut self.text_renderer,
         );
-        Painter::new(dom, &mut self.scene, &mut self.text_renderer, scale).paint();
-        if dom.refresh_hit_test() {
-            self.scene.reset();
-            Painter::new(dom, &mut self.scene, &mut self.text_renderer, scale).paint();
-        }
+
+        Painter::new(dom, &mut self.text_renderer, scale).paint(&mut self.scene);
+        dom.refresh_hit_test();
 
         let target_view = Self::ensure_vello_target(&mut self.vello_target, device, width, height);
 
         let render_params = RenderParams {
-            base_color: Color::from_rgba8(24, 24, 37, 255),
+            base_color: if self.transparent {
+                Color::from_rgba8(0, 0, 0, 0)
+            } else {
+                Color::from_rgba8(24, 24, 37, 255)
+            },
             width,
             height,
             antialiasing_method: vello::AaConfig::Area,
@@ -193,21 +221,90 @@ impl Window {
         &target.as_ref().unwrap().1
     }
 
-    fn resize_surface(&mut self, device: &wgpu::Device, width: u32, height: u32) {
+    fn resize_surface(&mut self, width: u32, height: u32) {
         self.surface_config.width = width;
         self.surface_config.height = height;
-        self.surface.configure(device, &self.surface_config);
+        self.reconfigure_surface_alpha();
+        self.surface
+            .configure(&self.gpu.device, &self.surface_config);
         self.vello_target = None;
     }
 
-    pub(crate) fn on_resize(&mut self, device: &wgpu::Device, width: u32, height: u32) -> bool {
+    pub(crate) fn on_resize(&mut self, width: u32, height: u32) -> bool {
         if width != 0 && height != 0 {
-            self.resize_surface(device, width, height);
+            self.resize_surface(width, height);
             self.valid_surface = true;
             true
         } else {
             self.valid_surface = false;
             false
         }
+    }
+
+    fn reconfigure_surface_alpha(&mut self) {
+        let surface_caps = self.surface.get_capabilities(&self.gpu.adapter);
+        self.surface_config.alpha_mode =
+            choose_alpha_mode(&surface_caps.alpha_modes, self.transparent);
+    }
+}
+
+fn choose_alpha_mode(
+    modes: &[wgpu::CompositeAlphaMode],
+    transparent: bool,
+) -> wgpu::CompositeAlphaMode {
+    use wgpu::CompositeAlphaMode::*;
+
+    let preferred: &[wgpu::CompositeAlphaMode] = if transparent {
+        &[PreMultiplied, PostMultiplied, Inherit]
+    } else {
+        &[Opaque]
+    };
+
+    preferred
+        .iter()
+        .find(|mode| modes.contains(mode))
+        .or_else(|| modes.first())
+        .copied()
+        .unwrap_or(Auto)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::choose_alpha_mode;
+
+    #[test]
+    fn transparent_windows_prefer_compositing_alpha_modes() {
+        let modes = [
+            wgpu::CompositeAlphaMode::Opaque,
+            wgpu::CompositeAlphaMode::PostMultiplied,
+        ];
+
+        assert_eq!(
+            choose_alpha_mode(&modes, true),
+            wgpu::CompositeAlphaMode::PostMultiplied
+        );
+    }
+
+    #[test]
+    fn opaque_windows_prefer_opaque_alpha_mode() {
+        let modes = [
+            wgpu::CompositeAlphaMode::Inherit,
+            wgpu::CompositeAlphaMode::Opaque,
+        ];
+
+        assert_eq!(
+            choose_alpha_mode(&modes, false),
+            wgpu::CompositeAlphaMode::Opaque
+        );
+    }
+
+    #[test]
+    fn alpha_mode_selection_falls_back_to_supported_mode() {
+        let modes = [wgpu::CompositeAlphaMode::Opaque];
+
+        assert_eq!(
+            choose_alpha_mode(&modes, true),
+            wgpu::CompositeAlphaMode::Opaque
+        );
     }
 }

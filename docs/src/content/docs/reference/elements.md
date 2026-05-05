@@ -75,26 +75,26 @@ This element is specifically for text entry. Checkbox controls use a separate
   fontSize={16}
   color="#e4e4e7"
   value={value}
-  onChangeText={setValue}
+  onInput={(ev) => setValue(ev.target.value)} // todo replace with `onValueChange(string)`
 />
 ```
 
 ### Input props
 
-| Prop           | Type                     | Description                 |
-| -------------- | ------------------------ | --------------------------- |
-| `value`        | `string`                 | Controlled value            |
-| `onChangeText` | `(text: string) => void` | Called when text changes    |
-| `placeholder`  | `string`                 | Placeholder text            |
-| `secure`       | `boolean`                | Mask input (password field) |
-| `multiline`    | `boolean`                | Allow multiple lines        |
+| Prop            | Type                     | Description                     |
+| --------------- | ------------------------ | ------------------------------- |
+| `value`         | `string`                 | Controlled value                |
+| `onValueChange` | `(text: string) => void` | Called when input.value changes |
+| `placeholder`   | `string`                 | Placeholder text                |
+| `secure`        | `boolean`                | Mask input (password field)     |
+| `multiline`     | `boolean`                | Allow multiple lines            |
 
 ```tsx
 // Password input
-<input secure value={password} onChangeText={setPassword} />
+<input secure value={password} onValueChange={setPassword} />
 
 // Multiline
-<input multiline h={120} value={text} onChangeText={setText} />
+<input multiline h={120} value={text} onValueChange={setText} />
 ```
 
 ## `<checkbox>`
@@ -104,7 +104,7 @@ A boolean form control for checked and unchecked state.
 ```tsx
 <checkbox
   checked={done}
-  onChange={setDone}
+  onValueChange={setDone}
   bg="#3b82f6"
   borderColor="#93c5fd"
   color="#ffffff"
@@ -116,10 +116,10 @@ A boolean form control for checked and unchecked state.
 
 ### Checkbox props
 
-| Prop       | Type                         | Description                   |
-| ---------- | ---------------------------- | ----------------------------- |
-| `checked`  | `boolean`                    | Controlled checked state      |
-| `onChange` | `(checked: boolean) => void` | Called when the value toggles |
+| Prop            | Type                         | Description                              |
+| --------------- | ---------------------------- | ---------------------------------------- |
+| `checked`       | `boolean`                    | Controlled checked state                 |
+| `onValueChange` | `(checked: boolean) => void` | Called when the checkbox.checked toggles |
 
 Checkboxes also support the normal element props from `<view>`, which makes
 them easy to customize with `bg`, `borderColor`, `color`, `rounded`, `border`,
@@ -129,7 +129,7 @@ them easy to customize with `bg`, `borderColor`, `color`, `rounded`, `border`,
 <view display="flex" items="center" gap={12}>
   <checkbox
     checked={marketing}
-    onChange={setMarketing}
+    onValueChange={setMarketing}
     bg="#22c55e"
     borderColor={marketing ? '#22c55e' : '#3f3f46'}
     color="#08110a"
@@ -138,3 +138,35 @@ them easy to customize with `bg`, `borderColor`, `color`, `rounded`, `border`,
   <text color="#e4e4e7">Email marketing</text>
 </view>
 ```
+
+## `<image>`
+
+Renders a native raster image decoded by the runtime and painted through Vello.
+
+```tsx
+const hero = new URL('./hero.png', import.meta.url).href;
+
+<image src={hero} w={320} rounded={12} />;
+```
+
+### Image props
+
+| Prop  | Type     | Description          |
+| ----- | -------- | -------------------- |
+| `src` | `string` | Image source to load |
+
+Sizing behavior in v1:
+
+- No `w` and `h`: uses the image's natural size
+- Only one of `w` or `h`: preserves aspect ratio
+- Both `w` and `h`: stretches to the given box
+
+Source behavior in v1:
+
+- Preferred bundled asset form: `new URL('./asset.png', import.meta.url).href`
+- Also supports remote URLs such as `https://...`
+- Also supports explicit local file paths and `file://` URLs
+
+Supported formats follow Deno's current image pipeline and cover common raster
+formats such as PNG, JPEG, GIF, BMP, ICO, and WebP. SVG is not supported by
+this element.

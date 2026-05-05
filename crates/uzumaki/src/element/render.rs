@@ -1,715 +1,659 @@
 use std::collections::HashMap;
 
 use vello::Scene;
-use vello::kurbo::{Affine, Rect, RoundedRect, RoundedRectRadii};
+use vello::kurbo::{Affine, Rect};
 use vello::peniko::{Color as VelloColor, Fill};
 
 use crate::element::checkbox::CheckboxRenderInfo;
+use crate::element::image::ImageRenderInfo;
 use crate::element::input::InputRenderInfo;
-use crate::element::{InheritedProperties, NodeContext, ScrollThumbRect, UzNodeId};
-use crate::style::{Bounds, TextStyle, UzStyle, Visibility};
+use crate::element::scroll::{self, ScrollAxisInfo, ThumbGeometry};
+use crate::element::{ImageMeasureInfo, ScrollAxis, ScrollState, ScrollThumbRect, UzNodeId};
+use crate::layout::NodeContext;
+use crate::style::{Bounds, ScrollbarStyle, UzStyle, Visibility};
 use crate::text::{
     TextRenderer, apply_text_style_to_editor, secure_cursor_geometry, secure_selection_geometry,
 };
 use crate::ui::UIState;
 
-/// Renders an `ElementTree` into a Vello `Scene`. Also rebuilds hitboxes and
-/// scroll thumbs as a side effect of walking the tree.
 pub struct Painter<'a> {
     dom: &'a mut UIState,
-    scene: &'a mut Scene,
     text_renderer: &'a mut TextRenderer,
     scale: f64,
 }
 
 impl<'a> Painter<'a> {
-    pub fn new(
-        dom: &'a mut UIState,
-        scene: &'a mut Scene,
-        text_renderer: &'a mut TextRenderer,
-        scale: f64,
-    ) -> Self {
+    pub fn new(dom: &'a mut UIState, text_renderer: &'a mut TextRenderer, scale: f64) -> Self {
         Self {
             dom,
-            scene,
             text_renderer,
             scale,
         }
     }
 
-    pub fn paint(mut self) {
+    pub fn paint(mut self, scene: &mut Scene) {
         self.dom.hitbox_store.clear();
         self.dom.scroll_thumbs.clear();
+        for (_, node) in self.dom.nodes.iter_mut() {
+            node.interactivity.hitbox_id = None;
+        }
         self.dom.build_text_select_runs();
 
-        if let Some(root) = self.dom.root {
-            self.render_tree(root);
-        }
-    }
+        let text_selections = self.compute_text_selections_map();
 
-    fn paint_translation(&self, x: f64, y: f64) -> Affine {
-        Affine::translate((x, y))
-    }
+        let Some(root) = self.dom.root else {
+            return;
+        };
 
-    fn render_tree(&mut self, root_id: UzNodeId) {
-        // Pre-compute per-node selection ranges for text selection painting
-        let text_sel_map = self.compute_text_selections_map();
-
-        let mut render_list: Vec<RenderCommand> = Vec::new();
-        let mut stack: Vec<StackItem> = vec![StackItem::Visit(
-            root_id,
+        self.render_node(
+            root,
             0.0,
             0.0,
             Affine::scale(self.scale),
             Affine::IDENTITY,
-            InheritedProperties::default(),
-        )];
-
-        while let Some(item) = stack.pop() {
-            match item {
-                StackItem::PushClip(rect, transform) => {
-                    render_list.push(RenderCommand::PushClip(rect, transform));
-                    continue;
-                }
-                StackItem::PopClip => {
-                    render_list.push(RenderCommand::PopClip);
-                    continue;
-                }
-                StackItem::PaintThumb(info) => {
-                    render_list.push(RenderCommand::PaintThumb(info));
-                    continue;
-                }
-                StackItem::Visit(
-                    node_id,
-                    parent_x,
-                    parent_y,
-                    parent_paint_transform,
-                    parent_hit_transform,
-                    parent_inherited,
-                ) => {
-                    // Extract all needed data from the node (immutable borrow scope)
-                    let (
-                        taffy_node,
-                        computed_style,
-                        text,
-                        input_snapshot,
-                        checkbox_snapshot,
-                        needs_hitbox,
-                        is_scrollable,
-                        first_child,
-                        inherited,
-                    ) = {
-                        let node = &self.dom.nodes[node_id];
-
-                        // Resolve inherited properties
-                        let mut inherited = parent_inherited.clone();
-
-                        // if not inherited property set the value
-                        if let Some(text_selectable) = node.text_selectable().as_value() {
-                            inherited.text_selectable = text_selectable;
-                        }
-
-                        let taffy_node = node.taffy_node;
-                        let computed_style = node.interactivity.compute_style(
-                            &node.style,
-                            node_id,
-                            &self.dom.hit_state,
-                        );
-
-                        let text = node
-                            .as_text_node()
-                            .map(|tc| (tc.content.clone(), computed_style.text.clone()));
-
-                        let is_input = node.is_text_input();
-                        let input_snapshot = if is_input {
-                            let is = node.as_text_input().unwrap();
-                            Some((
-                                is.display_text(),
-                                is.placeholder.clone(),
-                                is.focused,
-                                is.scroll_offset,
-                                is.scroll_offset_y,
-                                is.blink_visible(self.dom.window_focused),
-                                is.multiline,
-                                is.preedit.clone(),
-                            ))
-                        } else {
-                            None
-                        };
-                        let checkbox_snapshot = if node.is_checkbox_input() {
-                            node.as_checkbox_input()
-                                .copied()
-                                .map(|checked| CheckboxRenderInfo {
-                                    checked,
-                                    focused: self.dom.focused_node == Some(node_id),
-                                })
-                        } else {
-                            None
-                        };
-                        // Visible boxes participate in hit testing by default. This lets
-                        // non-listener overlays consume pointer targeting instead of leaking
-                        // hover/active state to lower siblings.
-                        let needs_hitbox = true;
-                        let is_scrollable = node.scroll_state.is_some();
-                        let first_child = node.first_child;
-
-                        (
-                            taffy_node,
-                            computed_style,
-                            text,
-                            input_snapshot,
-                            checkbox_snapshot,
-                            needs_hitbox,
-                            is_scrollable,
-                            first_child,
-                            inherited,
-                        )
-                    };
-
-                    if computed_style.visibility == Visibility::Hidden
-                        || computed_style.display == crate::style::Display::None
-                    {
-                        continue;
-                    }
-
-                    let Ok(layout) = self.dom.taffy.layout(taffy_node) else {
-                        continue;
-                    };
-
-                    // Populate InputRenderInfo with geometry from PlainEditor (needs mut access)
-                    let input = if let Some((
-                        display_text,
-                        placeholder,
-                        focused,
-                        scroll_offset,
-                        scroll_offset_y,
-                        blink_visible,
-                        multiline,
-                        preedit_state,
-                    )) = input_snapshot
-                    {
-                        let pad_h = computed_style.padding.left + computed_style.padding.right;
-                        let text_w = (layout.size.width - pad_h).max(0.0);
-                        let text_style = computed_style.text.clone();
-
-                        let node_mut = &mut self.dom.nodes[node_id];
-                        let is = node_mut.as_text_input_mut().unwrap();
-
-                        // Apply styles to editor
-                        apply_text_style_to_editor(&mut is.editor, &text_style);
-                        is.editor
-                            .set_width(if multiline { Some(text_w) } else { None });
-                        is.editor.refresh_layout(
-                            &mut self.text_renderer.font_ctx,
-                            &mut self.text_renderer.layout_ctx,
-                        );
-
-                        let cursor_rect = if blink_visible || preedit_state.is_some() {
-                            if is.secure {
-                                secure_cursor_geometry(
-                                    &is.editor,
-                                    1.5,
-                                    &text_style,
-                                    self.text_renderer,
-                                )
-                            } else {
-                                is.editor.cursor_geometry(1.5)
-                            }
-                        } else {
-                            None
-                        };
-
-                        let selection_rects = if is.secure {
-                            secure_selection_geometry(&is.editor, &text_style, self.text_renderer)
-                        } else {
-                            is.editor
-                                .selection_geometry()
-                                .into_iter()
-                                .map(|(bb, _)| bb)
-                                .collect()
-                        };
-
-                        let layout_height =
-                            is.editor.try_layout().map(|l| l.height()).unwrap_or(0.0);
-
-                        let preedit = preedit_state.map(|ps| {
-                            let positions = self
-                                .text_renderer
-                                .grapheme_x_positions(&ps.text, &text_style);
-                            let width = *positions.last().unwrap_or(&0.0);
-                            crate::element::input::PreeditRenderInfo {
-                                text: ps.text,
-                                cursor_x: ps
-                                    .cursor
-                                    .map(|(start, _)| {
-                                        if start < positions.len() {
-                                            positions[start]
-                                        } else {
-                                            width
-                                        }
-                                    })
-                                    .unwrap_or(width),
-                                width,
-                            }
-                        });
-                        Some(InputRenderInfo {
-                            display_text,
-                            placeholder,
-                            text_style,
-                            focused,
-                            cursor_rect,
-                            selection_rects,
-                            scroll_offset,
-                            scroll_offset_y,
-                            blink_visible,
-                            multiline,
-                            layout_height,
-                            preedit,
-                        })
-                    } else {
-                        None
-                    };
-
-                    let x = parent_x + layout.location.x as f64;
-                    let y = parent_y + layout.location.y as f64;
-                    let w = layout.size.width as f64;
-                    let h = layout.size.height as f64;
-                    let local_style_transform = computed_style.transform.to_affine(w, h);
-                    let transform = parent_paint_transform
-                        * self
-                            .paint_translation(layout.location.x as f64, layout.location.y as f64)
-                        * local_style_transform;
-                    let hit_transform = parent_hit_transform
-                        * Affine::translate((layout.location.x as f64, layout.location.y as f64))
-                        * local_style_transform;
-
-                    // Compute scroll info and clamp offset (mutable borrow is safe now)
-                    let scroll_info = if is_scrollable {
-                        let content_height = layout.content_size.height;
-                        let visible_height = layout.size.height;
-                        let max_scroll = (content_height - visible_height).max(0.0);
-                        if let Some(ss) = self.dom.nodes[node_id].scroll_state.as_mut()
-                            && ss.scroll_offset_y > max_scroll
-                        {
-                            ss.scroll_offset_y = max_scroll;
-                        }
-                        let clamped_offset = self.dom.nodes[node_id]
-                            .scroll_state
-                            .as_ref()
-                            .map(|ss| ss.scroll_offset_y)
-                            .unwrap_or(0.0);
-                        Some((content_height, visible_height, clamped_offset))
-                    } else {
-                        None
-                    };
-
-                    // Collect children in order
-                    let mut children = Vec::new();
-                    let mut child = first_child;
-                    while let Some(child_id) = child {
-                        children.push(child_id);
-                        child = self.dom.nodes[child_id].next_sibling;
-                    }
-
-                    if let Some((content_height, visible_height, clamped_offset)) = scroll_info {
-                        let overflows = content_height > visible_height;
-                        let thumb_hovered = self
-                            .dom
-                            .scroll_drag
-                            .as_ref()
-                            .is_some_and(|d| d.node_id == node_id)
-                            || self.dom.scroll_thumbs.iter().any(|t| {
-                                t.node_id == node_id
-                                    && self
-                                        .dom
-                                        .hit_state
-                                        .mouse_position
-                                        .is_some_and(|(mx, my)| t.thumb_bounds.contains(mx, my))
-                            });
-
-                        let mouse_in_view = self
-                            .dom
-                            .scroll_drag
-                            .as_ref()
-                            .is_some_and(|d| d.node_id == node_id)
-                            || self.dom.hit_state.mouse_position.is_some_and(|(mx, my)| {
-                                mx >= x && mx <= x + w && my >= y && my <= y + h
-                            });
-
-                        // Push in reverse order for LIFO stack:
-                        // 6. PaintThumb (last to execute)
-                        if overflows {
-                            stack.push(StackItem::PaintThumb(ThumbInfo {
-                                node_id,
-                                view_bounds: Bounds::new(x, y, w, h),
-                                transform,
-                                view_w: w,
-                                view_h: h,
-                                scroll_offset_y: clamped_offset,
-                                content_height,
-                                visible_height,
-                                thumb_hovered,
-                                mouse_in_view,
-                            }));
-                        }
-                        // 5. PopClip
-                        stack.push(StackItem::PopClip);
-                        // 4-3. Children (reversed for correct order)
-                        for &child_id in children.iter().rev() {
-                            let child_paint_parent =
-                                transform * Affine::translate((0.0, -clamped_offset as f64));
-                            let child_hit_parent =
-                                hit_transform * Affine::translate((0.0, -clamped_offset as f64));
-                            stack.push(StackItem::Visit(
-                                child_id,
-                                x,
-                                y - clamped_offset as f64,
-                                child_paint_parent,
-                                child_hit_parent,
-                                inherited.clone(),
-                            ));
-                        }
-                        // 2. PushClip
-                        let clip_rect = Rect::new(0.0, 0.0, w, h);
-                        stack.push(StackItem::PushClip(clip_rect, transform));
-                    } else {
-                        // Normal (non-scrollable) node: push children
-                        for &child_id in children.iter().rev() {
-                            stack.push(StackItem::Visit(
-                                child_id,
-                                x,
-                                y,
-                                transform,
-                                hit_transform,
-                                inherited.clone(),
-                            ));
-                        }
-                    }
-
-                    // 1. PaintNode (always first — the node's own bg/borders)
-                    render_list.push(RenderCommand::PaintNode(Box::new(RenderInfo {
-                        node_id,
-                        x,
-                        y,
-                        w,
-                        h,
-                        transform,
-                        hit_transform,
-                        style: Box::new(computed_style),
-                        text,
-                        needs_hitbox,
-                        input,
-                        checkbox: checkbox_snapshot,
-                    })));
-                }
-            }
-        }
-
-        // Paint all commands in order
-        for cmd in &render_list {
-            match cmd {
-                RenderCommand::PaintNode(info) => self.paint_node(info, &text_sel_map),
-                RenderCommand::PushClip(rect, transform) => {
-                    self.scene.push_clip_layer(Fill::NonZero, *transform, rect);
-                }
-                RenderCommand::PopClip => {
-                    self.scene.pop_layer();
-                }
-                RenderCommand::PaintThumb(thumb) => self.paint_thumb(thumb),
-            }
-        }
+            None,
+            scene,
+            &text_selections,
+        );
     }
 
-    fn paint_node(&mut self, info: &RenderInfo, text_sel_map: &HashMap<UzNodeId, (usize, usize)>) {
-        let local_bounds = Bounds::new(0.0, 0.0, info.w, info.h);
-        let hit_bounds = Bounds::new(info.x, info.y, info.w, info.h);
+    #[allow(clippy::too_many_arguments)]
+    fn render_node(
+        &mut self,
+        node_id: UzNodeId,
+        parent_x: f64,
+        parent_y: f64,
+        parent_paint_transform: Affine,
+        parent_hit_transform: Affine,
+        parent_style: Option<&UzStyle>,
+        scene: &mut Scene,
+        text_selections: &HashMap<UzNodeId, (usize, usize)>,
+    ) {
+        let Some(node_ref) = self.dom.nodes.get(node_id) else {
+            return;
+        };
+        let layout = LayoutSnapshot::from(&node_ref.final_layout);
 
-        // Register hitbox if needed
-        if info.needs_hitbox {
-            let hitbox_id = self.dom.hitbox_store.insert_transformed(
-                info.node_id,
-                local_bounds,
-                info.hit_transform,
-            );
-            self.dom.nodes[info.node_id].interactivity.hitbox_id = Some(hitbox_id);
-        }
+        let computed_style = self.dom.computed_style(node_id, parent_style);
 
-        if let Some(input_info) = &info.input {
-            let content_info = crate::element::input::paint_input(
-                self.scene,
-                self.text_renderer,
-                local_bounds,
-                &info.style,
-                input_info,
-                info.transform,
-            );
-
-            // Paint scrollbar for multiline inputs with overflow
-            if let Some(ci) = content_info
-                && ci.content_height > ci.visible_height
-            {
-                let mouse_in = self
-                    .dom
-                    .scroll_drag
-                    .as_ref()
-                    .is_some_and(|d| d.node_id == info.node_id)
-                    || self
-                        .dom
-                        .hit_state
-                        .mouse_position
-                        .is_some_and(|(mx, my)| hit_bounds.contains(mx, my));
-
-                let thumb_width = 4.0;
-                let thumb_margin = 4.0;
-                let ratio = ci.visible_height / ci.content_height;
-                let thumb_height = (hit_bounds.height * ratio).max(24.0);
-                let max_scroll = (ci.content_height - ci.visible_height).max(0.0);
-                let scroll_ratio = if max_scroll > 0.0 {
-                    ci.scroll_offset_y / max_scroll
-                } else {
-                    0.0
-                };
-                let local_thumb_y = scroll_ratio * (hit_bounds.height - thumb_height);
-                let local_thumb_x = hit_bounds.width - thumb_width - thumb_margin;
-                let thumb_y = hit_bounds.y + local_thumb_y;
-                let thumb_x = hit_bounds.x + local_thumb_x;
-
-                let thumb_bounds = Bounds::new(thumb_x, thumb_y, thumb_width, thumb_height);
-
-                // Register for hit testing (drag + wheel)
-                self.dom.scroll_thumbs.push(ScrollThumbRect {
-                    node_id: info.node_id,
-                    thumb_bounds,
-                    view_bounds: hit_bounds,
-                    content_height: ci.content_height as f32,
-                    visible_height: ci.visible_height as f32,
-                });
-
-                if mouse_in {
-                    let thumb_hovered = self
-                        .dom
-                        .scroll_drag
-                        .as_ref()
-                        .is_some_and(|d| d.node_id == info.node_id)
-                        || self
-                            .dom
-                            .hit_state
-                            .mouse_position
-                            .is_some_and(|(mx, my)| thumb_bounds.contains(mx, my));
-                    let alpha = if thumb_hovered { 140u8 } else { 90u8 };
-                    let color = VelloColor::from_rgba8(255, 255, 255, alpha);
-                    let radius = thumb_width / 2.0;
-                    let rect = Rect::new(
-                        local_thumb_x,
-                        local_thumb_y,
-                        local_thumb_x + thumb_width,
-                        local_thumb_y + thumb_height,
-                    );
-                    let rounded =
-                        RoundedRect::from_rect(rect, RoundedRectRadii::from_single_radius(radius));
-                    // Clip to input bounds
-                    let clip = Rect::new(0.0, 0.0, hit_bounds.width, hit_bounds.height);
-                    self.scene
-                        .push_clip_layer(Fill::NonZero, info.transform, &clip);
-                    self.scene
-                        .fill(Fill::NonZero, info.transform, color, None, &rounded);
-                    self.scene.pop_layer();
-                }
-            }
-        } else if let Some(checkbox_info) = &info.checkbox {
-            crate::element::checkbox::paint_checkbox(
-                self.scene,
-                local_bounds,
-                &info.style,
-                checkbox_info,
-                info.transform,
-            );
-        } else if let Some((content, text_style)) = &info.text {
-            let sel_range = text_sel_map.get(&info.node_id).copied();
-            if sel_range.is_some() {
-                let scene = &mut *self.scene;
-                let text_renderer = &mut *self.text_renderer;
-                info.style
-                    .paint(local_bounds, scene, info.transform, |scene| {
-                        if let Some((sel_start, sel_end)) = sel_range {
-                            let rects = text_renderer.selection_rects(
-                                content,
-                                text_style,
-                                Some(local_bounds.width as f32),
-                                sel_start,
-                                sel_end,
-                            );
-                            let sel_color = VelloColor::from_rgba8(56, 121, 185, 128);
-                            for rect in rects {
-                                scene.fill(
-                                    Fill::NonZero,
-                                    info.transform,
-                                    sel_color,
-                                    None,
-                                    &Rect::new(rect.x0, rect.y0, rect.x1, rect.y1),
-                                );
-                            }
-                        }
-                        text_renderer.draw_text(
-                            scene,
-                            content,
-                            text_style,
-                            local_bounds.width as f32,
-                            local_bounds.height as f32,
-                            (0.0, 0.0),
-                            text_style.color.to_vello(),
-                            info.transform,
-                        );
-                    });
-            } else {
-                crate::element::text::paint_text(
-                    self.scene,
-                    self.text_renderer,
-                    local_bounds,
-                    &info.style,
-                    content,
-                    text_style,
-                    text_style.color,
-                    info.transform,
-                );
-            }
-        } else {
-            crate::element::view::paint_view(
-                self.scene,
-                local_bounds,
-                &info.style,
-                info.transform,
-                |_| {},
-            );
-        }
-    }
-
-    fn paint_thumb(&mut self, thumb: &ThumbInfo) {
-        // Only show scrollbar when mouse is inside the scrollable node
-        if !thumb.mouse_in_view {
+        if computed_style.visibility == Visibility::Hidden
+            || computed_style.display == crate::style::Display::None
+        {
             return;
         }
 
-        // Scrollbar thumb: 4px wide, 4px margin from right edge
-        let thumb_width = 4.0;
-        let thumb_margin = 4.0;
+        let x = parent_x + layout.location_x;
+        let y = parent_y + layout.location_y;
+        let w = layout.size_w;
+        let h = layout.size_h;
 
-        let ratio = thumb.visible_height as f64 / thumb.content_height as f64;
-        let thumb_height = (thumb.view_h * ratio).max(24.0);
-        let track_height = thumb.view_h;
-        let max_scroll = (thumb.content_height - thumb.visible_height).max(0.0) as f64;
-        let scroll_ratio = if max_scroll > 0.0 {
-            thumb.scroll_offset_y as f64 / max_scroll
-        } else {
-            0.0
-        };
-        let local_thumb_y = scroll_ratio * (track_height - thumb_height);
-        let local_thumb_x = thumb.view_w - thumb_width - thumb_margin;
-        let thumb_y = thumb.view_bounds.y + local_thumb_y;
-        let thumb_x = thumb.view_bounds.x + local_thumb_x;
+        let local_style_transform = computed_style.transform.to_affine(w, h);
+        let local_translate = Affine::translate((layout.location_x, layout.location_y));
+        let transform = parent_paint_transform * local_translate * local_style_transform;
+        let hit_transform = parent_hit_transform * local_translate * local_style_transform;
 
-        let thumb_bounds = Bounds::new(thumb_x, thumb_y, thumb_width, thumb_height);
-
-        // Register for hit testing
-        self.dom.scroll_thumbs.push(ScrollThumbRect {
-            node_id: thumb.node_id,
-            thumb_bounds,
-            view_bounds: thumb.view_bounds,
-            content_height: thumb.content_height,
-            visible_height: thumb.visible_height,
-        });
-
-        // Paint the thumb as a filled rounded rect
-        let alpha = if thumb.thumb_hovered { 140u8 } else { 90u8 };
-        let color = VelloColor::from_rgba8(255, 255, 255, alpha);
-        let radius = thumb_width / 2.0;
-        let rect = Rect::new(
-            local_thumb_x,
-            local_thumb_y,
-            local_thumb_x + thumb_width,
-            local_thumb_y + thumb_height,
+        let hitbox_id = self.dom.hitbox_store.insert_transformed(
+            node_id,
+            Bounds::new(0.0, 0.0, w, h),
+            hit_transform,
         );
-        let rounded = RoundedRect::from_rect(rect, RoundedRectRadii::from_single_radius(radius));
-        self.scene
-            .fill(Fill::NonZero, thumb.transform, color, None, &rounded);
+        self.dom.nodes[node_id].interactivity.hitbox_id = Some(hitbox_id);
+
+        self.paint_node(
+            node_id,
+            &layout,
+            &computed_style,
+            Bounds::new(0.0, 0.0, w, h),
+            Bounds::new(x, y, w, h),
+            transform,
+            scene,
+            text_selections,
+        );
+
+        let view_scroll = self.prepare_view_scroll(
+            node_id,
+            &computed_style,
+            &layout,
+            Bounds::new(x, y, w, h),
+            transform,
+        );
+
+        let needs_clip = view_scroll.is_some()
+            || computed_style.overflow_x.clips()
+            || computed_style.overflow_y.clips();
+
+        let (offset_x, offset_y, mouse_in_view, view_thumbs) = match view_scroll {
+            Some(v) => (v.offset_x, v.offset_y, v.mouse_in_view, v.thumbs),
+            None => (0.0, 0.0, false, Vec::new()),
+        };
+
+        let scroll_translate = if offset_x != 0.0 || offset_y != 0.0 {
+            Affine::translate((-offset_x, -offset_y))
+        } else {
+            Affine::IDENTITY
+        };
+        let child_paint_transform = transform * scroll_translate;
+        let child_hit_transform = hit_transform * scroll_translate;
+
+        if needs_clip {
+            scene.push_clip_layer(Fill::NonZero, transform, &Rect::new(0.0, 0.0, w, h));
+        }
+
+        let children = self.dom.nodes[node_id].children.clone();
+        for child_id in children {
+            self.render_node(
+                child_id,
+                x - offset_x,
+                y - offset_y,
+                child_paint_transform,
+                child_hit_transform,
+                Some(&computed_style),
+                scene,
+                text_selections,
+            );
+        }
+
+        if needs_clip {
+            scene.pop_layer();
+        }
+
+        if mouse_in_view {
+            for thumb in view_thumbs {
+                scroll::paint_thumb(
+                    scene,
+                    thumb.transform,
+                    &thumb.geom,
+                    thumb.hovered,
+                    &thumb.style,
+                );
+            }
+        }
     }
 
-    /// Pre-compute per-text-node selection ranges for the current frame.
-    /// Returns a map from NodeId → (local_sel_start, local_sel_end) in grapheme units.
+    #[allow(clippy::too_many_arguments)]
+    fn paint_node(
+        &mut self,
+        node_id: UzNodeId,
+        layout: &LayoutSnapshot,
+        style: &UzStyle,
+        bounds: Bounds,      // local (0,0,w,h)
+        view_bounds: Bounds, // absolute (x,y,w,h) for scrollbar placement
+        transform: Affine,
+        scene: &mut Scene,
+        text_selections: &HashMap<UzNodeId, (usize, usize)>,
+    ) {
+        if self.dom.nodes[node_id].is_text_input() {
+            // TODO: dont snapshot
+            let info = self.build_input_render_info(node_id, style, layout);
+            crate::element::input::paint_input(
+                scene,
+                self.text_renderer,
+                bounds,
+                style,
+                &info,
+                transform,
+            );
+            // Input scrollbar paints outside the input's text clip.
+            if let Some(thumb) = self.register_input_scrollbar(
+                node_id,
+                style,
+                layout.size_w,
+                layout.size_h,
+                &info,
+                transform,
+                view_bounds.x,
+                view_bounds.y,
+            ) {
+                scroll::paint_thumb(
+                    scene,
+                    thumb.transform,
+                    &thumb.geom,
+                    thumb.hovered,
+                    &thumb.style,
+                );
+            }
+            return;
+        }
+
+        let node = &self.dom.nodes[node_id];
+
+        if let Some(&checked) = node.as_checkbox_input() {
+            let info = CheckboxRenderInfo {
+                checked,
+                focused: self.dom.focused_node == Some(node_id),
+            };
+            crate::element::checkbox::paint_checkbox(scene, bounds, style, &info, transform);
+        } else if let Some(img) = node.as_image() {
+            let info = ImageRenderInfo {
+                data: img.data.clone(),
+            };
+            crate::element::image::paint_image(scene, bounds, style, &info, transform);
+        } else if let Some(tc) = node.get_text_content() {
+            let sel = text_selections.get(&node_id).copied();
+            let text_len = tc.content.len();
+            // Cached parley layout (built once per frame in refresh_text_layouts).
+            // If absent (shouldn't happen for nodes with text content), skip.
+            if let Some(layout) = node.text_layout.as_ref() {
+                Self::paint_text_node(scene, bounds, style, layout, text_len, transform, sel);
+            }
+        } else {
+            crate::element::view::paint_view(scene, bounds, style, transform, |_| {});
+        }
+    }
+
+    /// Draw a text node from its cached parley layout, optionally with a
+    /// selection highlight.
+    fn paint_text_node(
+        scene: &mut Scene,
+        bounds: Bounds,
+        style: &UzStyle,
+        layout: &parley::Layout<crate::text::TextBrush>,
+        text_len: usize,
+        transform: Affine,
+        selection: Option<(usize, usize)>,
+    ) {
+        style.paint(bounds, scene, transform, |scene| {
+            if let Some((sel_start, sel_end)) = selection {
+                let rects =
+                    crate::text::selection_rects_from_layout(layout, text_len, sel_start, sel_end);
+                let sel_color = VelloColor::from_rgba8(56, 121, 185, 128);
+                for rect in rects {
+                    scene.fill(
+                        Fill::NonZero,
+                        transform,
+                        sel_color,
+                        None,
+                        &Rect::new(rect.x0, rect.y0, rect.x1, rect.y1),
+                    );
+                }
+            }
+            crate::text::draw_layout(
+                scene,
+                layout,
+                (0.0, 0.0),
+                style.text.color.to_vello(),
+                transform,
+            );
+        });
+    }
+
+    fn build_input_render_info(
+        &mut self,
+        node_id: UzNodeId,
+        style: &UzStyle,
+        layout: &LayoutSnapshot,
+    ) -> InputRenderInfo {
+        let pad_h = style.padding.left + style.padding.right;
+        let text_w = (layout.size_w as f32 - pad_h).max(0.0);
+        let text_style = style.text.clone();
+
+        // Grab seed values first so we can drop the immutable borrow.
+        let (multiline, secure, has_preedit) = {
+            let is = self.dom.nodes[node_id].as_text_input().unwrap();
+            (is.multiline, is.secure, is.preedit.is_some())
+        };
+
+        let focused = self.dom.focused_node == Some(node_id);
+
+        let node_mut = &mut self.dom.nodes[node_id];
+        let is = node_mut.as_text_input_mut().unwrap();
+
+        apply_text_style_to_editor(&mut is.editor, &text_style);
+        is.editor
+            .set_width(if multiline { Some(text_w) } else { None });
+        is.editor.refresh_layout(
+            &mut self.text_renderer.font_ctx,
+            &mut self.text_renderer.layout_ctx,
+        );
+
+        let blink_visible = is.blink_visible(focused, self.dom.window_focused);
+
+        let cursor_rect = if blink_visible || has_preedit {
+            if secure {
+                secure_cursor_geometry(&is.editor, 1.5, &text_style, self.text_renderer)
+            } else {
+                is.editor.cursor_geometry(1.5)
+            }
+        } else {
+            None
+        };
+
+        let selection_rects = if secure {
+            secure_selection_geometry(&is.editor, &text_style, self.text_renderer)
+        } else {
+            is.editor
+                .selection_geometry()
+                .into_iter()
+                .map(|(bb, _)| bb)
+                .collect()
+        };
+
+        let layout_height = is.editor.try_layout().map(|l| l.height()).unwrap_or(0.0);
+
+        let preedit = is.preedit.clone().map(|ps| {
+            let positions = self
+                .text_renderer
+                .grapheme_x_positions(&ps.text, &text_style);
+            let width = *positions.last().unwrap_or(&0.0);
+            crate::element::input::PreeditRenderInfo {
+                text: ps.text,
+                cursor_x: ps
+                    .cursor
+                    .map(|(start, _)| {
+                        if start < positions.len() {
+                            positions[start]
+                        } else {
+                            width
+                        }
+                    })
+                    .unwrap_or(width),
+                width,
+            }
+        });
+
+        let is = self.dom.nodes[node_id].as_text_input().unwrap();
+
+        InputRenderInfo {
+            display_text: is.display_text(),
+            placeholder: is.placeholder.clone(),
+            text_style,
+            focused,
+            cursor_rect,
+            selection_rects,
+            scroll_offset: is.scroll_offset,
+            scroll_offset_y: is.scroll_offset_y,
+            blink_visible,
+            multiline,
+            layout_height,
+            preedit,
+        }
+    }
+
+    #[allow(clippy::too_many_arguments)]
+    fn register_input_scrollbar(
+        &mut self,
+        node_id: UzNodeId,
+        style: &UzStyle,
+        w: f64,
+        h: f64,
+        info: &InputRenderInfo,
+        transform: Affine,
+        view_x: f64,
+        view_y: f64,
+    ) -> Option<ScrollbarPaint> {
+        if !info.multiline {
+            return None;
+        }
+        let pad_t = style.padding.top as f64;
+        let pad_b = style.padding.bottom as f64;
+        let axis_info = ScrollAxisInfo {
+            content_size: info.layout_height as f64 + pad_t + pad_b,
+            visible_size: h,
+            offset: info.scroll_offset_y as f64,
+        };
+        if !axis_info.overflows() {
+            return None;
+        }
+
+        let view_local = Bounds::new(0.0, 0.0, w, h);
+        let geom = scroll::thumb_geometry(ScrollAxis::Y, view_local, axis_info, &style.scrollbar);
+        let view_bounds = Bounds::new(view_x, view_y, w, h);
+        let thumb_bounds = Bounds::new(
+            view_x + geom.local_x,
+            view_y + geom.local_y,
+            geom.thumb_width,
+            geom.thumb_height,
+        );
+
+        self.dom.scroll_thumbs.push(ScrollThumbRect {
+            node_id,
+            axis: ScrollAxis::Y,
+            thumb_bounds,
+            view_bounds,
+            content_size: axis_info.content_size as f32,
+            visible_size: axis_info.visible_size as f32,
+        });
+
+        let mouse_in = self.is_active_drag(node_id)
+            || self
+                .dom
+                .hit_state
+                .mouse_position
+                .is_some_and(|(mx, my)| view_bounds.contains(mx, my));
+        if !mouse_in {
+            return None;
+        }
+
+        let hovered = self.is_active_drag(node_id)
+            || self
+                .dom
+                .hit_state
+                .mouse_position
+                .is_some_and(|(mx, my)| thumb_bounds.contains(mx, my));
+
+        Some(ScrollbarPaint {
+            transform,
+            geom,
+            hovered,
+            style: style.scrollbar,
+        })
+    }
+
+    fn prepare_view_scroll(
+        &mut self,
+        node_id: UzNodeId,
+        style: &UzStyle,
+        layout: &LayoutSnapshot,
+        view_bounds: Bounds,
+        transform: Affine,
+    ) -> Option<ViewScroll> {
+        let scroll_x = style.overflow_x.is_scrollable();
+        let scroll_y = style.overflow_y.is_scrollable();
+        if !scroll_x && !scroll_y {
+            return None;
+        }
+
+        let max_x = (layout.content_w - layout.size_w).max(0.0);
+        let max_y = (layout.content_h - layout.size_h).max(0.0);
+
+        if self.dom.nodes[node_id].scroll_state.is_none() {
+            self.dom.nodes[node_id].scroll_state = Some(ScrollState::new());
+        }
+        let ss = self.dom.nodes[node_id].scroll_state.as_mut().unwrap();
+        if ss.scroll_offset_x as f64 > max_x {
+            ss.scroll_offset_x = max_x as f32;
+        }
+        if ss.scroll_offset_y as f64 > max_y {
+            ss.scroll_offset_y = max_y as f32;
+        }
+        let offset_x = ss.scroll_offset_x as f64;
+        let offset_y = ss.scroll_offset_y as f64;
+
+        let mouse_in_view = self.is_active_drag(node_id)
+            || self
+                .dom
+                .hit_state
+                .mouse_position
+                .is_some_and(|(mx, my)| view_bounds.contains(mx, my));
+
+        let mut thumbs = Vec::new();
+        if scroll_y && layout.content_h > layout.size_h {
+            thumbs.push(self.register_view_thumb(
+                node_id,
+                ScrollAxis::Y,
+                view_bounds,
+                layout.content_h,
+                layout.size_h,
+                offset_y,
+                transform,
+                &style.scrollbar,
+            ));
+        }
+        if scroll_x && layout.content_w > layout.size_w {
+            thumbs.push(self.register_view_thumb(
+                node_id,
+                ScrollAxis::X,
+                view_bounds,
+                layout.content_w,
+                layout.size_w,
+                offset_x,
+                transform,
+                &style.scrollbar,
+            ));
+        }
+
+        Some(ViewScroll {
+            offset_x,
+            offset_y,
+            mouse_in_view,
+            thumbs,
+        })
+    }
+
+    #[allow(clippy::too_many_arguments)]
+    fn register_view_thumb(
+        &mut self,
+        node_id: UzNodeId,
+        axis: ScrollAxis,
+        view_bounds: Bounds,
+        content: f64,
+        visible: f64,
+        offset: f64,
+        transform: Affine,
+        scrollbar: &ScrollbarStyle,
+    ) -> ScrollbarPaint {
+        let view_local = Bounds::new(0.0, 0.0, view_bounds.width, view_bounds.height);
+        let geom = scroll::thumb_geometry(
+            axis,
+            view_local,
+            ScrollAxisInfo {
+                content_size: content,
+                visible_size: visible,
+                offset,
+            },
+            scrollbar,
+        );
+        let thumb_bounds = Bounds::new(
+            view_bounds.x + geom.local_x,
+            view_bounds.y + geom.local_y,
+            geom.thumb_width,
+            geom.thumb_height,
+        );
+        self.dom.scroll_thumbs.push(ScrollThumbRect {
+            node_id,
+            axis,
+            thumb_bounds,
+            view_bounds,
+            content_size: content as f32,
+            visible_size: visible as f32,
+        });
+
+        let hovered = self.is_active_drag(node_id)
+            || self
+                .dom
+                .hit_state
+                .mouse_position
+                .is_some_and(|(mx, my)| thumb_bounds.contains(mx, my));
+
+        ScrollbarPaint {
+            transform,
+            geom,
+            hovered,
+            style: *scrollbar,
+        }
+    }
+
+    fn is_active_drag(&self, node_id: UzNodeId) -> bool {
+        self.dom
+            .scroll_drag
+            .as_ref()
+            .is_some_and(|d| d.node_id == node_id)
+    }
+
     fn compute_text_selections_map(&self) -> HashMap<UzNodeId, (usize, usize)> {
         let mut map = HashMap::new();
         let sel = self.dom.text_selection;
-        let Some(root) = sel.root else {
-            return map;
-        };
         if sel.is_collapsed() {
             return map;
         }
-        let Some(run) = self
-            .dom
-            .selectable_text_runs
-            .iter()
-            .find(|r| r.root_id == root)
-        else {
+        let Some((start, end)) = self.dom.ordered_text_selection() else {
             return map;
         };
-        let sel_start = sel.start();
-        let sel_end = sel.end();
+        let Some(run) = self.dom.find_run_for_node(start.node) else {
+            return map;
+        };
+        let mut in_range = false;
         for entry in &run.entries {
-            let entry_end = entry.flat_start + entry.grapheme_count;
-            let local_start = sel_start.max(entry.flat_start);
-            let local_end = sel_end.min(entry_end);
+            if entry.node_id == start.node {
+                in_range = true;
+            }
+            if !in_range {
+                continue;
+            }
+            let Some(text) = self
+                .dom
+                .nodes
+                .get(entry.node_id)
+                .and_then(|n| n.get_text_content())
+            else {
+                continue;
+            };
+            let local_start = if entry.node_id == start.node {
+                start.offset.min(text.content.len())
+            } else {
+                0
+            };
+            let local_end = if entry.node_id == end.node {
+                end.offset.min(text.content.len())
+            } else {
+                text.content.len()
+            };
             if local_start < local_end {
-                map.insert(
-                    entry.node_id,
-                    (local_start - entry.flat_start, local_end - entry.flat_start),
-                );
+                map.insert(entry.node_id, (local_start, local_end));
+            }
+            if entry.node_id == end.node {
+                break;
             }
         }
         map
     }
 }
 
-struct RenderInfo {
-    node_id: UzNodeId,
-    x: f64,
-    y: f64,
-    w: f64,
-    h: f64,
-    transform: Affine,
-    hit_transform: Affine,
-    style: Box<UzStyle>,
-    text: Option<(String, TextStyle)>,
-    needs_hitbox: bool,
-    input: Option<InputRenderInfo>,
-    checkbox: Option<CheckboxRenderInfo>,
+struct LayoutSnapshot {
+    location_x: f64,
+    location_y: f64,
+    size_w: f64,
+    size_h: f64,
+    content_w: f64,
+    content_h: f64,
 }
 
-struct ThumbInfo {
-    node_id: UzNodeId,
-    view_bounds: Bounds,
-    transform: Affine,
-    view_w: f64,
-    view_h: f64,
-    scroll_offset_y: f32,
-    content_height: f32,
-    visible_height: f32,
-    thumb_hovered: bool,
+impl From<&taffy::Layout> for LayoutSnapshot {
+    fn from(l: &taffy::Layout) -> Self {
+        Self {
+            location_x: l.location.x as f64,
+            location_y: l.location.y as f64,
+            size_w: l.size.width as f64,
+            size_h: l.size.height as f64,
+            content_w: l.content_size.width as f64,
+            content_h: l.content_size.height as f64,
+        }
+    }
+}
+
+struct ViewScroll {
+    offset_x: f64,
+    offset_y: f64,
     mouse_in_view: bool,
+    thumbs: Vec<ScrollbarPaint>,
 }
 
-enum RenderCommand {
-    PaintNode(Box<RenderInfo>),
-    PushClip(Rect, Affine),
-    PopClip,
-    PaintThumb(ThumbInfo),
-}
-
-enum StackItem {
-    Visit(UzNodeId, f64, f64, Affine, Affine, InheritedProperties),
-    PushClip(Rect, Affine),
-    PopClip,
-    PaintThumb(ThumbInfo),
+#[derive(Clone)]
+struct ScrollbarPaint {
+    transform: Affine,
+    geom: ThumbGeometry,
+    hovered: bool,
+    style: ScrollbarStyle,
 }
 
 pub(crate) fn measure(
@@ -750,7 +694,31 @@ pub(crate) fn measure(
                 .height
                 .or_else(|| available_as_option(available_space.height)),
         );
+        return taffy::Size {
+            width: measured_width,
+            height: measured_height,
+        };
+    }
 
+    if let Some(ImageMeasureInfo { width, height }) = &ctx.image {
+        if *width <= 0.0 || *height <= 0.0 {
+            return default_size;
+        }
+        let aspect_ratio = *width / *height;
+        let measured_width = known_dimensions.width.unwrap_or({
+            if let Some(known_height) = known_dimensions.height {
+                known_height * aspect_ratio
+            } else {
+                *width
+            }
+        });
+        let measured_height = known_dimensions.height.unwrap_or_else(|| {
+            if let Some(known_width) = known_dimensions.width {
+                known_width / aspect_ratio
+            } else {
+                *height
+            }
+        });
         return taffy::Size {
             width: measured_width,
             height: measured_height,
@@ -765,5 +733,130 @@ fn available_as_option(space: taffy::AvailableSpace) -> Option<f32> {
         taffy::AvailableSpace::Definite(v) => Some(v),
         taffy::AvailableSpace::MinContent => Some(0.0),
         taffy::AvailableSpace::MaxContent => None,
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::measure;
+    use crate::element::ImageMeasureInfo;
+    use crate::layout::NodeContext;
+    use crate::style::TextStyle;
+    use crate::text::TextRenderer;
+
+    fn image_context(width: f32, height: f32) -> NodeContext {
+        NodeContext {
+            dom_id: 0,
+            text: None,
+            text_style: TextStyle::default(),
+            is_input: false,
+            image: Some(ImageMeasureInfo { width, height }),
+        }
+    }
+
+    #[test]
+    fn image_measure_uses_natural_size_when_unconstrained() {
+        let mut renderer = TextRenderer::new();
+        let mut ctx = image_context(320.0, 180.0);
+        let size = measure(
+            &mut renderer,
+            taffy::Size {
+                width: None,
+                height: None,
+            },
+            taffy::Size {
+                width: taffy::AvailableSpace::MaxContent,
+                height: taffy::AvailableSpace::MaxContent,
+            },
+            Some(&mut ctx),
+        );
+        assert_eq!(size.width, 320.0);
+        assert_eq!(size.height, 180.0);
+    }
+
+    #[test]
+    fn image_measure_preserves_aspect_ratio_with_width_only() {
+        let mut renderer = TextRenderer::new();
+        let mut ctx = image_context(400.0, 200.0);
+        let size = measure(
+            &mut renderer,
+            taffy::Size {
+                width: Some(160.0),
+                height: None,
+            },
+            taffy::Size {
+                width: taffy::AvailableSpace::MaxContent,
+                height: taffy::AvailableSpace::MaxContent,
+            },
+            Some(&mut ctx),
+        );
+        assert_eq!(size.width, 160.0);
+        assert_eq!(size.height, 80.0);
+    }
+
+    #[test]
+    fn image_measure_preserves_aspect_ratio_with_height_only() {
+        let mut renderer = TextRenderer::new();
+        let mut ctx = image_context(200.0, 400.0);
+        let size = measure(
+            &mut renderer,
+            taffy::Size {
+                width: None,
+                height: Some(100.0),
+            },
+            taffy::Size {
+                width: taffy::AvailableSpace::MaxContent,
+                height: taffy::AvailableSpace::MaxContent,
+            },
+            Some(&mut ctx),
+        );
+        assert_eq!(size.width, 50.0);
+        assert_eq!(size.height, 100.0);
+    }
+
+    #[test]
+    fn image_measure_uses_explicit_box_when_both_dimensions_are_known() {
+        let mut renderer = TextRenderer::new();
+        let mut ctx = image_context(320.0, 180.0);
+        let size = measure(
+            &mut renderer,
+            taffy::Size {
+                width: Some(512.0),
+                height: Some(128.0),
+            },
+            taffy::Size {
+                width: taffy::AvailableSpace::MaxContent,
+                height: taffy::AvailableSpace::MaxContent,
+            },
+            Some(&mut ctx),
+        );
+        assert_eq!(size.width, 512.0);
+        assert_eq!(size.height, 128.0);
+    }
+
+    #[test]
+    fn image_measure_without_bitmap_returns_default_size() {
+        let mut renderer = TextRenderer::new();
+        let mut ctx = NodeContext {
+            dom_id: 0,
+            text: None,
+            text_style: TextStyle::default(),
+            is_input: false,
+            image: None,
+        };
+        let size = measure(
+            &mut renderer,
+            taffy::Size {
+                width: None,
+                height: None,
+            },
+            taffy::Size {
+                width: taffy::AvailableSpace::MaxContent,
+                height: taffy::AvailableSpace::MaxContent,
+            },
+            Some(&mut ctx),
+        );
+        assert_eq!(size.width, 0.0);
+        assert_eq!(size.height, 0.0);
     }
 }

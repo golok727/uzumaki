@@ -27,21 +27,30 @@ export function EventsPage() {
         : C.successHi);
 
   return (
-    <view display="flex" flexDir="col" gap={0} h="full" scrollable>
+    <view
+      display="flex"
+      flexDir="col"
+      gap={0}
+      h="full"
+      scroll
+      scrollbarWidth={8}
+      scrollbarRadius={5}
+    >
       <view
         display="flex"
         flexDir="col"
+        gap={8}
         px={24}
         py={16}
         borderBottom={1}
         borderColor={C.border}
       >
-        <text fontSize={20} fontWeight={800} color={C.text}>
+        <view fontSize={20} fontWeight={800} color={C.text}>
           Mouse Events
-        </text>
-        <text fontSize={12} color={C.textMuted}>
+        </view>
+        <view fontSize={12} color={C.textMuted}>
           onClick · onMouseDown · onMouseUp · hover:* · active:*
-        </text>
+        </view>
       </view>
 
       <view display="flex" flexDir="col" gap={24} p={24}>
@@ -242,7 +251,7 @@ export function EventsPage() {
               </text>
             </button>
           </view>
-          <view scrollable h={220} display="flex" flexDir="col">
+          <view scroll h={220} display="flex" flexDir="col">
             {eventLog.length === 0 ? (
               <view p={20} display="flex" items="center" justify="center">
                 <text fontSize={13} color={C.textMuted}>

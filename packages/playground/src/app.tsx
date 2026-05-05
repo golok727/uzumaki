@@ -9,8 +9,10 @@ import { LayoutPage } from './pages/layoutPage';
 import { StressPage } from './pages/stressPage';
 import { EventsPage } from './pages/eventsPage';
 import { IssuesPage } from './pages/issuesPage';
+import { ImagesPage } from './pages/imagesPage';
 import { TimerPage } from './pages/timerPage';
 import { UndoRedoPage } from './pages/undoRedoPage';
+import { ShikiPage } from './pages/codeHighlight';
 
 export function App() {
   const [activeTab, setActiveTab] = useState<Tab>('dashboard');
@@ -23,8 +25,10 @@ export function App() {
     stress: <StressPage />,
     events: <EventsPage />,
     issues: <IssuesPage />,
+    images: <ImagesPage />,
     timer: <TimerPage />,
     undoredo: <UndoRedoPage />,
+    shiki: <ShikiPage />,
   }[activeTab];
 
   return (
@@ -35,14 +39,15 @@ export function App() {
       h="full"
       bg={C.bg}
       position="relative"
+      fontFamily="system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, Cantarell, 'Open Sans', 'Helvetica Neue', sans-serif"
     >
       <Sidebar
-        w="16%"
+        w="200px"
         active={activeTab}
         setActive={setActiveTab}
         onOpenModal={() => setShowModal(true)}
       />
-      <view w="84%" h="full" display="flex" flexDir="col" bg={C.bg}>
+      <view flex={1} minW={0} h="full" display="flex" flexDir="col" bg={C.bg}>
         {page}
       </view>
       {showModal && <Modal onClose={() => setShowModal(false)} />}

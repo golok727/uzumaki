@@ -1,15 +1,19 @@
 import { C } from './theme';
+import { Icon } from './icon';
 import type { Tab } from './types';
 
 const TABS: { id: Tab; label: string; icon: string }[] = [
-  { id: 'dashboard', label: 'Dashboard', icon: '🛖' },
-  { id: 'inputs', label: 'Input Lab', icon: '⌨' },
-  { id: 'layout', label: 'Layout Lab', icon: '⏹️' },
-  { id: 'stress', label: 'Stress Test', icon: '⚡' },
-  { id: 'events', label: 'Mouse Events', icon: '🐭' },
-  { id: 'timer', label: 'Timers', icon: '⏱' },
-  { id: 'undoredo', label: 'Undo / Redo', icon: '↩' },
-  { id: 'issues', label: 'GitHub Issues', icon: '😉' },
+  { id: 'dashboard', label: 'Dashboard', icon: 'layout-dashboard' },
+  { id: 'inputs', label: 'Input Lab', icon: 'keyboard' },
+  { id: 'layout', label: 'Layout Lab', icon: 'layout-grid' },
+  { id: 'stress', label: 'Stress Test', icon: 'zap' },
+  { id: 'events', label: 'Mouse Events', icon: 'mouse-pointer-click' },
+  // { id: 'window', label: 'Window Lab', icon: 'square-stack' },
+  { id: 'timer', label: 'Timers', icon: 'timer' },
+  { id: 'undoredo', label: 'Undo / Redo', icon: 'check' },
+  { id: 'issues', label: 'GitHub Issues', icon: 'circle-dot' },
+  { id: 'images', label: 'Images', icon: 'image' },
+  { id: 'shiki', label: 'Code Highlight', icon: 'brackets' },
 ];
 
 export function Sidebar({
@@ -26,7 +30,8 @@ export function Sidebar({
   return (
     <view
       w={w}
-      minW={'200px'}
+      minW={w}
+      flexShrink={0}
       h="full"
       bg={C.surface}
       borderRight={1}
@@ -37,7 +42,6 @@ export function Sidebar({
     >
       <view mb={28} pt={4} display="flex" flexDir="col" gap={2}>
         <view display="flex" flexDir="row" items="center" gap={8}>
-          <view w={8} h={8} bg={C.accent} rounded={4} />
           <text fontSize={17} fontWeight={800} color={C.accentHi}>
             uzumaki
           </text>
@@ -50,8 +54,9 @@ export function Sidebar({
       <view display="flex" flexDir="col" flex={1} gap={2}>
         {TABS.map((t) => {
           const isActive = active === t.id;
+          const iconColor = isActive ? C.accentHi : C.textMuted;
           return (
-            <view
+            <button
               key={t.id}
               onClick={() => setActive(t.id)}
               display="flex"
@@ -65,9 +70,7 @@ export function Sidebar({
               hover:bg={isActive ? C.accentDim : C.surface3}
               cursor="pointer"
             >
-              <text fontSize={16} color={isActive ? C.accentHi : C.textMuted}>
-                {t.icon}
-              </text>
+              <Icon name={t.icon} color={iconColor} size={16} />
               <view display="flex" flexDir="col" gap={1} flex={1}>
                 <text
                   w={'100%'}
@@ -80,8 +83,7 @@ export function Sidebar({
                   {t.label}
                 </text>
               </view>
-              {isActive && <view w={4} h={4} bg={C.accentHi} rounded={4} />}
-            </view>
+            </button>
           );
         })}
         <button
@@ -98,11 +100,9 @@ export function Sidebar({
           border={1}
           borderColor={C.accent}
           cursor="pointer"
-          mb={8}
+          my={8}
         >
-          <text fontSize={16} color={C.accentHi}>
-            🍫
-          </text>
+          <Icon name="square-stack" color={C.accentHi} size={16} />
           <text fontSize={13} fontWeight={700} color={C.accentHi}>
             Open Modal
           </text>

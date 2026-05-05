@@ -2,9 +2,9 @@ use serde::Serialize;
 use winit::keyboard::{Key, NamedKey};
 
 use crate::clipboard::SystemClipboard;
-use crate::element::{ScrollDragState, UzNodeId};
+use crate::element::{ScrollAxis, ScrollDragState, UzNodeId};
 use crate::input::KeyResult;
-use crate::selection::{SelectionRange, TextSelection};
+use crate::selection::{Affinity, SelectionEndpoint, TextSelection};
 use crate::style::TextStyle;
 use crate::text::{apply_text_style_to_editor, secure_cursor_geometry};
 use crate::ui::UIState;
@@ -54,7 +54,6 @@ pub struct ResizeEventData {
 pub struct InputEventData {
     pub window_id: u32,
     pub node_id: UzNodeId,
-    pub value: String,
     pub input_type: String,
     pub data: Option<String>,
 }
@@ -78,6 +77,7 @@ pub struct ClipboardEventData {
 #[derive(Serialize)]
 #[serde(tag = "type", rename_all = "camelCase")]
 pub enum AppEvent {
+    // move all this to UzUIEvent ?
     Click(MouseEventData),
     MouseDown(MouseEventData),
     MouseUp(MouseEventData),
@@ -97,17 +97,8 @@ pub enum AppEvent {
     HotReload,
 }
 
-fn checkbox_value_string(checked: bool) -> String {
-    checked.to_string()
-}
-
-pub fn handle_redraw(
-    dom: &mut UIState,
-    handle: &mut Window,
-    device: &wgpu::Device,
-    queue: &wgpu::Queue,
-) {
-    handle.paint_and_present(device, queue, dom);
+pub fn handle_redraw(dom: &mut UIState, handle: &mut Window) {
+    handle.paint_and_present(dom);
 }
 
 pub struct FocusedInputLayoutMeta {
@@ -132,7 +123,7 @@ pub fn input_layout_meta(dom: &UIState, focused_id: UzNodeId) -> Option<FocusedI
         .interactivity
         .hitbox_id
         .and_then(|hid| dom.hitbox_store.get(hid))?;
-    let layout = dom.taffy.layout(node.taffy_node).ok()?;
+    let layout = &node.final_layout;
     Some(FocusedInputLayoutMeta {
         taffy_x: hb.bounds.x,
         taffy_y: hb.bounds.y,
@@ -286,19 +277,27 @@ pub fn handle_cursor_moved(
 
     // Scroll thumb drag
     if let Some(ref drag) = dom.scroll_drag {
-        let delta_y = logical_y - drag.start_mouse_y;
+        let mouse_pos = match drag.axis {
+            ScrollAxis::Y => logical_y,
+            ScrollAxis::X => logical_x,
+        };
+        let delta = mouse_pos - drag.start_mouse_pos;
         let new_offset = if drag.track_range > 0.0 {
-            drag.start_scroll_offset + (delta_y as f32 / drag.track_range as f32) * drag.max_scroll
+            drag.start_scroll_offset + (delta as f32 / drag.track_range as f32) * drag.max_scroll
         } else {
             drag.start_scroll_offset
         };
         let nid = drag.node_id;
-        let max = drag.max_scroll;
+        let axis = drag.axis;
+        let clamped = new_offset.clamp(0.0, drag.max_scroll);
         if let Some(node) = dom.nodes.get_mut(nid) {
             if let Some(ss) = &mut node.scroll_state {
-                ss.scroll_offset_y = new_offset.clamp(0.0, max);
+                ss.set_offset(axis, clamped);
             } else if let Some(is) = node.as_text_input_mut() {
-                is.scroll_offset_y = new_offset.clamp(0.0, max);
+                // Inputs only scroll vertically; ignore stray X drags.
+                if axis == ScrollAxis::Y {
+                    is.scroll_offset_y = clamped;
+                }
             }
         }
         needs_redraw = true;
@@ -376,8 +375,8 @@ pub fn handle_cursor_moved(
                 logical_y,
             )
         {
-            if dom.text_selection.root == Some(root_id) {
-                dom.text_selection.range.active = hit.flat_index;
+            if dom.selection_root(&dom.text_selection) == Some(root_id) {
+                dom.text_selection.focus = Some(hit.endpoint);
             }
             needs_redraw = true;
         }
@@ -397,7 +396,7 @@ pub fn handle_cursor_moved(
 /// Returns the matched text node and flat grapheme index if a suitable text node is found.
 struct TextRunHit {
     node_id: UzNodeId,
-    flat_index: usize,
+    endpoint: SelectionEndpoint,
 }
 
 fn hit_text_in_run(
@@ -427,30 +426,41 @@ fn hit_text_in_run(
     }
 
     let (node_id, _, bounds) = best?;
-    let entry = run.entries.iter().find(|e| e.node_id == node_id)?;
     let node = dom.nodes.get(node_id)?;
-    let text = node.as_text_node()?;
+    let text = node.get_text_content()?;
 
     if text.content.is_empty() {
         return Some(TextRunHit {
             node_id,
-            flat_index: entry.flat_start,
+            endpoint: SelectionEndpoint::new(node_id, 0, Affinity::Downstream),
         });
     }
 
     let relative_x = (mx - bounds.x) as f32;
     let relative_y = (my - bounds.y) as f32;
-    let local_idx = text_renderer.hit_to_grapheme_2d(
-        &text.content,
-        &node.style.text,
-        Some(bounds.width as f32),
-        relative_x,
-        relative_y,
-    );
+    // Hit-test against the cached parley layout the painter uses, so mouse
+    // byte offset stays consistent with what's drawn (the cached layout is
+    // built with the inherited computed style; node.style.text is raw).
+    let (offset, affinity) = if let Some(layout) = node.text_layout.as_ref() {
+        crate::text::hit_to_text_position_from_layout(
+            layout,
+            text.content.len(),
+            relative_x,
+            relative_y,
+        )
+    } else {
+        text_renderer.hit_to_text_position(
+            &text.content,
+            &node.style.text,
+            Some(bounds.width as f32),
+            relative_x,
+            relative_y,
+        )
+    };
 
     Some(TextRunHit {
         node_id,
-        flat_index: entry.flat_start + local_idx.min(entry.grapheme_count),
+        endpoint: SelectionEndpoint::new(node_id, offset, affinity),
     })
 }
 
@@ -469,10 +479,10 @@ fn text_range_at_point(
     mx: f64,
     my: f64,
     select_line: bool,
-) -> Option<(usize, usize, usize)> {
-    let (run, entry) = dom.find_run_entry_for_node(node_id)?;
+) -> Option<(SelectionEndpoint, SelectionEndpoint)> {
+    let (_run, _entry) = dom.find_run_entry_for_node(node_id)?;
     let node = dom.nodes.get(node_id)?;
-    let text = node.as_text_node()?;
+    let text = node.get_text_content()?;
     let bounds = node
         .interactivity
         .hitbox_id
@@ -480,13 +490,30 @@ fn text_range_at_point(
         .map(|hb| hb.bounds)?;
 
     if text.content.is_empty() {
-        return Some((run.root_id, entry.flat_start, entry.flat_start));
+        let endpoint = SelectionEndpoint::new(node_id, 0, Affinity::Downstream);
+        return Some((endpoint, endpoint));
     }
 
     let rel_x = (mx - bounds.x) as f32;
     let rel_y = (my - bounds.y) as f32;
-    let (local_start, local_end) = if select_line {
-        text_renderer.line_range_at_point(
+    let (local_start, local_end) = if let Some(layout) = node.text_layout.as_ref() {
+        if select_line {
+            crate::text::line_byte_range_at_point_from_layout(
+                layout,
+                text.content.len(),
+                rel_x,
+                rel_y,
+            )
+        } else {
+            crate::text::word_byte_range_at_point_from_layout(
+                layout,
+                text.content.len(),
+                rel_x,
+                rel_y,
+            )
+        }
+    } else if select_line {
+        text_renderer.line_byte_range_at_point(
             &text.content,
             &node.style.text,
             Some(bounds.width as f32),
@@ -494,7 +521,7 @@ fn text_range_at_point(
             rel_y,
         )
     } else {
-        text_renderer.word_range_at_point(
+        text_renderer.word_byte_range_at_point(
             &text.content,
             &node.style.text,
             Some(bounds.width as f32),
@@ -504,9 +531,8 @@ fn text_range_at_point(
     };
 
     Some((
-        run.root_id,
-        entry.flat_start + local_start.min(entry.grapheme_count),
-        entry.flat_start + local_end.min(entry.grapheme_count),
+        SelectionEndpoint::new(node_id, local_start, Affinity::Downstream),
+        SelectionEndpoint::new(node_id, local_end, Affinity::Upstream),
     ))
 }
 
@@ -552,26 +578,35 @@ pub fn handle_mouse_input(
             .find(|t| t.thumb_bounds.contains(mx, my));
         if let Some(t) = thumb_hit {
             let nid = t.node_id;
-            let visible_h = t.visible_height;
-            let content_h = t.content_height;
-            let max_scroll = (content_h - visible_h).max(0.0);
-            let ratio = visible_h as f64 / content_h as f64;
-            let thumb_height = (t.view_bounds.height * ratio).max(24.0);
-            let track_range = t.view_bounds.height - thumb_height;
+            let axis = t.axis;
+            let visible = t.visible_size as f64;
+            let content = t.content_size as f64;
+            let max_scroll = (t.content_size - t.visible_size).max(0.0);
+            let track = match axis {
+                ScrollAxis::Y => t.view_bounds.height,
+                ScrollAxis::X => t.view_bounds.width,
+            };
+            let thumb_length = (track * visible / content.max(1.0)).max(24.0);
+            let track_range = (track - thumb_length).max(0.0);
+            let start_mouse_pos = match axis {
+                ScrollAxis::Y => my,
+                ScrollAxis::X => mx,
+            };
             let start_offset = dom
                 .nodes
                 .get(nid)
                 .map(|n| {
                     n.scroll_state
                         .as_ref()
-                        .map(|ss| ss.scroll_offset_y)
+                        .map(|ss| ss.offset(axis))
                         .or_else(|| n.as_text_input().map(|is| is.scroll_offset_y))
                         .unwrap_or(0.0)
                 })
                 .unwrap_or(0.0);
             dom.scroll_drag = Some(ScrollDragState {
                 node_id: nid,
-                start_mouse_y: my,
+                axis,
+                start_mouse_pos,
                 start_scroll_offset: start_offset,
                 track_range,
                 max_scroll,
@@ -689,7 +724,7 @@ pub fn handle_mouse_input(
                         };
                         let relative_y = (my - hb.y) as f32 + scroll_offset_y - top_pad;
 
-                        dom.focus_input(nid);
+                        dom.focus_element(nid);
 
                         // Apply styles/width so hit-testing accounts for wrapping
                         if let Some(meta) = input_layout_meta(dom, nid)
@@ -725,11 +760,6 @@ pub fn handle_mouse_input(
 
                     if old_focus != Some(nid) {
                         if let Some(old_id) = old_focus {
-                            if let Some(old_node) = dom.nodes.get_mut(old_id)
-                                && let Some(is) = old_node.as_text_input_mut()
-                            {
-                                is.focused = false;
-                            }
                             events.push(AppEvent::Blur(FocusEventData {
                                 window_id: wid,
                                 node_id: old_id,
@@ -746,11 +776,6 @@ pub fn handle_mouse_input(
                 } else {
                     // Clicked non-input: blur focused input
                     if let Some(old_id) = old_focus {
-                        if let Some(old_node) = dom.nodes.get_mut(old_id)
-                            && let Some(is) = old_node.as_text_input_mut()
-                        {
-                            is.focused = false;
-                        }
                         dom.focused_node = None;
                         events.push(AppEvent::Blur(FocusEventData {
                             window_id: wid,
@@ -758,35 +783,29 @@ pub fn handle_mouse_input(
                         }));
                     }
 
-                    // Check if clicked on a text node inside a textSelect view
-                    let clicked_text_selectable = js_target
-                        .map(|nid| dom.is_text_selectable(nid))
-                        .unwrap_or(false);
+                    // Selection starts if the click landed anywhere inside a
+                    // text-selectable scope — on a text node, on the
+                    // container itself, or on any non-text descendant. This
+                    // matches browser behaviour where clicking padding/empty
+                    // space inside a `<p>` begins selection.
+                    let run_root_for_click =
+                        js_target.and_then(|nid| dom.containing_text_run_root(nid));
 
-                    if clicked_text_selectable {
+                    if let Some(run_root) = run_root_for_click {
                         let nid = js_target.unwrap();
 
                         // Starting a view selection blurs any focused input
                         if let Some(old_id) = dom.focused_node.take() {
-                            if let Some(old_node) = dom.nodes.get_mut(old_id)
-                                && let Some(is) = old_node.as_text_input_mut()
-                            {
-                                is.focused = false;
-                            }
                             events.push(AppEvent::Blur(FocusEventData {
                                 window_id: wid,
                                 node_id: old_id,
                             }));
                         }
 
-                        // Find the run this text node belongs to
-                        let run_root = dom.find_run_entry_for_node(nid).map(|(run, _)| run.root_id);
-
-                        if let Some(hit) = run_root.and_then(|root_id| {
-                            hit_text_in_run(dom, &mut handle.text_renderer, root_id, mx, my)
-                        }) {
-                            let run_root = run_root.unwrap_or(nid);
-                            let flat_idx = hit.flat_index;
+                        if let Some(hit) =
+                            hit_text_in_run(dom, &mut handle.text_renderer, run_root, mx, my)
+                        {
+                            let endpoint = hit.endpoint;
 
                             // Multi-click detection
                             let now = std::time::Instant::now();
@@ -804,7 +823,7 @@ pub fn handle_mouse_input(
 
                             match dom.click_count {
                                 2 => {
-                                    if let Some((root, ws, we)) = text_range_at_point(
+                                    if let Some((start, end)) = text_range_at_point(
                                         dom,
                                         &mut handle.text_renderer,
                                         hit.node_id,
@@ -812,11 +831,11 @@ pub fn handle_mouse_input(
                                         my,
                                         false,
                                     ) {
-                                        dom.set_selection(TextSelection::new(root, ws, we));
+                                        dom.set_selection(TextSelection::new(start, end));
                                     }
                                 }
                                 3 => {
-                                    if let Some((root, ls, le)) = text_range_at_point(
+                                    if let Some((start, end)) = text_range_at_point(
                                         dom,
                                         &mut handle.text_renderer,
                                         hit.node_id,
@@ -824,7 +843,7 @@ pub fn handle_mouse_input(
                                         my,
                                         true,
                                     ) {
-                                        dom.set_selection(TextSelection::new(root, ls, le));
+                                        dom.set_selection(TextSelection::new(start, end));
                                     }
                                 }
                                 4 => {
@@ -833,19 +852,25 @@ pub fn handle_mouse_input(
                                         .selectable_text_runs
                                         .iter()
                                         .find(|r| r.root_id == run_root)
+                                        && let (Some(start), Some(end)) = (
+                                            dom.endpoint_from_flat_index(
+                                                run_root,
+                                                0,
+                                                Affinity::Downstream,
+                                            ),
+                                            dom.endpoint_from_flat_index(
+                                                run_root,
+                                                run.total_graphemes,
+                                                Affinity::Upstream,
+                                            ),
+                                        )
                                     {
-                                        dom.set_selection(TextSelection::new(
-                                            run_root,
-                                            0,
-                                            run.total_graphemes,
-                                        ));
+                                        dom.set_selection(TextSelection::new(start, end));
                                     }
                                 }
                                 _ => {
                                     // Single click: place cursor
-                                    dom.set_selection(TextSelection::new(
-                                        run_root, flat_idx, flat_idx,
-                                    ));
+                                    dom.set_selection(TextSelection::new(endpoint, endpoint));
                                 }
                             }
                             dom.dragging_view_selection = Some(run_root);
@@ -883,13 +908,11 @@ pub fn handle_mouse_input(
                     && let Some(checked) = node.as_checkbox_input_mut()
                 {
                     *checked = !*checked;
-                    let value = checkbox_value_string(*checked);
                     events.push(AppEvent::Input(InputEventData {
                         window_id: wid,
                         node_id: target,
-                        value: value.clone(),
                         input_type: "toggle".to_string(),
-                        data: Some(value),
+                        data: None,
                     }));
                 }
                 dom.dispatch_click(mx, my, mouse_button);
@@ -1004,19 +1027,16 @@ pub fn handle_key_for_input(
                 );
                 match result {
                     KeyResult::Edit(edit) => {
-                        let value = input_state.text();
                         let input_type = edit.kind.input_type();
                         events.push(AppEvent::Input(InputEventData {
                             window_id: wid,
                             node_id: focused_id,
-                            value,
                             input_type: input_type.to_string(),
                             data: edit.inserted,
                         }));
                         needs_redraw = true;
                     }
                     KeyResult::Blur => {
-                        input_state.focused = false;
                         new_focus = None;
                         events.push(AppEvent::Blur(FocusEventData {
                             window_id: wid,
@@ -1073,17 +1093,130 @@ pub fn handle_key_for_checkbox(
     };
 
     *checked = !*checked;
-    let value = checkbox_value_string(*checked);
     (
         true,
         vec![AppEvent::Input(InputEventData {
             window_id: wid,
             node_id: focused_id,
-            value: value.clone(),
             input_type: "toggle".to_string(),
-            data: Some(value),
+            data: None,
         })],
     )
+}
+
+/// Handle Enter/Space on a focused button-like element (focusable view that's
+/// not a text input or checkbox). Fires a synthetic click, mirroring browser
+/// behavior on `<button>`.
+pub fn handle_key_for_button(
+    dom: &mut UIState,
+    wid: u32,
+    key_event: &winit::event::KeyEvent,
+) -> (bool, Vec<AppEvent>) {
+    use winit::event::ElementState;
+
+    if key_event.state != ElementState::Pressed {
+        return (false, Vec::new());
+    }
+    if !matches!(
+        &key_event.logical_key,
+        Key::Named(NamedKey::Enter) | Key::Named(NamedKey::Space)
+    ) {
+        return (false, Vec::new());
+    }
+
+    let Some(focused_id) = dom.focused_node else {
+        return (false, Vec::new());
+    };
+    let Some(node) = dom.nodes.get(focused_id) else {
+        return (false, Vec::new());
+    };
+    if node.is_text_input() || node.is_checkbox_input() || !node.is_focusable() {
+        return (false, Vec::new());
+    }
+
+    // Synthetic click: use the element's bounds center if we have a hitbox,
+    // otherwise (0, 0). The JS handler usually doesn't depend on coords for
+    // keyboard activations.
+    let (x, y) = node
+        .interactivity
+        .hitbox_id
+        .and_then(|hid| dom.hitbox_store.get(hid))
+        .map(|hb| {
+            (
+                (hb.bounds.x + hb.bounds.width / 2.0) as f32,
+                (hb.bounds.y + hb.bounds.height / 2.0) as f32,
+            )
+        })
+        .unwrap_or((0.0, 0.0));
+
+    dom.dispatch_click(x as f64, y as f64, crate::interactivity::MouseButton::Left);
+
+    (
+        true,
+        vec![AppEvent::Click(MouseEventData {
+            window_id: wid,
+            node_id: focused_id,
+            x,
+            y,
+            screen_x: x,
+            screen_y: y,
+            button: 0,
+            buttons: 0,
+        })],
+    )
+}
+
+pub struct TabFocusOutcome {
+    pub consumed: bool,
+    pub needs_redraw: bool,
+    pub events: Vec<AppEvent>,
+}
+
+/// Handle Tab/Shift-Tab to advance focus to the next/previous focusable
+/// element. Tab is always consumed (never inserts a tab character).
+pub fn handle_tab_focus(
+    dom: &mut UIState,
+    wid: u32,
+    key_event: &winit::event::KeyEvent,
+    modifiers: u32,
+) -> TabFocusOutcome {
+    use winit::event::ElementState;
+
+    let mut outcome = TabFocusOutcome {
+        consumed: false,
+        needs_redraw: false,
+        events: Vec::new(),
+    };
+
+    if key_event.state != ElementState::Pressed
+        || !matches!(&key_event.logical_key, Key::Named(NamedKey::Tab))
+    {
+        return outcome;
+    }
+
+    outcome.consumed = true;
+
+    let shift = modifiers & 4 != 0;
+    let change = if shift {
+        dom.focus_prev_node()
+    } else {
+        dom.focus_next_node()
+    };
+    if let Some(change) = change {
+        if let Some(old) = change.old {
+            outcome.events.push(AppEvent::Blur(FocusEventData {
+                window_id: wid,
+                node_id: old,
+            }));
+        }
+        outcome.events.push(AppEvent::Focus(FocusEventData {
+            window_id: wid,
+            node_id: change.new,
+        }));
+        outcome.needs_redraw = true;
+    }
+
+    outcome
 }
 
 /// Handle keyboard shortcuts for view text selection (Shift+Arrows, Ctrl+A, etc.)
@@ -1104,10 +1237,18 @@ pub fn handle_key_for_view_selection(
         return false;
     };
 
-    let Some(root) = sel.root else {
+    let Some(root) = dom.selection_root(&sel) else {
         return false;
     };
-    let SelectionRange { anchor, active } = sel.range;
+    let Some(anchor_endpoint) = sel.anchor else {
+        return false;
+    };
+    let Some(focus_endpoint) = sel.focus else {
+        return false;
+    };
+    let Some(active) = dom.flat_index_for_endpoint(focus_endpoint) else {
+        return false;
+    };
 
     let run_len = dom
         .selectable_text_runs
@@ -1127,34 +1268,59 @@ pub fn handle_key_for_view_selection(
         Key::Named(NamedKey::ArrowLeft) if shift && ctrl => {
             // Move active to previous word boundary
             let new_active = prev_word_boundary_in_run(dom, root, active);
-            dom.set_selection(TextSelection::new(root, anchor, new_active));
+            if let Some(focus) =
+                dom.endpoint_from_flat_index(root, new_active, Affinity::Downstream)
+            {
+                dom.set_selection(TextSelection::new(anchor_endpoint, focus));
+            }
             true
         }
         Key::Named(NamedKey::ArrowRight) if shift && ctrl => {
             let new_active = next_word_boundary_in_run(dom, root, active);
-            dom.set_selection(TextSelection::new(root, anchor, new_active));
+            if let Some(focus) =
+                dom.endpoint_from_flat_index(root, new_active, Affinity::Downstream)
+            {
+                dom.set_selection(TextSelection::new(anchor_endpoint, focus));
+            }
             true
         }
         Key::Named(NamedKey::ArrowLeft) if shift => {
             let new_active = if active > 0 { active - 1 } else { 0 };
-            dom.set_selection(TextSelection::new(root, anchor, new_active));
+            if let Some(focus) =
+                dom.endpoint_from_flat_index(root, new_active, Affinity::Downstream)
+            {
+                dom.set_selection(TextSelection::new(anchor_endpoint, focus));
+            }
             true
         }
         Key::Named(NamedKey::ArrowRight) if shift => {
             let new_active = (active + 1).min(run_len);
-            dom.set_selection(TextSelection::new(root, anchor, new_active));
+            if let Some(focus) =
+                dom.endpoint_from_flat_index(root, new_active, Affinity::Downstream)
+            {
+                dom.set_selection(TextSelection::new(anchor_endpoint, focus));
+            }
             true
         }
         Key::Named(NamedKey::Home) if shift => {
-            dom.set_selection(TextSelection::new(root, anchor, 0));
+            if let Some(focus) = dom.endpoint_from_flat_index(root, 0, Affinity::Downstream) {
+                dom.set_selection(TextSelection::new(anchor_endpoint, focus));
+            }
             true
         }
         Key::Named(NamedKey::End) if shift => {
-            dom.set_selection(TextSelection::new(root, anchor, run_len));
+            if let Some(focus) = dom.endpoint_from_flat_index(root, run_len, Affinity::Upstream) {
+                dom.set_selection(TextSelection::new(anchor_endpoint, focus));
+            }
             true
         }
         Key::Character(c) if ctrl && (c.as_ref() == "a" || c.as_ref() == "A") => {
-            dom.set_selection(TextSelection::new(root, 0, run_len));
+            if let (Some(start), Some(end)) = (
+                dom.endpoint_from_flat_index(root, 0, Affinity::Downstream),
+                dom.endpoint_from_flat_index(root, run_len, Affinity::Upstream),
+            ) {
+                dom.set_selection(TextSelection::new(start, end));
+            }
             true
         }
         _ => false,
@@ -1197,7 +1363,7 @@ fn resolve_clipboard_target(dom: &UIState) -> Option<ClipboardTarget> {
     }
     if let Some(sel) = dom.get_text_selection()
         && !sel.is_collapsed()
-        && let Some(root) = sel.root
+        && let Some(root) = dom.selection_root(&sel)
     {
         return Some(ClipboardTarget::ViewSelection(root));
     }
@@ -1386,11 +1552,9 @@ pub fn apply_clipboard_command(
                 && let Some(is) = node.as_text_input_mut()
                 && let Some((_cut_text, edit)) = is.cut_selected_text(text_renderer)
             {
-                let value = is.text();
                 events.push(AppEvent::Input(InputEventData {
                     window_id: wid,
                     node_id: target_id,
-                    value,
                     input_type: edit.kind.input_type().to_string(),
                     data: edit.inserted,
                 }));
@@ -1409,11 +1573,9 @@ pub fn apply_clipboard_command(
                 && let Some(is) = node.as_text_input_mut()
                 && let Some(edit) = is.paste_text(&text, text_renderer)
             {
-                let value = is.text();
                 events.push(AppEvent::Input(InputEventData {
                     window_id: wid,
                     node_id: target_id,
-                    value,
                     input_type: edit.kind.input_type().to_string(),
                     data: edit.inserted,
                 }));
@@ -1499,66 +1661,88 @@ fn next_word_boundary_in_run(
     i
 }
 
-pub fn handle_mouse_wheel(dom: &mut UIState, handle: &mut Window, scroll_delta_y: f64) -> bool {
-    let mut needs_redraw = false;
+pub fn handle_mouse_wheel(
+    dom: &mut UIState,
+    handle: &mut Window,
+    scroll_delta_x: f64,
+    scroll_delta_y: f64,
+) -> bool {
     let Some((mx, my)) = dom.hit_state.mouse_position else {
         return false;
     };
 
-    const SCROLL_LOCK_TIMEOUT: std::time::Duration = std::time::Duration::from_millis(150);
-
-    let locked_target = dom.scroll_lock.and_then(|(nid, t)| {
-        if t.elapsed() < SCROLL_LOCK_TIMEOUT {
-            dom.scroll_thumbs
-                .iter()
-                .find(|tr| tr.node_id == nid && tr.view_bounds.contains(mx, my))
-                .map(|_| nid)
-        } else {
-            None
-        }
-    });
-
-    let target = if let Some(nid) = locked_target {
-        dom.scroll_lock = Some((nid, std::time::Instant::now()));
-        Some(nid)
-    } else {
-        let mut found: Option<crate::element::UzNodeId> = None;
-        for thumb_rect in dom.scroll_thumbs.iter() {
-            if thumb_rect.view_bounds.contains(mx, my) {
-                found = Some(thumb_rect.node_id);
-                break;
-            }
-        }
-        if let Some(nid) = found {
-            dom.scroll_lock = Some((nid, std::time::Instant::now()));
-        }
-        found
-    };
-
-    if let Some(nid) = target {
-        let scroll_info = dom
-            .scroll_thumbs
-            .iter()
-            .find(|t| t.node_id == nid)
-            .map(|t| (t.content_height, t.visible_height));
-        if let Some((content_h, visible_h)) = scroll_info {
-            let max_scroll = (content_h - visible_h).max(0.0);
-            if let Some(node) = dom.nodes.get_mut(nid) {
-                if let Some(ss) = &mut node.scroll_state {
-                    ss.scroll_offset_y =
-                        (ss.scroll_offset_y - scroll_delta_y as f32).clamp(0.0, max_scroll);
-                } else if let Some(is) = node.as_text_input_mut() {
-                    is.scroll_offset_y =
-                        (is.scroll_offset_y - scroll_delta_y as f32).clamp(0.0, max_scroll);
-                }
-            }
-            needs_redraw = true;
-        }
+    let mut needs_redraw = false;
+    if scroll_delta_y != 0.0 {
+        needs_redraw |= apply_wheel_axis(dom, mx, my, ScrollAxis::Y, scroll_delta_y);
+    }
+    if scroll_delta_x != 0.0 {
+        needs_redraw |= apply_wheel_axis(dom, mx, my, ScrollAxis::X, scroll_delta_x);
     }
 
     if needs_redraw {
         update_ime_cursor_area(dom, handle);
     }
-
     needs_redraw
+}
+
+/// Route a single-axis wheel delta to the innermost scrollable under the
+/// pointer that can scroll on that axis. Scroll thumbs are registered in
+/// tree-walk order (parents before children); iterating in reverse picks the
+/// deepest match — which is what users expect for nested scrollables.
+fn apply_wheel_axis(dom: &mut UIState, mx: f64, my: f64, axis: ScrollAxis, delta: f64) -> bool {
+    const SCROLL_LOCK_TIMEOUT: std::time::Duration = std::time::Duration::from_millis(150);
+
+    // Honour the existing scroll lock for momentum/inertia continuity, but only
+    // when the locked node is actually scrollable on this axis.
+    let locked = dom.scroll_lock.and_then(|(nid, t)| {
+        if t.elapsed() < SCROLL_LOCK_TIMEOUT {
+            dom.scroll_thumbs
+                .iter()
+                .rev()
+                .find(|tr| tr.node_id == nid && tr.axis == axis && tr.view_bounds.contains(mx, my))
+        } else {
+            None
+        }
+    });
+
+    let target = if let Some(t) = locked {
+        Some((t.node_id, t.content_size, t.visible_size))
+    } else {
+        dom.scroll_thumbs
+            .iter()
+            .rev()
+            .find(|t| t.axis == axis && t.view_bounds.contains(mx, my))
+            .map(|t| (t.node_id, t.content_size, t.visible_size))
+    };
+
+    let Some((nid, content, visible)) = target else {
+        return false;
+    };
+
+    let max_scroll = (content - visible).max(0.0);
+    let Some(node) = dom.nodes.get_mut(nid) else {
+        return false;
+    };
+
+    if let Some(ss) = &mut node.scroll_state {
+        let cur = ss.offset(axis);
+        let next = (cur - delta as f32).clamp(0.0, max_scroll);
+        if next == cur {
+            return false;
+        }
+        ss.set_offset(axis, next);
+    } else if axis == ScrollAxis::Y
+        && let Some(is) = node.as_text_input_mut()
+    {
+        let next = (is.scroll_offset_y - delta as f32).clamp(0.0, max_scroll);
+        if next == is.scroll_offset_y {
+            return false;
+        }
+        is.scroll_offset_y = next;
+    } else {
+        return false;
+    }
+
+    dom.scroll_lock = Some((nid, std::time::Instant::now()));
+    true
 }

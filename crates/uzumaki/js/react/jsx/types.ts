@@ -1,11 +1,20 @@
 import type { ReactNode } from 'react';
 
 import type {
-  UzumakiMouseEvent,
-  UzumakiKeyboardEvent,
-  UzumakiInputEvent,
-  UzumakiFocusEvent,
+  UzMouseEvent,
+  UzKeyboardEvent,
+  UzInputEvent,
+  UzFocusEvent,
 } from '../../events';
+import { UzNode } from '../../node';
+import {
+  UzButtonElement,
+  UzCheckboxElement,
+  UzImageElement,
+  UzInputElement,
+  UzTextElement,
+  UzViewElement,
+} from '../../elements';
 
 interface ElementStyles {
   h?: number | string;
@@ -28,6 +37,7 @@ interface ElementStyles {
   mr?: number | string;
   flex?: string | number | true;
   flexDir?: 'row' | 'col' | 'column';
+  flexWrap?: 'nowrap' | 'wrap' | 'wrap-reverse';
   flexGrow?: number | string;
   flexShrink?: number | string;
   items?: 'start' | 'end' | 'center' | 'stretch' | 'baseline';
@@ -37,7 +47,8 @@ interface ElementStyles {
   color?: string;
   fontSize?: number | string;
   fontWeight?: string | number;
-  overflowWrap?: 'normal' | 'anywhere' | 'break-word';
+  fontFamily?: string;
+  textWrap?: 'wrap' | 'nowrap' | 'anywhere' | 'break-word';
   wordBreak?: 'normal' | 'break-all' | 'keep-all';
   rounded?: number | string;
   roundedTL?: number | string;
@@ -50,6 +61,9 @@ interface ElementStyles {
   borderBottom?: number | string;
   borderLeft?: number | string;
   borderColor?: string;
+  outline?: number | string;
+  outlineColor?: string;
+  outlineOffset?: number | string;
   opacity?: number | string;
   cursor?:
     | 'default'
@@ -86,7 +100,13 @@ interface ElementStyles {
   scale?: number | [number, number] | { x?: number; y?: number };
   scaleX?: number | string;
   scaleY?: number | string;
-  scrollable?: boolean;
+  scroll?: boolean;
+  scrollX?: boolean;
+  scrollY?: boolean;
+  scrollbarWidth?: number | string;
+  scrollbarColor?: string;
+  scrollbarHoverColor?: string;
+  scrollbarRadius?: number | string;
   // if true text inside this view can be selected
   selectable?: boolean;
   visibility?: 'visible' | 'hidden';
@@ -101,19 +121,21 @@ type ActiveStyles = PrefixedStyles<'active'>;
 type FocusStyles = PrefixedStyles<'focus'>;
 
 interface ElementAttributes
-  extends ElementStyles, HoverStyles, ActiveStyles, FocusStyles {}
+  extends ElementStyles, HoverStyles, ActiveStyles, FocusStyles {
+  focusable?: boolean;
+}
 
-interface EventProps {
-  onClick?: (ev: UzumakiMouseEvent) => void;
-  onClickCapture?: (ev: UzumakiMouseEvent) => void;
-  onMouseDown?: (ev: UzumakiMouseEvent) => void;
-  onMouseDownCapture?: (ev: UzumakiMouseEvent) => void;
-  onMouseUp?: (ev: UzumakiMouseEvent) => void;
-  onMouseUpCapture?: (ev: UzumakiMouseEvent) => void;
-  onKeyDown?: (ev: UzumakiKeyboardEvent) => void;
-  onKeyDownCapture?: (ev: UzumakiKeyboardEvent) => void;
-  onKeyUp?: (ev: UzumakiKeyboardEvent) => void;
-  onKeyUpCapture?: (ev: UzumakiKeyboardEvent) => void;
+interface EventProps<T extends UzNode> {
+  onClick?: (ev: UzMouseEvent<T>) => void;
+  onClickCapture?: (ev: UzMouseEvent<T>) => void;
+  onMouseDown?: (ev: UzMouseEvent<T>) => void;
+  onMouseDownCapture?: (ev: UzMouseEvent<T>) => void;
+  onMouseUp?: (ev: UzMouseEvent<T>) => void;
+  onMouseUpCapture?: (ev: UzMouseEvent<T>) => void;
+  onKeyDown?: (ev: UzKeyboardEvent<T>) => void;
+  onKeyDownCapture?: (ev: UzKeyboardEvent<T>) => void;
+  onKeyUp?: (ev: UzKeyboardEvent<T>) => void;
+  onKeyUpCapture?: (ev: UzKeyboardEvent<T>) => void;
 }
 
 export namespace JSX {
@@ -123,49 +145,67 @@ export namespace JSX {
 
   export interface IntrinsicElements {
     view: ElementAttributes &
-      EventProps & {
+      EventProps<UzViewElement> & {
         children?: any;
         key?: string | number;
+        id?: string;
       };
     text: ElementAttributes &
-      EventProps & {
+      EventProps<UzTextElement> & {
         children?: any;
         key?: string | number;
-      };
-    p: ElementAttributes &
-      EventProps & {
-        children?: any;
-        key?: string | number;
+        id?: string;
       };
     button: ElementAttributes &
-      EventProps & {
+      EventProps<UzButtonElement> & {
         children?: any;
         key?: string | number;
+        id?: string;
       };
     input: ElementAttributes &
-      EventProps & {
+      EventProps<UzInputElement> & {
         value?: string;
         placeholder?: string;
         disabled?: boolean;
         maxLength?: number;
         multiline?: boolean;
         secure?: boolean;
-        onChangeText?: (value: string) => void;
-        onInput?: (ev: UzumakiInputEvent) => void;
-        onFocus?: (ev: UzumakiFocusEvent) => void;
-        onBlur?: (ev: UzumakiFocusEvent) => void;
+        // change = "after commit"
+        // input = "while typing"
+        // beforeinput = "before typing"
+        // todo add after implementing "change" event
+        // maybe a find a better name ?
+        // onChange?: (ev: UzumakiInputEvent) => void;
+        onInput?: (ev: UzInputEvent<UzInputElement>) => void;
+        onFocus?: (ev: UzFocusEvent<UzInputElement>) => void;
+        onBlur?: (ev: UzFocusEvent<UzInputElement>) => void;
+        onValueChange?: (value: string) => void;
         children?: any;
         key?: string | number;
+        id?: string;
       };
     checkbox: ElementAttributes &
-      EventProps & {
+      EventProps<UzCheckboxElement> & {
         checked?: boolean;
-        onChange?: (checked: boolean) => void;
-        onInput?: (ev: UzumakiInputEvent) => void;
-        onFocus?: (ev: UzumakiFocusEvent) => void;
-        onBlur?: (ev: UzumakiFocusEvent) => void;
+        // onChange?: (ev: UzumakiInputEvent) => void;
+        onValueChange?: (value: boolean) => void;
+        onInput?: (ev: UzInputEvent<UzCheckboxElement>) => void;
+        onFocus?: (ev: UzFocusEvent<UzCheckboxElement>) => void;
+        onBlur?: (ev: UzFocusEvent<UzCheckboxElement>) => void;
         children?: any;
         key?: string | number;
+        id?: string;
+      };
+    image: ElementAttributes &
+      EventProps<UzImageElement> & {
+        src: string;
+        // todo type this better
+        onLoad?: (ev: { src: string }) => void;
+        onLoadStart?: (ev: { src: string }) => void;
+        onError?: (ev: { src: string; message: string }) => void;
+        children?: any;
+        key?: string | number;
+        id?: string;
       };
   }
 }

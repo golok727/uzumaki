@@ -1,7 +1,10 @@
 {
   "compilerOptions": {
-    "types": ["node"]
-  },
-  "extends": "../../tsconfig.json",
-  "include": ["js/**/*.ts", "js/**/*.tsx"]
+    "target": "ESNext",
+    "moduleResolution": "bundler",
+
+    "lib": ["ESNext"],
+    "types": ["uzumaki-types"],
+    "allowSyntheticDefaultImports": true
+  }
 }

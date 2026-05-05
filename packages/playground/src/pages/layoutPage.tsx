@@ -10,6 +10,7 @@ function AbsClickCounter({ color }: { color: string }) {
       p={7}
       bg={color}
       hover:bg={C.surface4}
+      active:bg={C.accentDim}
       rounded={4}
       cursor="pointer"
       display="flex"
@@ -128,12 +129,17 @@ export function LayoutPage() {
   const [showDisplay, setShowDisplay] = useState(false);
   const [gap, setGap] = useState(8);
   const [padding, setPadding] = useState(12);
-  const [noRounding, setNoRounding] = useState(false);
-  const [rounded, setRounded] = useState(true);
-  const [circle, setCircle] = useState(false);
 
   return (
-    <view display="flex" flexDir="col" gap={0} h="full" scrollable>
+    <view
+      display="flex"
+      flexDir="col"
+      gap={0}
+      h="full"
+      scroll
+      scrollbarWidth={8}
+      scrollbarRadius={5}
+    >
       <view
         display="flex"
         flexDir="col"
@@ -141,13 +147,14 @@ export function LayoutPage() {
         py={16}
         borderBottom={1}
         borderColor={C.border}
+        gap={8}
       >
-        <text fontSize={20} fontWeight={800} color={C.text}>
+        <view fontSize={20} fontWeight={800} color={C.text}>
           Layout Lab
-        </text>
-        <text fontSize={12} color={C.textMuted}>
+        </view>
+        <view fontSize={12} color={C.textMuted}>
           Flex, nesting, borders, rounding, opacity, visibility
-        </text>
+        </view>
       </view>
 
       <view display="flex" flexDir="col" gap={24} p={24}>
@@ -388,7 +395,7 @@ export function LayoutPage() {
                 display="flex"
                 items="center"
                 justify="center"
-                {...props}
+                {...(props as any)}
               >
                 <text fontSize={12} fontWeight={800} color="#ffffff">
                   {label}
@@ -729,70 +736,6 @@ export function LayoutPage() {
 
         <view display="flex" flexDir="col" gap={12}>
           <text fontSize={14} fontWeight={700} color={C.text}>
-            Checkboxes
-          </text>
-          <view
-            display="flex"
-            flexDir="col"
-            p={16}
-            gap={14}
-            bg={C.surface2}
-            rounded={8}
-            border={1}
-            borderColor={C.border}
-          >
-            <view display="flex" items="center" gap={12}>
-              <checkbox
-                checked={noRounding}
-                onChange={setNoRounding}
-                bg={C.accent}
-                borderColor={noRounding ? C.accent : C.border}
-                color="#ffffff"
-                w={20}
-                h={20}
-                hover:opacity={0.9}
-              />
-              <text fontSize={14} color={C.text}>
-                Square checkbox{noRounding ? ' [selected]' : ''}
-              </text>
-            </view>
-            <view display="flex" items="center" gap={12}>
-              <checkbox
-                checked={rounded}
-                onChange={setRounded}
-                bg={C.success}
-                borderColor={rounded ? C.success : C.border}
-                color="#08110a"
-                rounded={4}
-                w={20}
-                h={20}
-              />
-              <text fontSize={14} color={C.text}>
-                Rounded checkbox{rounded ? ' [selected]' : ''}
-              </text>
-            </view>
-            <view display="flex" items="center" gap={12}>
-              <checkbox
-                checked={circle}
-                onChange={setCircle}
-                bg={C.warning}
-                borderColor={circle ? C.warning : C.border}
-                color="#1b1104"
-                rounded={10}
-                w={20}
-                h={20}
-              />
-              <text fontSize={14} color={C.text}>
-                Circular checkbox{circle ? ' [selected]' : ''}
-              </text>
-            </view>
-          </view>
-        </view>
-
-        <Divider />
-
-        <view display="flex" flexDir="col" gap={12}>
-          <text fontSize={14} fontWeight={700} color={C.text}>
             Deep nesting (6 levels)
           </text>
           <view
@@ -996,7 +939,195 @@ export function LayoutPage() {
 
         <Divider />
 
+        <ScrollDemo />
+
+        <Divider />
+
         <AbsolutePositioningDemo />
+      </view>
+    </view>
+  );
+}
+
+function ScrollDemo() {
+  return (
+    <view display="flex" flexDir="col" gap={12}>
+      <view display="flex" flexDir="col" gap={4}>
+        <text fontSize={14} fontWeight={700} color={C.text}>
+          Scroll props
+        </text>
+        <text fontSize={12} color={C.textMuted}>
+          `scroll` enables auto overflow on both axes, while `scrollX` and
+          `scrollY` let you opt into each axis separately.
+        </text>
+      </view>
+
+      <view display="flex" flexDir="col" gap={16}>
+        <view display="flex" flexDir="col" gap={8}>
+          <text fontSize={12} fontWeight={600} color={C.textMuted}>
+            scroll
+          </text>
+          <view
+            h={200}
+            scroll
+            bg={C.surface2}
+            rounded={8}
+            border={1}
+            borderColor={C.border}
+            p={12}
+            display="flex"
+            flexDir="col"
+            gap={8}
+          >
+            {Array.from({ length: 12 }, (_, i) => (
+              <view key={i} display="flex" flexDir="row" gap={10}>
+                {Array.from({ length: 6 }, (_, j) => (
+                  <view
+                    key={`${i}-${j}`}
+                    w={140}
+                    flexShrink={0}
+                    p={10}
+                    bg={(i + j) % 2 === 0 ? C.surface3 : C.surface4}
+                    rounded={6}
+                    display="flex"
+                    items="center"
+                    justify="between"
+                  >
+                    <text fontSize={12} fontWeight={600} color={C.text}>
+                      Row {i + 1}
+                    </text>
+                    <text fontSize={11} color={C.textMuted}>
+                      Col {j + 1}
+                    </text>
+                  </view>
+                ))}
+              </view>
+            ))}
+          </view>
+        </view>
+
+        <view display="flex" flexDir="col" gap={8}>
+          <text fontSize={12} fontWeight={600} color={C.textMuted}>
+            scrollX
+          </text>
+          <view
+            h={108}
+            scrollX
+            bg={C.surface2}
+            rounded={8}
+            border={1}
+            borderColor={C.border}
+            p={12}
+            display="flex"
+            flexDir="row"
+            scrollbarColor={C.accentDim}
+            scrollbarHoverColor={C.warningDim}
+            gap={10}
+          >
+            {Array.from({ length: 10 }, (_, i) => (
+              <view
+                key={i}
+                w={140}
+                h={80}
+                textWrap="nowrap"
+                bg={i % 2 === 0 ? C.primaryDim : C.accentDim}
+                rounded={8}
+                p={10}
+                display="flex"
+                flexDir="col"
+                justify="between"
+              >
+                <text fontSize={12} fontWeight={700} color={C.text}>
+                  Card #{i + 1}
+                </text>
+                <text fontSize={11} color={C.textMuted}>
+                  Horizontal overflow only
+                </text>
+              </view>
+            ))}
+          </view>
+        </view>
+
+        <view display="flex" flexDir="col" gap={8}>
+          <text fontSize={12} fontWeight={600} color={C.textMuted}>
+            scrollY
+          </text>
+          <view
+            h={220}
+            scrollY
+            bg={C.surface2}
+            rounded={8}
+            border={1}
+            borderColor={C.border}
+            p={12}
+            display="flex"
+            flexDir="col"
+            gap={10}
+            scrollbarColor={C.accentDim}
+            scrollbarHoverColor={C.warningDim}
+          >
+            {Array.from({ length: 14 }, (_, i) => (
+              <view
+                key={i}
+                p={12}
+                bg={i % 2 === 0 ? C.successDim : C.warningDim}
+                rounded={8}
+                display="flex"
+                flexDir="col"
+                gap={4}
+              >
+                <text fontSize={12} fontWeight={700} color={C.text}>
+                  Log entry #{i + 1}
+                </text>
+                <text fontSize={10} color={C.textMuted}>
+                  Vertical overflow only
+                </text>
+              </view>
+            ))}
+          </view>
+        </view>
+
+        <view display="flex" flexDir="col" gap={8}>
+          <text fontSize={12} fontWeight={600} color={C.textMuted}>
+            scrollbar styling
+          </text>
+          <text fontSize={11} color={C.textMuted}>
+            scrollbarWidth / Color / HoverColor / TrackColor / Radius
+          </text>
+          <view
+            h={220}
+            scrollY
+            bg={C.surface2}
+            rounded={8}
+            border={1}
+            borderColor={C.border}
+            p={12}
+            display="flex"
+            flexDir="col"
+            gap={10}
+            scrollbarHoverColor={C.primary}
+            scrollbarRadius={5}
+          >
+            {Array.from({ length: 14 }, (_, i) => (
+              <view
+                key={i}
+                p={12}
+                bg={i % 2 === 0 ? C.surface3 : C.surface4}
+                rounded={8}
+                display="flex"
+                flexDir="col"
+                gap={4}
+              >
+                <text fontSize={12} fontWeight={700} color={C.text}>
+                  Item #{i + 1}
+                </text>
+                <text fontSize={10} color={C.textMuted}>
+                  Hover the thumb to see the hover color
+                </text>
+              </view>
+            ))}
+          </view>
+        </view>
       </view>
     </view>
   );

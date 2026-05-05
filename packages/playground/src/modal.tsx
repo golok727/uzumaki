@@ -1,4 +1,5 @@
-import { useState } from 'react';
+import { useId, useState } from 'react';
+import { UzElement } from 'uzumaki-ui';
 import { C } from './theme';
 
 function ModalCounter() {
@@ -45,8 +46,10 @@ function ModalCounter() {
 }
 
 export function Modal({ onClose }: { onClose: () => void }) {
+  const modalId = useId();
   return (
     <view
+      id={modalId}
       position="absolute"
       top={0}
       left={0}
@@ -56,6 +59,10 @@ export function Modal({ onClose }: { onClose: () => void }) {
       display="flex"
       items="center"
       justify="center"
+      onClick={(ev) => {
+        if (ev.target instanceof UzElement && ev.target.id === modalId)
+          onClose();
+      }}
     >
       <view
         w={420}
@@ -132,26 +139,6 @@ export function Modal({ onClose }: { onClose: () => void }) {
               Counter
             </text>
             <ModalCounter />
-          </view>
-
-          <view display="flex" flexDir="col" gap={6}>
-            <text fontSize={13} fontWeight={600} color={C.text}>
-              Info
-            </text>
-            <view
-              p={12}
-              bg={C.surface2}
-              rounded={8}
-              border={1}
-              borderColor={C.border}
-            >
-              <text fontSize={12} color={C.textMuted}>
-                This modal uses position="absolute" with all insets set to 0 on
-                the backdrop, and flexbox centering for the card. The modal
-                renders at the App root so it covers the entire window including
-                the sidebar.
-              </text>
-            </view>
           </view>
         </view>
 

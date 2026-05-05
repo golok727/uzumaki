@@ -5,5 +5,8 @@ export type Tab =
   | 'stress'
   | 'events'
   | 'issues'
+  | 'images'
   | 'timer'
-  | 'undoredo';
+  | 'undoredo'
+  // | 'window'
+  | 'shiki';

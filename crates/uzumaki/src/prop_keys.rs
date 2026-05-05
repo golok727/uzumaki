@@ -5,6 +5,7 @@ pub(crate) enum StyleVariant {
     Base,
     Hover,
     Active,
+    Focus,
 }
 
 #[derive(Copy, Clone, Debug, Eq, PartialEq)]
@@ -29,6 +30,7 @@ pub(crate) enum StyleProp {
     Mr,
     Flex,
     FlexDir,
+    FlexWrap,
     FlexGrow,
     FlexShrink,
     Items,
@@ -38,6 +40,7 @@ pub(crate) enum StyleProp {
     Color,
     FontSize,
     FontWeight,
+    FontFamily,
     Rounded,
     RoundedTL,
     RoundedTR,
@@ -49,14 +52,23 @@ pub(crate) enum StyleProp {
     BorderBottom,
     BorderLeft,
     BorderColor,
+    Outline,
+    OutlineColor,
+    OutlineOffset,
     Opacity,
     Display,
     Cursor,
     Interactive,
     Visibility,
-    Scrollable,
+    Scroll,
+    ScrollX,
+    ScrollY,
+    ScrollbarWidth,
+    ScrollbarColor,
+    ScrollbarHoverColor,
+    ScrollbarRadius,
     TextSelect,
-    OverflowWrap,
+    TextWrap,
     WordBreak,
     Position,
     Top,
@@ -80,6 +92,7 @@ pub(crate) enum ElementProp {
     Multiline,
     Secure,
     Checked,
+    Focusable,
 }
 
 #[derive(Copy, Clone, Debug, Eq, PartialEq)]
@@ -105,6 +118,11 @@ impl FromStr for AttributeKind {
             return rest
                 .parse::<StyleProp>()
                 .map(|p| AttributeKind::Style(p, StyleVariant::Active));
+        }
+        if let Some(rest) = value.strip_prefix("focus:") {
+            return rest
+                .parse::<StyleProp>()
+                .map(|p| AttributeKind::Style(p, StyleVariant::Focus));
         }
 
         value
@@ -138,6 +156,7 @@ impl FromStr for StyleProp {
             "mr" => Self::Mr,
             "flex" => Self::Flex,
             "flexDir" => Self::FlexDir,
+            "flexWrap" => Self::FlexWrap,
             "flexGrow" => Self::FlexGrow,
             "flexShrink" => Self::FlexShrink,
             "items" => Self::Items,
@@ -147,6 +166,7 @@ impl FromStr for StyleProp {
             "color" => Self::Color,
             "fontSize" => Self::FontSize,
             "fontWeight" => Self::FontWeight,
+            "fontFamily" => Self::FontFamily,
             "rounded" => Self::Rounded,
             "roundedTL" => Self::RoundedTL,
             "roundedTR" => Self::RoundedTR,
@@ -158,14 +178,23 @@ impl FromStr for StyleProp {
             "borderBottom" => Self::BorderBottom,
             "borderLeft" => Self::BorderLeft,
             "borderColor" => Self::BorderColor,
+            "outline" => Self::Outline,
+            "outlineColor" => Self::OutlineColor,
+            "outlineOffset" => Self::OutlineOffset,
             "opacity" => Self::Opacity,
             "display" => Self::Display,
             "cursor" => Self::Cursor,
             "interactive" => Self::Interactive,
             "visibility" => Self::Visibility,
-            "scrollable" => Self::Scrollable,
+            "scroll" | "scrollable" => Self::Scroll,
+            "scrollX" | "scrollableX" => Self::ScrollX,
+            "scrollY" | "scrollableY" => Self::ScrollY,
+            "scrollbarWidth" => Self::ScrollbarWidth,
+            "scrollbarColor" => Self::ScrollbarColor,
+            "scrollbarHoverColor" => Self::ScrollbarHoverColor,
+            "scrollbarRadius" => Self::ScrollbarRadius,
             "selectable" => Self::TextSelect,
-            "overflowWrap" => Self::OverflowWrap,
+            "textWrap" => Self::TextWrap,
             "wordBreak" => Self::WordBreak,
             "position" => Self::Position,
             "top" => Self::Top,
@@ -183,6 +212,7 @@ impl FromStr for StyleProp {
     }
 }
 
+// we should move these to Core*Element
 impl FromStr for ElementProp {
     type Err = ();
 
@@ -195,6 +225,7 @@ impl FromStr for ElementProp {
             "multiline" => Self::Multiline,
             "secure" => Self::Secure,
             "checked" => Self::Checked,
+            "focusable" => Self::Focusable,
             _ => return Err(()),
         })
     }

@@ -1,4 +1,4 @@
-import { ReactNode } from 'react';
+import type { ReactNode } from 'react';
 import { C } from './theme';
 
 export interface TableColumn<T> {
@@ -36,7 +36,6 @@ export function Table<T>({
       border={1}
       borderColor={C.border}
       rounded={8}
-      overflow="hidden"
     >
       <view
         display="flex"
@@ -44,6 +43,7 @@ export function Table<T>({
         bg={headerBg}
         borderBottom={1}
         borderColor={C.border}
+        textWrap="nowrap"
       >
         {columns.map((col, _i) => (
           <view

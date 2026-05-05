@@ -1,75 +1,170 @@
 use crate::cursor::UzCursorIcon;
 use crate::input::InputState;
 use crate::interactivity::Interactivity;
-use crate::style::{Bounds, TextSelectable, TextStyle, UzStyle};
+use crate::style::{Bounds, TextSelectable, UzStyle};
+use crate::text::TextBrush;
+use parley::Layout as ParleyLayout;
+use std::ops::{Deref, DerefMut};
+use std::sync::Arc;
+use vello::peniko::Blob;
 
 pub mod checkbox;
+pub mod image;
 pub mod input;
 pub mod render;
+pub mod scroll;
 pub mod selection;
-pub mod text;
+pub mod svg;
 pub mod view;
 
 use vello::kurbo::Affine;
 
 pub type UzNodeId = usize;
 
-pub struct ScrollState {
-    pub scroll_offset_y: f32,
+/// Which axis a scroll operation targets. Used by drag/wheel routing and by
+/// the unified scrollbar geometry helpers.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
+pub enum ScrollAxis {
+    X,
+    Y,
 }
 
-impl Default for ScrollState {
-    fn default() -> Self {
-        Self::new()
-    }
+#[derive(Default)]
+pub struct ScrollState {
+    pub scroll_offset_x: f32,
+    pub scroll_offset_y: f32,
 }
 
 impl ScrollState {
     pub fn new() -> Self {
-        Self {
-            scroll_offset_y: 0.0,
+        Self::default()
+    }
+
+    pub fn offset(&self, axis: ScrollAxis) -> f32 {
+        match axis {
+            ScrollAxis::X => self.scroll_offset_x,
+            ScrollAxis::Y => self.scroll_offset_y,
+        }
+    }
+
+    pub fn set_offset(&mut self, axis: ScrollAxis, value: f32) {
+        match axis {
+            ScrollAxis::X => self.scroll_offset_x = value,
+            ScrollAxis::Y => self.scroll_offset_y = value,
         }
     }
 }
 
-/// Active scroll-thumb drag. Stored on Dom (only one drag at a time).
+/// Active scroll-thumb drag. Stored on the dom (only one drag at a time).
 pub struct ScrollDragState {
     pub node_id: UzNodeId,
-    pub start_mouse_y: f64,
+    pub axis: ScrollAxis,
+    /// Mouse coordinate on `axis` at drag start (logical px).
+    pub start_mouse_pos: f64,
     pub start_scroll_offset: f32,
-    /// Track length = visible_height - thumb_height (how far thumb can move).
+    /// Distance the thumb can travel along `axis` (track length minus thumb
+    /// length).
     pub track_range: f64,
-    /// Max scroll offset (content_height - visible_height).
+    /// Maximum scroll offset along `axis` (content_size - visible_size).
     pub max_scroll: f32,
 }
 
 /// Rendered thumb rect, rebuilt each paint pass for hit testing.
 pub struct ScrollThumbRect {
     pub node_id: UzNodeId,
+    pub axis: ScrollAxis,
     pub thumb_bounds: Bounds,
     pub view_bounds: Bounds,
-    pub content_height: f32,
-    pub visible_height: f32,
+    pub content_size: f32,
+    pub visible_size: f32,
 }
 
 #[derive(Clone, Debug)]
-pub struct TextNode {
+pub struct TextContent {
     pub content: String,
 }
 
-impl TextNode {
+impl TextContent {
     pub fn new(content: String) -> Self {
         Self { content }
     }
 }
 
-// General-purpose mechanism for properties that propagate from parent to child
-// unless explicitly overridden. Designed for extension — future inheritable
-// properties (font color, font size, line height, etc.) go here.
+#[derive(Clone, Debug)]
+pub struct ImageMeasureInfo {
+    pub width: f32,
+    pub height: f32,
+}
+
+#[derive(Debug, Clone, PartialEq)]
+pub struct RasterImageData {
+    pub width: u32,
+    pub height: u32,
+    pub data: Blob<u8>,
+}
+
+impl RasterImageData {
+    pub fn new(width: u32, height: u32, data: Arc<Vec<u8>>) -> Self {
+        Self {
+            width,
+            height,
+            data: Blob::new(data),
+        }
+    }
+}
+
+#[derive(Debug, Clone, Default)]
+pub enum ImageData {
+    Raster(RasterImageData),
+    Svg {
+        tree: Arc<usvg::Tree>,
+        uses_current_color: bool,
+    },
+    #[default]
+    None,
+}
+
+impl ImageData {
+    pub fn is_none(&self) -> bool {
+        matches!(self, Self::None)
+    }
+
+    pub fn natural_size(&self) -> Option<(f32, f32)> {
+        match self {
+            Self::Raster(r) => Some((r.width as f32, r.height as f32)),
+            Self::Svg { tree, .. } => {
+                let s = tree.size();
+                Some((s.width(), s.height()))
+            }
+            Self::None => None,
+        }
+    }
+}
+
+impl From<RasterImageData> for ImageData {
+    fn from(value: RasterImageData) -> Self {
+        Self::Raster(value)
+    }
+}
+
+impl From<usvg::Tree> for ImageData {
+    fn from(value: usvg::Tree) -> Self {
+        Self::Svg {
+            tree: Arc::new(value),
+            uses_current_color: false,
+        }
+    }
+}
 
 #[derive(Clone, Debug, Default)]
-pub struct InheritedProperties {
-    pub text_selectable: bool,
+pub struct ImageNode {
+    pub data: ImageData,
+}
+
+impl ImageNode {
+    pub fn clear(&mut self) {
+        self.data = ImageData::None;
+    }
 }
 
 /// One text node's contribution to a textSelect run.
@@ -89,14 +184,6 @@ pub struct TextSelectRun {
     pub total_graphemes: usize,
 }
 
-#[derive(Clone, Debug)]
-pub struct NodeContext {
-    pub dom_id: UzNodeId,
-    pub text: Option<TextNode>,
-    pub text_style: TextStyle,
-    pub is_input: bool,
-}
-
 pub struct ElementNode {
     pub is_focussable: bool,
     pub data: ElementData,
@@ -110,6 +197,16 @@ impl ElementNode {
         }
     }
 
+    /**
+     * Inline text element (for styling inline text) Hello <text> Something <text>
+     *  Hello                    <text>Something</text>
+     *   |                          |---------------|
+     *NodeData::TextNode()   NodeData::ElementNode(ElementData::Text())
+     */
+    pub fn new_text(text: TextContent) -> Self {
+        Self::new(ElementData::Text(text))
+    }
+
     pub fn new_text_input(state: InputState) -> Self {
         Self::new(ElementData::TextInput(Box::new(state)))
     }
@@ -118,12 +215,20 @@ impl ElementNode {
         Self::new(ElementData::CheckboxInput(checked))
     }
 
+    pub fn new_image(state: ImageNode) -> Self {
+        Self::new(ElementData::Image(Box::new(state)))
+    }
+
     pub fn is_text_input(&self) -> bool {
         self.data.is_text_input()
     }
 
     pub fn is_checkbox_input(&self) -> bool {
         self.data.is_checkbox_input()
+    }
+
+    pub fn is_image(&self) -> bool {
+        self.data.is_image()
     }
 
     pub fn is_focussable(&self) -> bool {
@@ -138,8 +243,10 @@ impl ElementNode {
 #[derive(Default)]
 pub enum ElementData {
     // this is text Element <text>
+    Text(TextContent),
     TextInput(Box<InputState>),
     CheckboxInput(bool),
+    Image(Box<ImageNode>),
     // for view nodes
     #[default]
     None,
@@ -160,6 +267,24 @@ impl ElementData {
 
     pub fn is_checkbox_input(&self) -> bool {
         matches!(self, Self::CheckboxInput(_))
+    }
+
+    pub fn is_image(&self) -> bool {
+        matches!(self, Self::Image(_))
+    }
+
+    pub fn get_text_content(&self) -> Option<&TextContent> {
+        match self {
+            Self::Text(text) => Some(text),
+            _ => None,
+        }
+    }
+
+    pub fn text_content_mut(&mut self) -> Option<&mut TextContent> {
+        match self {
+            Self::Text(text) => Some(text),
+            _ => None,
+        }
     }
 
     pub fn as_text_input(&self) -> Option<&InputState> {
@@ -189,20 +314,56 @@ impl ElementData {
             _ => None,
         }
     }
+
+    pub fn as_image(&self) -> Option<&ImageNode> {
+        match self {
+            Self::Image(image) => Some(image),
+            _ => None,
+        }
+    }
+
+    pub fn as_image_mut(&mut self) -> Option<&mut ImageNode> {
+        match self {
+            Self::Image(image) => Some(image),
+            _ => None,
+        }
+    }
 }
 
-pub enum NodeData {
-    Root,
+pub struct TextNode(TextContent);
 
-    Text(TextNode),
-    // element node
-    Element(ElementNode),
+impl TextNode {
+    pub fn new(content: TextContent) -> Self {
+        Self(content)
+    }
+}
+
+impl Deref for TextNode {
+    type Target = TextContent;
+
+    fn deref(&self) -> &Self::Target {
+        &self.0
+    }
+}
+
+impl DerefMut for TextNode {
+    fn deref_mut(&mut self) -> &mut Self::Target {
+        &mut self.0
+    }
 }
 
 impl From<TextNode> for NodeData {
     fn from(value: TextNode) -> Self {
         Self::Text(value)
     }
+}
+
+pub enum NodeData {
+    Root,
+    // normal text nodes (cant add event listners etc just plain text)
+    Text(TextNode),
+    // element node
+    Element(ElementNode),
 }
 
 impl From<ElementNode> for NodeData {
@@ -226,24 +387,18 @@ impl NodeData {
         Self::Root
     }
 
-    pub fn create_text(data: TextNode) -> Self {
-        Self::Text(data)
-    }
-
-    pub fn create_element(data: ElementNode) -> Self {
-        Self::Element(data)
-    }
-
-    pub fn as_text_node(&self) -> Option<&TextNode> {
+    pub fn get_text_content(&self) -> Option<&TextContent> {
         match self {
-            Self::Text(text) => Some(text),
+            Self::Text(text) => Some(&text.0),
+            Self::Element(element) => element.data.get_text_content(),
             _ => None,
         }
     }
 
-    pub fn as_text_node_mut(&mut self) -> Option<&mut TextNode> {
+    pub fn text_content_mut(&mut self) -> Option<&mut TextContent> {
         match self {
             Self::Text(text) => Some(text),
+            Self::Element(element) => element.data.text_content_mut(),
             _ => None,
         }
     }
@@ -276,6 +431,20 @@ impl NodeData {
         }
     }
 
+    pub fn as_image(&self) -> Option<&ImageNode> {
+        match self {
+            Self::Element(element) => element.data.as_image(),
+            _ => None,
+        }
+    }
+
+    pub fn as_image_mut(&mut self) -> Option<&mut ImageNode> {
+        match self {
+            Self::Element(element) => element.data.as_image_mut(),
+            _ => None,
+        }
+    }
+
     pub fn is_text_node(&self) -> bool {
         matches!(self, Self::Text(_))
     }
@@ -290,6 +459,13 @@ impl NodeData {
     pub fn is_checkbox_input(&self) -> bool {
         match self {
             Self::Element(element) => element.data.is_checkbox_input(),
+            _ => false,
+        }
+    }
+
+    pub fn is_image(&self) -> bool {
+        match self {
+            Self::Element(element) => element.data.is_image(),
             _ => false,
         }
     }
@@ -334,15 +510,7 @@ impl NodeData {
 pub struct Node {
     pub parent: Option<UzNodeId>,
 
-    pub first_child: Option<UzNodeId>,
-
-    pub last_child: Option<UzNodeId>,
-
-    pub next_sibling: Option<UzNodeId>,
-
-    pub prev_sibling: Option<UzNodeId>,
-
-    pub taffy_node: taffy::NodeId,
+    pub children: Vec<UzNodeId>,
 
     pub data: NodeData,
 
@@ -354,22 +522,29 @@ pub struct Node {
     pub scroll_state: Option<ScrollState>,
     // not used now todo use this :3
     pub transform: Option<Affine>,
+    /// Cached parley layout for text-bearing nodes (text node or `<text>`
+    /// element). Refreshed once per frame after taffy compute, then reused by
+    /// paint, selection geometry and hit-testing instead of rebuilding parley
+    /// layouts on every read.
+    pub text_layout: Option<ParleyLayout<TextBrush>>,
+    /// Cached taffy layout for this node, copied here after `compute_layout`
+    /// runs. Reading `node.final_layout` avoids the
+    /// `layout_engine.layout(node_id)` two-level lookup on the paint hot path.
+    pub final_layout: taffy::Layout,
 }
 
 impl Node {
-    pub fn new(taffy_node: taffy::NodeId, style: UzStyle, data: impl Into<NodeData>) -> Self {
+    pub fn new(style: UzStyle, data: impl Into<NodeData>) -> Self {
         Self {
             parent: None,
-            first_child: None,
-            last_child: None,
-            next_sibling: None,
-            prev_sibling: None,
-            taffy_node,
+            children: Vec::new(),
             data: data.into(),
             style,
             interactivity: Interactivity::new(),
             scroll_state: None,
             transform: None,
+            text_layout: None,
+            final_layout: taffy::Layout::new(),
         }
     }
 }
@@ -412,12 +587,20 @@ impl Node {
         self.data.as_element_mut()
     }
 
-    pub fn as_text_node(&self) -> Option<&TextNode> {
-        self.data.as_text_node()
+    pub fn get_text_content(&self) -> Option<&TextContent> {
+        self.data.get_text_content()
     }
 
-    pub fn as_text_node_mut(&mut self) -> Option<&mut TextNode> {
-        self.data.as_text_node_mut()
+    pub fn text_content_mut(&mut self) -> Option<&mut TextContent> {
+        self.data.text_content_mut()
+    }
+
+    pub fn as_image(&self) -> Option<&ImageNode> {
+        self.data.as_image()
+    }
+
+    pub fn as_image_mut(&mut self) -> Option<&mut ImageNode> {
+        self.data.as_image_mut()
     }
 
     pub fn is_text_input(&self) -> bool {
@@ -428,11 +611,22 @@ impl Node {
         self.data.is_checkbox_input()
     }
 
+    pub fn is_image(&self) -> bool {
+        self.data.is_image()
+    }
+
     pub fn is_text_node(&self) -> bool {
         self.data.is_text_node()
     }
 
     pub fn default_cursor(&self) -> Option<UzCursorIcon> {
         self.data.default_cursor()
+    }
+
+    /// Whether this node can receive keyboard focus.
+    pub fn is_focusable(&self) -> bool {
+        self.as_element()
+            .map(|e| e.is_focussable())
+            .unwrap_or(false)
     }
 }

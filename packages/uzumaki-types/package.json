@@ -1,0 +1,32 @@
+{
+  "name": "uzumaki-types",
+  "type": "module",
+  "version": "0.0.0",
+  "scripts": {},
+  "types": "./index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./index.d.ts"
+    }
+  },
+  "description": "Type definitions and documentation for Uzumaki, a Typescript Desktop UI framework",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/golok727/uzumaki",
+    "directory": "packages/uzumaki-types"
+  },
+  "files": [
+    "index.d.ts",
+    "globals.d.ts",
+    "README.md"
+  ],
+  "dependencies": {
+    "@types/deno": "^2.5.0",
+    "@types/node": "^25.6.0"
+  },
+  "keywords": [
+    "uzumaki",
+    "uzumaki-ui",
+    "types"
+  ]
+}

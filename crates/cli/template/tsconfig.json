@@ -2,6 +2,7 @@
   "compilerOptions": {
     "lib": ["ESNext"],
     "target": "ESNext",
+    "types": ["uzumaki-types"],
     "module": "Preserve",
     "moduleResolution": "bundler",
     "jsx": "react-jsx",

@@ -15,7 +15,7 @@ export function Badge({
 }) {
   return (
     <view px={8} py={3} bg={bg} rounded={8}>
-      <text overflowWrap="normal" fontSize={11} fontWeight={600} color={color}>
+      <text textWrap="nowrap" fontSize={11} fontWeight={600} color={color}>
         {label}
       </text>
     </view>
@@ -68,6 +68,7 @@ export function StatCard({
 }) {
   return (
     <view
+      textWrap="nowrap"
       flex={1}
       p={16}
       bg={C.surface2}
@@ -76,7 +77,7 @@ export function StatCard({
       borderColor={C.border}
       display="flex"
       flexDir="col"
-      gap={4}
+      gap={7}
     >
       <text fontSize={10} fontWeight={700} color={C.textMuted}>
         {label.toUpperCase()}

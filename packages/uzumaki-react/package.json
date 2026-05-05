@@ -1,0 +1,25 @@
+{
+  "name": "uzumaki-react",
+  "type": "module",
+  "version": "0.0.0",
+  "scripts": {},
+  "exports": {
+    ".": "./index.ts"
+  },
+  "description": "React renderer for Uzumaki",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/golok727/uzumaki",
+    "directory": "packages/uzumaki-react"
+  },
+  "files": [
+    "src/**/*",
+    "README.md"
+  ],
+  "keywords": [
+    "uzumaki",
+    "uzumaki-ui",
+    "react",
+    "desktop-ui"
+  ]
+}

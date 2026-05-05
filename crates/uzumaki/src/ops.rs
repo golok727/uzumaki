@@ -1,8 +1,8 @@
 pub mod dom;
-pub mod style;
+pub mod image;
 mod style_util;
 pub mod window;
 
 pub use dom::*;
-pub use style::*;
+pub use image::*;
 pub use window::*;
