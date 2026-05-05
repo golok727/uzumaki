@@ -1,3 +1,4 @@
+use std::collections::VecDeque;
 use std::time::{Duration, Instant};
 
 use parley::PlainEditor;
@@ -5,7 +6,7 @@ use winit::keyboard::{Key, NamedKey};
 
 use crate::text::{TextBrush, TextRenderer};
 
-#[derive(Clone, Debug)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum EditKind {
     Insert,
     InsertFromPaste,
@@ -14,6 +15,35 @@ pub enum EditKind {
     DeleteWordBackward,
     DeleteWordForward,
     DeleteByCut,
+    HistoryUndo,
+    HistoryRedo,
+}
+
+impl EditKind {
+    fn is_batchable(self) -> bool {
+        matches!(
+            self,
+            EditKind::Insert | EditKind::DeleteBackward | EditKind::DeleteForward
+        )
+    }
+
+    fn is_insert_batch(self) -> bool {
+        matches!(self, EditKind::Insert)
+    }
+
+    pub(crate) fn input_type(self) -> &'static str {
+        match self {
+            EditKind::Insert => "insertText",
+            EditKind::InsertFromPaste => "insertFromPaste",
+            EditKind::DeleteBackward => "deleteContentBackward",
+            EditKind::DeleteForward => "deleteContentForward",
+            EditKind::DeleteWordBackward => "deleteWordBackward",
+            EditKind::DeleteWordForward => "deleteWordForward",
+            EditKind::DeleteByCut => "deleteByCut",
+            EditKind::HistoryUndo => "historyUndo",
+            EditKind::HistoryRedo => "historyRedo",
+        }
+    }
 }
 
 #[derive(Clone, Debug)]
@@ -40,12 +70,110 @@ pub struct InputState {
     pub multiline: bool,
     pub max_length: Option<usize>,
     pub preedit: Option<PreeditState>,
+    history: EditHistory,
 }
 
 #[derive(Clone, Debug)]
 pub struct PreeditState {
     pub text: String,
     pub cursor: Option<(usize, usize)>,
+}
+
+#[derive(Clone, Debug, Default)]
+struct SelectionSnapshot {
+    anchor_byte: usize,
+    focus_byte: usize,
+}
+
+#[derive(Clone, Debug)]
+struct ChangeItem {
+    start_byte: usize,
+    end_byte: usize,
+    text: String,
+    insert: bool,
+}
+
+#[derive(Clone, Debug, Default)]
+struct Change {
+    items: Vec<ChangeItem>,
+    before_selection: SelectionSnapshot,
+    after_selection: SelectionSnapshot,
+}
+
+/// Maximum number of undo entries to keep per input.
+const MAX_HISTORY: usize = 100;
+
+/// Consecutive edits within this window are merged into one undo batch.
+const BATCH_TIMEOUT_MS: u128 = 500;
+
+struct EditHistory {
+    undo_stack: VecDeque<Change>,
+    redo_stack: Vec<Change>,
+    /// Timestamp of the last edit (for time-based batch breaking).
+    last_edit_time: Option<Instant>,
+}
+
+impl EditHistory {
+    fn new() -> Self {
+        Self {
+            undo_stack: VecDeque::new(),
+            redo_stack: Vec::new(),
+            last_edit_time: None,
+        }
+    }
+
+    /// Determine whether the incoming edit should start a new undo batch.
+    fn should_start_new_batch(&self, kind: EditKind, inserted: Option<&str>) -> bool {
+        // Non-batchable edits (paste, cut, word-delete, history) always start a new batch.
+        if !kind.is_batchable() {
+            return true;
+        }
+
+        // No previous edit means this is the first batch.
+        let Some(last_edit_insert) = self
+            .undo_stack
+            .back()
+            .and_then(|change| change.items.last())
+            .map(|item| item.insert)
+        else {
+            return true;
+        };
+
+        let Some(last_time) = self.last_edit_time else {
+            return true;
+        };
+
+        // Time gap exceeds threshold.
+        if last_time.elapsed().as_millis() > BATCH_TIMEOUT_MS {
+            return true;
+        }
+
+        // Switching between insert and delete batches.
+        if last_edit_insert != kind.is_insert_batch() {
+            return true;
+        }
+
+        // Newline insertion always starts a new batch.
+        if kind == EditKind::Insert && inserted.is_some_and(|s| s.contains('\n')) {
+            return true;
+        }
+
+        false
+    }
+
+    fn break_batch(&mut self) {
+        self.last_edit_time = None;
+    }
+
+    fn reset_batching(&mut self) {
+        self.last_edit_time = None;
+    }
+
+    fn clear(&mut self) {
+        self.undo_stack.clear();
+        self.redo_stack.clear();
+        self.reset_batching();
+    }
 }
 
 impl Default for InputState {
@@ -70,6 +198,7 @@ impl InputState {
             multiline: true,
             max_length: None,
             preedit: None,
+            history: EditHistory::new(),
         }
     }
 
@@ -117,47 +246,201 @@ impl InputState {
         self.editor.generation() != old_gen
     }
 
-    pub fn insert_text(&mut self, text: &str, renderer: &mut TextRenderer) -> Option<EditEvent> {
-        if self.disabled {
-            return None;
-        }
-        let input = if !self.multiline {
-            let filtered: String = text.chars().filter(|&c| c != '\n' && c != '\r').collect();
-            if filtered.is_empty() {
-                return None;
-            }
-            filtered
-        } else {
-            text.to_string()
-        };
-
-        if let Some(max) = self.max_length {
-            let current = self.editor.raw_text().chars().count()
-                - self
-                    .editor
-                    .selected_text()
-                    .map(|s| s.chars().count())
-                    .unwrap_or(0);
-            let insert_count = input.chars().count();
-            if current + insert_count > max {
-                return None;
-            }
-        }
-
-        let generation = self.editor.generation();
-        self.with_driver(renderer, |d| d.insert_or_replace_selection(&input));
-        if self.text_changed(generation) {
-            self.reset_blink();
-            Some(EditEvent {
-                kind: EditKind::Insert,
-                inserted: Some(input),
-            })
-        } else {
-            None
+    fn selection_snapshot(&self) -> SelectionSnapshot {
+        let sel = self.editor.raw_selection();
+        SelectionSnapshot {
+            anchor_byte: sel.anchor().index(),
+            focus_byte: sel.focus().index(),
         }
     }
 
-    pub fn paste_text(&mut self, text: &str, renderer: &mut TextRenderer) -> Option<EditEvent> {
+    fn build_change(
+        old_text: &str,
+        new_text: &str,
+        before_selection: SelectionSnapshot,
+        after_selection: SelectionSnapshot,
+    ) -> Option<Change> {
+        if old_text == new_text {
+            return None;
+        }
+
+        let mut prefix = 0;
+        for ((old_idx, old_ch), (new_idx, new_ch)) in
+            old_text.char_indices().zip(new_text.char_indices())
+        {
+            if old_ch != new_ch {
+                break;
+            }
+            prefix = old_idx + old_ch.len_utf8();
+            debug_assert_eq!(prefix, new_idx + new_ch.len_utf8());
+        }
+
+        let old_tail = &old_text[prefix..];
+        let new_tail = &new_text[prefix..];
+        let mut suffix = 0;
+        for (old_ch, new_ch) in old_tail.chars().rev().zip(new_tail.chars().rev()) {
+            if old_ch != new_ch {
+                break;
+            }
+            suffix += old_ch.len_utf8();
+        }
+
+        let old_end = old_text.len() - suffix;
+        let new_end = new_text.len() - suffix;
+        let deleted = &old_text[prefix..old_end];
+        let inserted = &new_text[prefix..new_end];
+
+        let mut items = Vec::new();
+        if !deleted.is_empty() {
+            items.push(ChangeItem {
+                start_byte: prefix,
+                end_byte: old_end,
+                text: deleted.to_string(),
+                insert: false,
+            });
+        }
+        if !inserted.is_empty() {
+            items.push(ChangeItem {
+                start_byte: prefix,
+                end_byte: prefix,
+                text: inserted.to_string(),
+                insert: true,
+            });
+        }
+
+        Some(Change {
+            items,
+            before_selection,
+            after_selection,
+        })
+    }
+
+    fn push_history(&mut self, change: Change, kind: EditKind, inserted: Option<&str>) {
+        if change.items.is_empty() {
+            return;
+        }
+
+        if self.history.should_start_new_batch(kind, inserted) {
+            self.history.undo_stack.push_back(change);
+            if self.history.undo_stack.len() > MAX_HISTORY {
+                self.history.undo_stack.pop_front();
+            }
+        } else if let Some(last) = self.history.undo_stack.back_mut() {
+            last.items.extend(change.items);
+            last.after_selection = change.after_selection;
+        } else {
+            self.history.undo_stack.push_back(change);
+        }
+        self.history.redo_stack.clear();
+        if kind.is_batchable() {
+            self.history.last_edit_time = Some(Instant::now());
+        } else {
+            self.history.last_edit_time = None;
+        }
+    }
+
+    fn restore_selection(&mut self, selection: &SelectionSnapshot, renderer: &mut TextRenderer) {
+        let text_len = self.editor.raw_text().len();
+        let anchor = selection.anchor_byte.min(text_len);
+        let focus = selection.focus_byte.min(text_len);
+        self.with_driver(renderer, |d| {
+            d.select_byte_range(anchor, focus);
+        });
+    }
+
+    fn apply_item_to_string(text: &mut String, item: &ChangeItem, undo: bool) {
+        if item.insert {
+            let start = item.start_byte.min(text.len());
+            if undo {
+                let end = (start + item.text.len()).min(text.len());
+                if text.is_char_boundary(start) && text.is_char_boundary(end) {
+                    text.replace_range(start..end, "");
+                }
+            } else if text.is_char_boundary(start) {
+                text.insert_str(start, &item.text);
+            }
+        } else if undo {
+            let start = item.start_byte.min(text.len());
+            if text.is_char_boundary(start) {
+                text.insert_str(start, &item.text);
+            }
+        } else {
+            let start = item.start_byte.min(text.len());
+            let end = item.end_byte.min(text.len());
+            if start <= end && text.is_char_boundary(start) && text.is_char_boundary(end) {
+                text.replace_range(start..end, "");
+            }
+        }
+    }
+
+    fn apply_change(&mut self, change: &Change, undo: bool, renderer: &mut TextRenderer) {
+        let mut text = self.editor.raw_text().to_string();
+        if undo {
+            for item in change.items.iter().rev() {
+                Self::apply_item_to_string(&mut text, item, true);
+            }
+        } else {
+            for item in &change.items {
+                Self::apply_item_to_string(&mut text, item, false);
+            }
+        }
+        self.editor.set_text(&text);
+        let target = if undo {
+            &change.before_selection
+        } else {
+            &change.after_selection
+        };
+        self.restore_selection(target, renderer);
+    }
+
+    /// Break the current undo batch. The next edit will start a new batch.
+    pub fn break_undo_batch(&mut self) {
+        self.history.break_batch();
+    }
+
+    pub fn undo(&mut self, renderer: &mut TextRenderer) -> Option<EditEvent> {
+        if self.disabled || self.history.undo_stack.is_empty() {
+            return None;
+        }
+
+        let change = self.history.undo_stack.pop_back().unwrap();
+
+        self.apply_change(&change, true, renderer);
+        self.history.redo_stack.push(change);
+        self.history.reset_batching();
+        self.reset_blink();
+
+        Some(EditEvent {
+            kind: EditKind::HistoryUndo,
+            inserted: None,
+        })
+    }
+
+    pub fn redo(&mut self, renderer: &mut TextRenderer) -> Option<EditEvent> {
+        if self.disabled || self.history.redo_stack.is_empty() {
+            return None;
+        }
+
+        let change = self.history.redo_stack.pop().unwrap();
+
+        self.apply_change(&change, false, renderer);
+        self.history.undo_stack.push_back(change);
+        self.history.reset_batching();
+        self.reset_blink();
+
+        Some(EditEvent {
+            kind: EditKind::HistoryRedo,
+            inserted: None,
+        })
+    }
+
+    /// Shared insert logic for both typed input and paste.
+    fn do_insert(
+        &mut self,
+        text: &str,
+        kind: EditKind,
+        renderer: &mut TextRenderer,
+    ) -> Option<EditEvent> {
         if self.disabled {
             return None;
         }
@@ -183,17 +466,34 @@ impl InputState {
             }
         }
 
+        let old_text = self.editor.raw_text().to_string();
+        let before_selection = self.selection_snapshot();
         let generation = self.editor.generation();
         self.with_driver(renderer, |d| d.insert_or_replace_selection(&input));
         if self.text_changed(generation) {
+            let new_text = self.editor.raw_text();
+            let after_selection = self.selection_snapshot();
+            if let Some(change) =
+                Self::build_change(&old_text, new_text, before_selection, after_selection)
+            {
+                self.push_history(change, kind, Some(&input));
+            }
             self.reset_blink();
             Some(EditEvent {
-                kind: EditKind::InsertFromPaste,
+                kind,
                 inserted: Some(input),
             })
         } else {
             None
         }
+    }
+
+    pub fn insert_text(&mut self, text: &str, renderer: &mut TextRenderer) -> Option<EditEvent> {
+        self.do_insert(text, EditKind::Insert, renderer)
+    }
+
+    pub fn paste_text(&mut self, text: &str, renderer: &mut TextRenderer) -> Option<EditEvent> {
+        self.do_insert(text, EditKind::InsertFromPaste, renderer)
     }
 
     pub fn cut_selected_text(
@@ -207,7 +507,16 @@ impl InputState {
         if text.is_empty() {
             return None;
         }
+        let before_selection = self.selection_snapshot();
+        let old_text = self.editor.raw_text().to_string();
         self.with_driver(renderer, |d| d.delete_selection());
+        let new_text = self.editor.raw_text();
+        let after_selection = self.selection_snapshot();
+        if let Some(change) =
+            Self::build_change(&old_text, new_text, before_selection, after_selection)
+        {
+            self.push_history(change, EditKind::DeleteByCut, None);
+        }
         self.reset_blink();
         Some((
             text,
@@ -218,75 +527,58 @@ impl InputState {
         ))
     }
 
-    pub fn delete_backward(&mut self, renderer: &mut TextRenderer) -> Option<EditEvent> {
+    /// Shared delete logic.
+    fn do_delete(
+        &mut self,
+        kind: EditKind,
+        renderer: &mut TextRenderer,
+        action: fn(&mut parley::PlainEditorDriver<'_, TextBrush>),
+    ) -> Option<EditEvent> {
         if self.disabled {
             return None;
         }
+        let old_text = self.editor.raw_text().to_string();
+        let before_selection = self.selection_snapshot();
         let generation = self.editor.generation();
-        self.with_driver(renderer, |d| d.backdelete());
+        self.with_driver(renderer, action);
         if self.text_changed(generation) {
+            let new_text = self.editor.raw_text().to_string();
+            let after_selection = self.selection_snapshot();
+            if let Some(change) =
+                Self::build_change(&old_text, &new_text, before_selection, after_selection)
+            {
+                self.push_history(change, kind, None);
+            }
             self.reset_blink();
             Some(EditEvent {
-                kind: EditKind::DeleteBackward,
+                kind,
                 inserted: None,
             })
         } else {
             None
         }
+    }
+
+    pub fn delete_backward(&mut self, renderer: &mut TextRenderer) -> Option<EditEvent> {
+        self.do_delete(EditKind::DeleteBackward, renderer, |d| d.backdelete())
     }
 
     pub fn delete_forward(&mut self, renderer: &mut TextRenderer) -> Option<EditEvent> {
-        if self.disabled {
-            return None;
-        }
-        let generation = self.editor.generation();
-        self.with_driver(renderer, |d| d.delete());
-        if self.text_changed(generation) {
-            self.reset_blink();
-            Some(EditEvent {
-                kind: EditKind::DeleteForward,
-                inserted: None,
-            })
-        } else {
-            None
-        }
+        self.do_delete(EditKind::DeleteForward, renderer, |d| d.delete())
     }
 
     pub fn delete_word_backward(&mut self, renderer: &mut TextRenderer) -> Option<EditEvent> {
-        if self.disabled {
-            return None;
-        }
-        let generation = self.editor.generation();
-        self.with_driver(renderer, |d| d.backdelete_word());
-        if self.text_changed(generation) {
-            self.reset_blink();
-            Some(EditEvent {
-                kind: EditKind::DeleteWordBackward,
-                inserted: None,
-            })
-        } else {
-            None
-        }
+        self.do_delete(EditKind::DeleteWordBackward, renderer, |d| {
+            d.backdelete_word()
+        })
     }
 
     pub fn delete_word_forward(&mut self, renderer: &mut TextRenderer) -> Option<EditEvent> {
-        if self.disabled {
-            return None;
-        }
-        let generation = self.editor.generation();
-        self.with_driver(renderer, |d| d.delete_word());
-        if self.text_changed(generation) {
-            self.reset_blink();
-            Some(EditEvent {
-                kind: EditKind::DeleteWordForward,
-                inserted: None,
-            })
-        } else {
-            None
-        }
+        self.do_delete(EditKind::DeleteWordForward, renderer, |d| d.delete_word())
     }
 
     pub fn move_left(&mut self, extend: bool, renderer: &mut TextRenderer) {
+        self.break_undo_batch();
         if extend {
             self.with_driver(renderer, |d| d.select_left());
         } else {
@@ -296,6 +588,7 @@ impl InputState {
     }
 
     pub fn move_right(&mut self, extend: bool, renderer: &mut TextRenderer) {
+        self.break_undo_batch();
         if extend {
             self.with_driver(renderer, |d| d.select_right());
         } else {
@@ -305,6 +598,7 @@ impl InputState {
     }
 
     pub fn move_word_left(&mut self, extend: bool, renderer: &mut TextRenderer) {
+        self.break_undo_batch();
         if extend {
             self.with_driver(renderer, |d| d.select_word_left());
         } else {
@@ -314,6 +608,7 @@ impl InputState {
     }
 
     pub fn move_word_right(&mut self, extend: bool, renderer: &mut TextRenderer) {
+        self.break_undo_batch();
         if extend {
             self.with_driver(renderer, |d| d.select_word_right());
         } else {
@@ -323,6 +618,7 @@ impl InputState {
     }
 
     pub fn move_up(&mut self, extend: bool, renderer: &mut TextRenderer) {
+        self.break_undo_batch();
         if extend {
             self.with_driver(renderer, |d| d.select_up());
         } else {
@@ -331,6 +627,7 @@ impl InputState {
     }
 
     pub fn move_down(&mut self, extend: bool, renderer: &mut TextRenderer) {
+        self.break_undo_batch();
         if extend {
             self.with_driver(renderer, |d| d.select_down());
         } else {
@@ -339,6 +636,7 @@ impl InputState {
     }
 
     pub fn move_home(&mut self, extend: bool, renderer: &mut TextRenderer) {
+        self.break_undo_batch();
         if extend {
             self.with_driver(renderer, |d| d.select_to_line_start());
         } else {
@@ -348,6 +646,7 @@ impl InputState {
     }
 
     pub fn move_end(&mut self, extend: bool, renderer: &mut TextRenderer) {
+        self.break_undo_batch();
         if extend {
             self.with_driver(renderer, |d| d.select_to_line_end());
         } else {
@@ -357,6 +656,7 @@ impl InputState {
     }
 
     pub fn move_absolute_home(&mut self, extend: bool, renderer: &mut TextRenderer) {
+        self.break_undo_batch();
         if extend {
             self.with_driver(renderer, |d| d.select_to_text_start());
         } else {
@@ -366,6 +666,7 @@ impl InputState {
     }
 
     pub fn move_absolute_end(&mut self, extend: bool, renderer: &mut TextRenderer) {
+        self.break_undo_batch();
         if extend {
             self.with_driver(renderer, |d| d.select_to_text_end());
         } else {
@@ -375,6 +676,7 @@ impl InputState {
     }
 
     pub fn move_to_point(&mut self, x: f32, y: f32, renderer: &mut TextRenderer) {
+        self.break_undo_batch();
         self.with_driver(renderer, |d| d.move_to_point(x, y));
         self.reset_blink();
     }
@@ -384,16 +686,19 @@ impl InputState {
     }
 
     pub fn select_word_at_point(&mut self, x: f32, y: f32, renderer: &mut TextRenderer) {
+        self.break_undo_batch();
         self.with_driver(renderer, |d| d.select_word_at_point(x, y));
         self.reset_blink();
     }
 
     pub fn select_line_at_point(&mut self, x: f32, y: f32, renderer: &mut TextRenderer) {
+        self.break_undo_batch();
         self.with_driver(renderer, |d| d.select_line_at_point(x, y));
         self.reset_blink();
     }
 
     pub fn select_all(&mut self, renderer: &mut TextRenderer) {
+        self.break_undo_batch();
         self.with_driver(renderer, |d| d.select_all());
         self.reset_blink();
     }
@@ -416,12 +721,15 @@ impl InputState {
         renderer: &mut TextRenderer,
     ) -> Option<EditEvent> {
         self.preedit = None;
+        // Each IME commit is a separate undo batch.
+        self.break_undo_batch();
         self.insert_text(text, renderer)
     }
 
     pub fn set_value(&mut self, value: &str) {
         if self.editor.raw_text() != value {
             self.editor.set_text(value);
+            self.history.clear();
         }
     }
 
@@ -516,39 +824,37 @@ impl InputState {
                         self.select_all(renderer);
                         return KeyResult::Handled;
                     }
+                    if ch.eq_ignore_ascii_case("z") && !shift {
+                        return self
+                            .undo(renderer)
+                            .map_or(KeyResult::Handled, KeyResult::Edit);
+                    }
+                    if (ch.eq_ignore_ascii_case("z") && shift) || ch.eq_ignore_ascii_case("y") {
+                        return self
+                            .redo(renderer)
+                            .map_or(KeyResult::Handled, KeyResult::Edit);
+                    }
                     return KeyResult::Ignored;
                 }
-                match self.insert_text(ch, renderer) {
-                    Some(edit) => KeyResult::Edit(edit),
-                    None => KeyResult::Handled,
-                }
+                self.insert_text(ch, renderer)
+                    .map_or(KeyResult::Handled, KeyResult::Edit)
             }
             Key::Named(named) => match named {
                 NamedKey::Backspace => {
-                    if ctrl {
-                        match self.delete_word_backward(renderer) {
-                            Some(edit) => KeyResult::Edit(edit),
-                            None => KeyResult::Handled,
-                        }
+                    let result = if ctrl {
+                        self.delete_word_backward(renderer)
                     } else {
-                        match self.delete_backward(renderer) {
-                            Some(edit) => KeyResult::Edit(edit),
-                            None => KeyResult::Handled,
-                        }
-                    }
+                        self.delete_backward(renderer)
+                    };
+                    result.map_or(KeyResult::Handled, KeyResult::Edit)
                 }
                 NamedKey::Delete => {
-                    if ctrl {
-                        match self.delete_word_forward(renderer) {
-                            Some(edit) => KeyResult::Edit(edit),
-                            None => KeyResult::Handled,
-                        }
+                    let result = if ctrl {
+                        self.delete_word_forward(renderer)
                     } else {
-                        match self.delete_forward(renderer) {
-                            Some(edit) => KeyResult::Edit(edit),
-                            None => KeyResult::Handled,
-                        }
-                    }
+                        self.delete_forward(renderer)
+                    };
+                    result.map_or(KeyResult::Handled, KeyResult::Edit)
                 }
                 NamedKey::ArrowLeft => {
                     if ctrl {
@@ -566,6 +872,12 @@ impl InputState {
                     }
                     KeyResult::Handled
                 }
+                NamedKey::Undo => self
+                    .undo(renderer)
+                    .map_or(KeyResult::Handled, KeyResult::Edit),
+                NamedKey::Redo => self
+                    .redo(renderer)
+                    .map_or(KeyResult::Handled, KeyResult::Edit),
                 NamedKey::ArrowUp => {
                     self.move_up(shift, renderer);
                     KeyResult::Handled
@@ -590,15 +902,16 @@ impl InputState {
                     }
                     KeyResult::Handled
                 }
-                NamedKey::Space => match self.insert_text(" ", renderer) {
-                    Some(edit) => KeyResult::Edit(edit),
-                    None => KeyResult::Handled,
-                },
+                NamedKey::Space => self
+                    .insert_text(" ", renderer)
+                    .map_or(KeyResult::Handled, KeyResult::Edit),
                 NamedKey::Escape => KeyResult::Blur,
-                NamedKey::Enter => match self.insert_text("\n", renderer) {
-                    Some(edit) => KeyResult::Edit(edit),
-                    None => KeyResult::Ignored,
-                },
+                NamedKey::Enter => self
+                    .insert_text("\n", renderer)
+                    .map_or(KeyResult::Ignored, KeyResult::Edit),
+                NamedKey::Tab => self
+                    .insert_text("    ", renderer)
+                    .map_or(KeyResult::Ignored, KeyResult::Edit),
                 _ => KeyResult::Ignored,
             },
             _ => KeyResult::Ignored,
@@ -809,5 +1122,221 @@ mod tests {
         is.blink_reset = Instant::now() - Duration::from_millis(700);
         let next = is.next_blink_toggle_in(true, true).unwrap();
         assert!((359..=360).contains(&next.as_millis()));
+    }
+
+    #[test]
+    fn undo_restores_previous_text() {
+        let mut is = InputState::new();
+        let mut r = make_renderer();
+        is.insert_text("hello", &mut r);
+        assert_eq!(is.text(), "hello");
+
+        let result = is.undo(&mut r);
+        assert!(result.is_some());
+        assert_eq!(result.unwrap().kind, EditKind::HistoryUndo);
+        assert_eq!(is.text(), "");
+    }
+
+    #[test]
+    fn redo_after_undo() {
+        let mut is = InputState::new();
+        let mut r = make_renderer();
+        is.insert_text("hello", &mut r);
+        is.undo(&mut r);
+        assert_eq!(is.text(), "");
+
+        let result = is.redo(&mut r);
+        assert!(result.is_some());
+        assert_eq!(result.unwrap().kind, EditKind::HistoryRedo);
+        assert_eq!(is.text(), "hello");
+    }
+
+    #[test]
+    fn new_edit_clears_redo() {
+        let mut is = InputState::new();
+        let mut r = make_renderer();
+        is.insert_text("a", &mut r);
+        is.undo(&mut r);
+        assert_eq!(is.text(), "");
+
+        // New edit should clear redo stack
+        is.insert_text("b", &mut r);
+        assert_eq!(is.text(), "b");
+
+        let result = is.redo(&mut r);
+        assert!(result.is_none());
+    }
+
+    #[test]
+    fn consecutive_inserts_batched() {
+        let mut is = InputState::new();
+        let mut r = make_renderer();
+        // Type characters rapidly (within BATCH_TIMEOUT_MS)
+        is.insert_text("h", &mut r);
+        is.insert_text("e", &mut r);
+        is.insert_text("l", &mut r);
+        is.insert_text("l", &mut r);
+        is.insert_text("o", &mut r);
+        assert_eq!(is.text(), "hello");
+
+        // Single undo should remove the entire batch
+        is.undo(&mut r);
+        assert_eq!(is.text(), "");
+    }
+
+    #[test]
+    fn different_edit_kinds_break_batch() {
+        let mut is = InputState::new();
+        let mut r = make_renderer();
+        is.insert_text("ab", &mut r);
+        // Switching from insert to delete starts a new batch
+        is.delete_backward(&mut r);
+        assert_eq!(is.text(), "a");
+
+        is.undo(&mut r);
+        assert_eq!(is.text(), "ab");
+
+        is.undo(&mut r);
+        assert_eq!(is.text(), "");
+    }
+
+    #[test]
+    fn paste_always_new_batch() {
+        let mut is = InputState::new();
+        let mut r = make_renderer();
+        is.insert_text("a", &mut r);
+        is.paste_text("bc", &mut r);
+        assert_eq!(is.text(), "abc");
+
+        // Undo should remove only the paste
+        is.undo(&mut r);
+        assert_eq!(is.text(), "a");
+
+        // Undo should remove the initial insert
+        is.undo(&mut r);
+        assert_eq!(is.text(), "");
+    }
+
+    #[test]
+    fn typing_after_paste_starts_new_batch() {
+        let mut is = InputState::new();
+        let mut r = make_renderer();
+        is.paste_text("hello", &mut r);
+        is.insert_text("!", &mut r);
+        assert_eq!(is.text(), "hello!");
+
+        // Undo should remove only the typed character, not the paste.
+        is.undo(&mut r);
+        assert_eq!(is.text(), "hello");
+
+        // Undo again should remove the paste.
+        is.undo(&mut r);
+        assert_eq!(is.text(), "");
+    }
+
+    #[test]
+    fn set_value_clears_history() {
+        let mut is = InputState::new();
+        let mut r = make_renderer();
+        is.insert_text("hello", &mut r);
+        is.set_value("world");
+        assert_eq!(is.text(), "world");
+
+        // Undo should be empty after set_value
+        let result = is.undo(&mut r);
+        assert!(result.is_none());
+    }
+
+    #[test]
+    fn undo_on_empty_history_is_noop() {
+        let mut is = InputState::new();
+        let mut r = make_renderer();
+        let result = is.undo(&mut r);
+        assert!(result.is_none());
+        assert_eq!(is.text(), "");
+    }
+
+    #[test]
+    fn redo_on_empty_history_is_noop() {
+        let mut is = InputState::new();
+        let mut r = make_renderer();
+        let result = is.redo(&mut r);
+        assert!(result.is_none());
+    }
+
+    #[test]
+    fn cursor_movement_breaks_batch() {
+        let mut is = InputState::new();
+        let mut r = make_renderer();
+        is.insert_text("a", &mut r);
+        is.move_left(false, &mut r);
+        is.insert_text("b", &mut r);
+        assert_eq!(is.text(), "ba");
+
+        // Undo should remove only the "b" (cursor movement broke the batch)
+        is.undo(&mut r);
+        assert_eq!(is.text(), "a");
+    }
+
+    #[test]
+    fn cut_creates_separate_undo_batch() {
+        let mut is = InputState::new();
+        let mut r = make_renderer();
+        is.insert_text("hello", &mut r);
+        is.select_all(&mut r);
+        is.cut_selected_text(&mut r);
+        assert_eq!(is.text(), "");
+
+        // Undo should restore the cut text
+        is.undo(&mut r);
+        assert_eq!(is.text(), "hello");
+    }
+
+    #[test]
+    fn multiple_undo_redo_cycles() {
+        let mut is = InputState::new();
+        let mut r = make_renderer();
+        is.insert_text("one", &mut r);
+        is.break_undo_batch();
+        is.insert_text(" two", &mut r);
+        assert_eq!(is.text(), "one two");
+
+        is.undo(&mut r);
+        assert_eq!(is.text(), "one");
+
+        is.undo(&mut r);
+        assert_eq!(is.text(), "");
+
+        is.redo(&mut r);
+        assert_eq!(is.text(), "one");
+
+        is.redo(&mut r);
+        assert_eq!(is.text(), "one two");
+    }
+
+    #[test]
+    fn undo_disabled_input_is_noop() {
+        let mut is = InputState::new();
+        let mut r = make_renderer();
+        is.insert_text("hello", &mut r);
+        is.disabled = true;
+
+        let result = is.undo(&mut r);
+        assert!(result.is_none());
+        assert_eq!(is.text(), "hello");
+    }
+
+    #[test]
+    fn delete_backward_has_separate_batch_from_insert() {
+        let mut is = InputState::new();
+        let mut r = make_renderer();
+        is.insert_text("abc", &mut r);
+        is.delete_backward(&mut r);
+        is.delete_backward(&mut r);
+        assert_eq!(is.text(), "a");
+
+        // Undo the deletes (batched together)
+        is.undo(&mut r);
+        assert_eq!(is.text(), "abc");
     }
 }

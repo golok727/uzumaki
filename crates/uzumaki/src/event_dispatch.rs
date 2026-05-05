@@ -3,7 +3,7 @@ use winit::keyboard::{Key, NamedKey};
 
 use crate::clipboard::SystemClipboard;
 use crate::element::{ScrollAxis, ScrollDragState, UzNodeId};
-use crate::input::{self, KeyResult};
+use crate::input::KeyResult;
 use crate::selection::{Affinity, SelectionEndpoint, TextSelection};
 use crate::style::TextStyle;
 use crate::text::{apply_text_style_to_editor, secure_cursor_geometry};
@@ -1027,15 +1027,7 @@ pub fn handle_key_for_input(
                 );
                 match result {
                     KeyResult::Edit(edit) => {
-                        let input_type = match edit.kind {
-                            input::EditKind::Insert => "insertText",
-                            input::EditKind::InsertFromPaste => "insertFromPaste",
-                            input::EditKind::DeleteBackward => "deleteContentBackward",
-                            input::EditKind::DeleteForward => "deleteContentForward",
-                            input::EditKind::DeleteWordBackward => "deleteWordBackward",
-                            input::EditKind::DeleteWordForward => "deleteWordForward",
-                            input::EditKind::DeleteByCut => "deleteByCut",
-                        };
+                        let input_type = edit.kind.input_type();
                         events.push(AppEvent::Input(InputEventData {
                             window_id: wid,
                             node_id: focused_id,
@@ -1275,7 +1267,7 @@ pub fn handle_key_for_view_selection(
     match &key_event.logical_key {
         Key::Named(NamedKey::ArrowLeft) if shift && ctrl => {
             // Move active to previous word boundary
-            let new_active = prev_word_boundary_in_run(dom, root, active);
+            let new_active = dom.prev_word_boundary_in_run(root, active);
             if let Some(focus) =
                 dom.endpoint_from_flat_index(root, new_active, Affinity::Downstream)
             {
@@ -1284,7 +1276,7 @@ pub fn handle_key_for_view_selection(
             true
         }
         Key::Named(NamedKey::ArrowRight) if shift && ctrl => {
-            let new_active = next_word_boundary_in_run(dom, root, active);
+            let new_active = dom.next_word_boundary_in_run(root, active);
             if let Some(focus) =
                 dom.endpoint_from_flat_index(root, new_active, Affinity::Downstream)
             {
@@ -1558,13 +1550,13 @@ pub fn apply_clipboard_command(
                 && let Some(target_id) = target
                 && let Some(node) = dom.nodes.get_mut(target_id)
                 && let Some(is) = node.as_text_input_mut()
-                && let Some((_cut_text, _edit)) = is.cut_selected_text(text_renderer)
+                && let Some((_cut_text, edit)) = is.cut_selected_text(text_renderer)
             {
                 events.push(AppEvent::Input(InputEventData {
                     window_id: wid,
                     node_id: target_id,
-                    input_type: "deleteByCut".to_string(),
-                    data: None,
+                    input_type: edit.kind.input_type().to_string(),
+                    data: edit.inserted,
                 }));
                 needs_redraw = true;
             }
@@ -1579,13 +1571,13 @@ pub fn apply_clipboard_command(
                 && let (Some(target_id), Some(text)) = (target, clipboard_text)
                 && let Some(node) = dom.nodes.get_mut(target_id)
                 && let Some(is) = node.as_text_input_mut()
-                && let Some(_edit) = is.paste_text(&text, text_renderer)
+                && let Some(edit) = is.paste_text(&text, text_renderer)
             {
                 events.push(AppEvent::Input(InputEventData {
                     window_id: wid,
                     node_id: target_id,
-                    input_type: "insertFromPaste".to_string(),
-                    data: Some(text),
+                    input_type: edit.kind.input_type().to_string(),
+                    data: edit.inserted,
                 }));
                 needs_redraw = true;
             }
@@ -1594,79 +1586,6 @@ pub fn apply_clipboard_command(
     }
 
     (needs_redraw, events)
-}
-
-/// Find the previous word boundary from a flat grapheme index in a text select run.
-fn prev_word_boundary_in_run(
-    dom: &UIState,
-    root_id: crate::element::UzNodeId,
-    flat_idx: usize,
-) -> usize {
-    let Some(run) = dom
-        .selectable_text_runs
-        .iter()
-        .find(|r| r.root_id == root_id)
-    else {
-        return flat_idx;
-    };
-    let graphemes: Vec<&str> =
-        unicode_segmentation::UnicodeSegmentation::graphemes(run.flat_text.as_str(), true)
-            .collect();
-    if flat_idx == 0 {
-        return 0;
-    }
-    let is_word = |g: &str| {
-        g.chars()
-            .next()
-            .is_some_and(|c| c.is_alphanumeric() || c == '_')
-    };
-    let mut i = flat_idx;
-    // Skip whitespace/non-word backwards
-    while i > 0 && !is_word(graphemes[i - 1]) {
-        i -= 1;
-    }
-    // Skip word chars backwards
-    while i > 0 && is_word(graphemes[i - 1]) {
-        i -= 1;
-    }
-    i
-}
-
-/// Find the next word boundary from a flat grapheme index in a text select run.
-fn next_word_boundary_in_run(
-    dom: &UIState,
-    root_id: crate::element::UzNodeId,
-    flat_idx: usize,
-) -> usize {
-    let Some(run) = dom
-        .selectable_text_runs
-        .iter()
-        .find(|r| r.root_id == root_id)
-    else {
-        return flat_idx;
-    };
-    let graphemes: Vec<&str> =
-        unicode_segmentation::UnicodeSegmentation::graphemes(run.flat_text.as_str(), true)
-            .collect();
-    let len = graphemes.len();
-    if flat_idx >= len {
-        return len;
-    }
-    let is_word = |g: &str| {
-        g.chars()
-            .next()
-            .is_some_and(|c| c.is_alphanumeric() || c == '_')
-    };
-    let mut i = flat_idx;
-    // Skip word chars forward
-    while i < len && is_word(graphemes[i]) {
-        i += 1;
-    }
-    // Skip whitespace/non-word forward
-    while i < len && !is_word(graphemes[i]) {
-        i += 1;
-    }
-    i
 }
 
 pub fn handle_mouse_wheel(

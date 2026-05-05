@@ -180,7 +180,6 @@ pub struct TextRunEntry {
 pub struct TextSelectRun {
     pub root_id: UzNodeId,
     pub entries: Vec<TextRunEntry>,
-    pub flat_text: String,
     pub total_graphemes: usize,
 }
 
