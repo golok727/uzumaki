@@ -35,12 +35,8 @@ impl CoreNode {
     ) -> Option<R> {
         let app_state = state.borrow::<SharedAppState>().clone();
         with_state(&app_state, |s| {
-            let Some(entry) = s.windows.get(&self.window_id) else {
-                return None;
-            };
-            let Some(node) = entry.dom.nodes.get(self.node_id) else {
-                return None;
-            };
+            let entry = s.windows.get(&self.window_id)?;
+            let node = entry.dom.nodes.get(self.node_id)?;
             Some(read(node))
         })
     }
