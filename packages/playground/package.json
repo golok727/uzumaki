@@ -11,13 +11,12 @@
     "dev": "cargo r -p uzumaki --release -- src/index.tsx",
     "build": "cargo r -p uzumaki --release -- build",
     "build:js": "bun build src/index.tsx --target node --outdir dist --minify",
-    "preview": "cargo r -p uzumaki --release -- dist/index.js"
+    "preview": "cargo r -p uzumaki --release -- dist/index.js",
+    "typecheck": "pnpm exec tsc -p tsconfig.json --noEmit --pretty false"
   },
   "devDependencies": {
     "@types/react": "^19.2.14",
-    "uzumaki-types": "workspace:*"
-  },
-  "peerDependencies": {
+    "uzumaki-types": "workspace:*",
     "typescript": "^5"
   }
 }

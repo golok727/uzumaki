@@ -2,7 +2,9 @@
   "name": "uzumaki-react",
   "type": "module",
   "version": "0.0.0",
-  "scripts": {},
+  "scripts": {
+    "typecheck": "pnpm exec tsc -p tsconfig.json --noEmit"
+  },
   "exports": {
     ".": "./index.ts"
   },
