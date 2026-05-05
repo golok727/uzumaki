@@ -130,6 +130,10 @@ impl UIState {
             return UzCursorIcon::Text;
         }
 
+        // Walk ancestors. An explicit `cursor` style wins, but if any ancestor
+        // is a text-selectable scope (`selectable` view) we should also show
+        // the text cursor — otherwise an inner non-selectable `<text>` inside
+        // a selectable view never gets the I-beam.
         let mut cur = node.parent;
         while let Some(id) = cur {
             let n = &self.nodes[id];
@@ -141,6 +145,9 @@ impl UIState {
             );
             if let Some(c) = style.cursor {
                 return c;
+            }
+            if n.is_text_selectable() {
+                return UzCursorIcon::Text;
             }
             cur = n.parent;
         }
@@ -654,6 +661,24 @@ impl UIState {
         self.selectable_text_runs
             .iter()
             .any(|run| run.entries.iter().any(|e| e.node_id == node_id))
+    }
+
+    /// Walk up from `node_id` and return the root of the enclosing
+    /// text-selectable run, if any. This lets a click anywhere inside a
+    /// `selectable` container ,  not just on a text node , start selection
+    pub fn containing_text_run_root(&self, node_id: UzNodeId) -> Option<UzNodeId> {
+        let mut cur = Some(node_id);
+        while let Some(id) = cur {
+            if self
+                .selectable_text_runs
+                .iter()
+                .any(|run| run.root_id == id)
+            {
+                return Some(id);
+            }
+            cur = self.nodes.get(id).and_then(|n| n.parent);
+        }
+        None
     }
 }
 

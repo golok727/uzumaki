@@ -657,8 +657,16 @@ impl UzStyle {
         }
     }
 
+    /// Inherit text properties from the parent. Everything cascades except
+    /// `overflow_wrap` and `word_break`, which stay element-local so element
+    /// UA defaults set in `default_for_element` (e.g. `<input>`'s
+    /// `WordBreak::BreakAll`) aren't clobbered by an ancestor's defaults.
     pub fn inherit_from(&mut self, parent: &Self) {
+        let overflow_wrap = self.text.overflow_wrap;
+        let word_break = self.text.word_break;
         self.text = parent.text.clone();
+        self.text.overflow_wrap = overflow_wrap;
+        self.text.word_break = word_break;
         self.text_selectable = parent.text_selectable;
     }
 
@@ -681,9 +689,15 @@ impl UzStyle {
                 ..Default::default()
             },
             "input" => Self {
+                // Multiline inputs wrap aggressively, char-by-char, so a
+                // long line never overflows the box horizontally — the
+                // editor only ever scrolls vertically. `BreakAll` makes
+                // every character a break opportunity (instead of only
+                // word boundaries); `Anywhere` keeps min-content small so
+                // the input can shrink inside flex containers.
                 text: TextStyle {
-                    overflow_wrap: OverflowWrap::Normal,
-                    word_break: WordBreak::KeepAll,
+                    overflow_wrap: OverflowWrap::Anywhere,
+                    word_break: WordBreak::BreakAll,
                     ..Default::default()
                 },
                 ..Default::default()

@@ -357,6 +357,49 @@ pub fn draw_layout(
     }
 }
 
+/// Map a point (in layout-local coordinates) to a `(byte_offset, affinity)`
+/// against a prebuilt parley layout.
+pub fn hit_to_text_position_from_layout(
+    layout: &Layout<TextBrush>,
+    text_len: usize,
+    x: f32,
+    y: f32,
+) -> (usize, crate::selection::Affinity) {
+    if text_len == 0 {
+        return (0, crate::selection::Affinity::Downstream);
+    }
+    let cursor = Cursor::from_point(layout, x, y);
+    (cursor.index().min(text_len), cursor.affinity().into())
+}
+
+/// Word-range byte offsets at a point against a prebuilt parley layout.
+pub fn word_byte_range_at_point_from_layout(
+    layout: &Layout<TextBrush>,
+    text_len: usize,
+    x: f32,
+    y: f32,
+) -> (usize, usize) {
+    if text_len == 0 {
+        return (0, 0);
+    }
+    let range = Selection::word_from_point(layout, x, y).text_range();
+    (range.start.min(text_len), range.end.min(text_len))
+}
+
+/// Line-range byte offsets at a point against a prebuilt parley layout.
+pub fn line_byte_range_at_point_from_layout(
+    layout: &Layout<TextBrush>,
+    text_len: usize,
+    x: f32,
+    y: f32,
+) -> (usize, usize) {
+    if text_len == 0 {
+        return (0, 0);
+    }
+    let range = Selection::line_from_point(layout, x, y).text_range();
+    (range.start.min(text_len), range.end.min(text_len))
+}
+
 /// Selection rects from a prebuilt parley layout. `start`/`end` are byte
 /// offsets into the layout's source text.
 pub fn selection_rects_from_layout(

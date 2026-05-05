@@ -183,6 +183,7 @@ impl<'a> Painter<'a> {
         text_selections: &HashMap<UzNodeId, (usize, usize)>,
     ) {
         if self.dom.nodes[node_id].is_text_input() {
+            // TODO: dont snapshot
             let info = self.build_input_render_info(node_id, style, layout);
             crate::element::input::paint_input(
                 scene,

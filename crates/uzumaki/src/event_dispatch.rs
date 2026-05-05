@@ -438,13 +438,25 @@ fn hit_text_in_run(
 
     let relative_x = (mx - bounds.x) as f32;
     let relative_y = (my - bounds.y) as f32;
-    let (offset, affinity) = text_renderer.hit_to_text_position(
-        &text.content,
-        &node.style.text,
-        Some(bounds.width as f32),
-        relative_x,
-        relative_y,
-    );
+    // Hit-test against the cached parley layout the painter uses, so mouse
+    // byte offset stays consistent with what's drawn (the cached layout is
+    // built with the inherited computed style; node.style.text is raw).
+    let (offset, affinity) = if let Some(layout) = node.text_layout.as_ref() {
+        crate::text::hit_to_text_position_from_layout(
+            layout,
+            text.content.len(),
+            relative_x,
+            relative_y,
+        )
+    } else {
+        text_renderer.hit_to_text_position(
+            &text.content,
+            &node.style.text,
+            Some(bounds.width as f32),
+            relative_x,
+            relative_y,
+        )
+    };
 
     Some(TextRunHit {
         node_id,
@@ -484,7 +496,23 @@ fn text_range_at_point(
 
     let rel_x = (mx - bounds.x) as f32;
     let rel_y = (my - bounds.y) as f32;
-    let (local_start, local_end) = if select_line {
+    let (local_start, local_end) = if let Some(layout) = node.text_layout.as_ref() {
+        if select_line {
+            crate::text::line_byte_range_at_point_from_layout(
+                layout,
+                text.content.len(),
+                rel_x,
+                rel_y,
+            )
+        } else {
+            crate::text::word_byte_range_at_point_from_layout(
+                layout,
+                text.content.len(),
+                rel_x,
+                rel_y,
+            )
+        }
+    } else if select_line {
         text_renderer.line_byte_range_at_point(
             &text.content,
             &node.style.text,
@@ -755,12 +783,15 @@ pub fn handle_mouse_input(
                         }));
                     }
 
-                    // Check if clicked on a text node inside a textSelect view
-                    let clicked_text_selectable = js_target
-                        .map(|nid| dom.is_text_selectable(nid))
-                        .unwrap_or(false);
+                    // Selection starts if the click landed anywhere inside a
+                    // text-selectable scope — on a text node, on the
+                    // container itself, or on any non-text descendant. This
+                    // matches browser behaviour where clicking padding/empty
+                    // space inside a `<p>` begins selection.
+                    let run_root_for_click =
+                        js_target.and_then(|nid| dom.containing_text_run_root(nid));
 
-                    if clicked_text_selectable {
+                    if let Some(run_root) = run_root_for_click {
                         let nid = js_target.unwrap();
 
                         // Starting a view selection blurs any focused input
@@ -771,13 +802,9 @@ pub fn handle_mouse_input(
                             }));
                         }
 
-                        // Find the run this text node belongs to
-                        let run_root = dom.find_run_entry_for_node(nid).map(|(run, _)| run.root_id);
-
-                        if let Some(hit) = run_root.and_then(|root_id| {
-                            hit_text_in_run(dom, &mut handle.text_renderer, root_id, mx, my)
-                        }) {
-                            let run_root = run_root.unwrap_or(nid);
+                        if let Some(hit) =
+                            hit_text_in_run(dom, &mut handle.text_renderer, run_root, mx, my)
+                        {
                             let endpoint = hit.endpoint;
 
                             // Multi-click detection
