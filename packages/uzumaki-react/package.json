@@ -3,7 +3,7 @@
   "type": "module",
   "version": "0.0.0",
   "scripts": {
-    "typecheck": "pnpm exec tsc -p tsconfig.json --noEmit --pretty false"
+    "typecheck": "pnpm exec tsc -p tsconfig.json --noEmit"
   },
   "exports": {
     ".": "./index.ts"
