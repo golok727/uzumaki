@@ -39,62 +39,42 @@ impl<'a> Painter<'a> {
         }
         self.dom.build_text_select_runs();
 
-        // Computed once up-front; depends only on dom.text_selection which is
-        // settled before we enter the paint walk.
         let text_selections = self.compute_text_selections_map();
 
         let Some(root) = self.dom.root else {
             return;
         };
 
-        let mut stack: Vec<PaintCommand> = vec![PaintCommand::Visit(VisitFrame {
-            node_id: root,
-            parent_x: 0.0,
-            parent_y: 0.0,
-            parent_paint_transform: Affine::scale(self.scale),
-            parent_hit_transform: Affine::IDENTITY,
-            parent_style: None,
-        })];
-
-        while let Some(frame) = stack.pop() {
-            match frame {
-                PaintCommand::Visit(v) => self.visit(v, &mut stack, scene, &text_selections),
-                PaintCommand::PushClip { rect, transform } => {
-                    scene.push_clip_layer(Fill::NonZero, transform, &rect);
-                }
-                PaintCommand::PopClip => scene.pop_layer(),
-                PaintCommand::Scrollbar(s) => {
-                    scroll::paint_thumb(scene, s.transform, &s.geom, s.hovered, &s.style);
-                }
-            }
-        }
+        self.render_node(
+            root,
+            0.0,
+            0.0,
+            Affine::scale(self.scale),
+            Affine::IDENTITY,
+            None,
+            scene,
+            &text_selections,
+        );
     }
 
-    fn visit(
+    #[allow(clippy::too_many_arguments)]
+    fn render_node(
         &mut self,
-        frame: VisitFrame,
-        stack: &mut Vec<PaintCommand>,
+        node_id: UzNodeId,
+        parent_x: f64,
+        parent_y: f64,
+        parent_paint_transform: Affine,
+        parent_hit_transform: Affine,
+        parent_style: Option<&UzStyle>,
         scene: &mut Scene,
         text_selections: &HashMap<UzNodeId, (usize, usize)>,
     ) {
-        let VisitFrame {
-            node_id,
-            parent_x,
-            parent_y,
-            parent_paint_transform,
-            parent_hit_transform,
-            parent_style,
-        } = frame;
-
-        // Read the cached final layout directly off the node. Populated by
-        // `UIState::compute_layout` after taffy compute so paint never hits
-        // the layout engine.
         let Some(node_ref) = self.dom.nodes.get(node_id) else {
             return;
         };
         let layout = LayoutSnapshot::from(&node_ref.final_layout);
 
-        let computed_style = self.dom.computed_style(node_id, parent_style.as_deref());
+        let computed_style = self.dom.computed_style(node_id, parent_style);
 
         if computed_style.visibility == Visibility::Hidden
             || computed_style.display == crate::style::Display::None
@@ -112,7 +92,6 @@ impl<'a> Painter<'a> {
         let transform = parent_paint_transform * local_translate * local_style_transform;
         let hit_transform = parent_hit_transform * local_translate * local_style_transform;
 
-        // Register hitbox for this node.
         let hitbox_id = self.dom.hitbox_store.insert_transformed(
             node_id,
             Bounds::new(0.0, 0.0, w, h),
@@ -120,7 +99,6 @@ impl<'a> Painter<'a> {
         );
         self.dom.nodes[node_id].interactivity.hitbox_id = Some(hitbox_id);
 
-        // Paint this node directly into the scene.
         self.paint_node(
             node_id,
             &layout,
@@ -132,7 +110,6 @@ impl<'a> Painter<'a> {
             text_selections,
         );
 
-        // Set up view scrolling (clamps offsets, registers scroll thumbs).
         let view_scroll = self.prepare_view_scroll(
             node_id,
             &computed_style,
@@ -141,10 +118,6 @@ impl<'a> Painter<'a> {
             transform,
         );
 
-        // collect children
-        let children = self.dom.nodes[node_id].children.clone();
-
-        // push in reverse execution order.
         let needs_clip = view_scroll.is_some()
             || computed_style.overflow_x.clips()
             || computed_style.overflow_y.clips();
@@ -154,15 +127,6 @@ impl<'a> Painter<'a> {
             None => (0.0, 0.0, false, Vec::new()),
         };
 
-        if mouse_in_view {
-            for thumb in view_thumbs.into_iter().rev() {
-                stack.push(PaintCommand::Scrollbar(thumb));
-            }
-        }
-        if needs_clip {
-            stack.push(PaintCommand::PopClip);
-        }
-
         let scroll_translate = if offset_x != 0.0 || offset_y != 0.0 {
             Affine::translate((-offset_x, -offset_y))
         } else {
@@ -171,23 +135,38 @@ impl<'a> Painter<'a> {
         let child_paint_transform = transform * scroll_translate;
         let child_hit_transform = hit_transform * scroll_translate;
 
-        for &child_id in children.iter().rev() {
-            stack.push(PaintCommand::Visit(VisitFrame {
-                node_id: child_id,
-                parent_x: x - offset_x,
-                parent_y: y - offset_y,
-                parent_paint_transform: child_paint_transform,
-                parent_hit_transform: child_hit_transform,
-                // Box only when we actually have children to propagate style to.
-                parent_style: Some(Box::new(computed_style.clone())),
-            }));
+        if needs_clip {
+            scene.push_clip_layer(Fill::NonZero, transform, &Rect::new(0.0, 0.0, w, h));
+        }
+
+        let children = self.dom.nodes[node_id].children.clone();
+        for child_id in children {
+            self.render_node(
+                child_id,
+                x - offset_x,
+                y - offset_y,
+                child_paint_transform,
+                child_hit_transform,
+                Some(&computed_style),
+                scene,
+                text_selections,
+            );
         }
 
         if needs_clip {
-            stack.push(PaintCommand::PushClip {
-                rect: Rect::new(0.0, 0.0, w, h),
-                transform,
-            });
+            scene.pop_layer();
+        }
+
+        if mouse_in_view {
+            for thumb in view_thumbs {
+                scroll::paint_thumb(
+                    scene,
+                    thumb.transform,
+                    &thumb.geom,
+                    thumb.hovered,
+                    &thumb.style,
+                );
+            }
         }
     }
 
@@ -674,22 +653,6 @@ struct ScrollbarPaint {
     geom: ThumbGeometry,
     hovered: bool,
     style: ScrollbarStyle,
-}
-
-struct VisitFrame {
-    node_id: UzNodeId,
-    parent_x: f64,
-    parent_y: f64,
-    parent_paint_transform: Affine,
-    parent_hit_transform: Affine,
-    parent_style: Option<Box<UzStyle>>,
-}
-
-enum PaintCommand {
-    Visit(VisitFrame),
-    PushClip { rect: Rect, transform: Affine },
-    PopClip,
-    Scrollbar(ScrollbarPaint),
 }
 
 pub(crate) fn measure(

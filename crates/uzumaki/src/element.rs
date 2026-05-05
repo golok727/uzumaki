@@ -15,7 +15,6 @@ pub mod render;
 pub mod scroll;
 pub mod selection;
 pub mod svg;
-pub mod text;
 pub mod view;
 
 use vello::kurbo::Affine;
