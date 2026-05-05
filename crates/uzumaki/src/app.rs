@@ -1,5 +1,5 @@
 use std::cell::RefCell;
-use std::collections::HashMap;
+use std::collections::{HashMap, VecDeque};
 use std::path::PathBuf;
 use std::rc::Rc;
 use std::sync::Arc;
@@ -27,6 +27,7 @@ use winit::{application::ApplicationHandler, event::WindowEvent};
 
 use crate::clipboard;
 use crate::cursor;
+use crate::element::UzNodeId;
 use crate::event_dispatch;
 use crate::gpu::GpuContext;
 use crate::runtime::module_loader::{UzCjsCodeAnalyzer, UzRequireLoader};
@@ -34,6 +35,11 @@ use crate::runtime::resolver::UzCjsTracker;
 use crate::runtime::sys::UzSys;
 use crate::ui::UIState;
 use crate::{runtime, window};
+
+/// Estimated bytes a single retained Rust DOM node holds. Reported to V8 via
+/// `adjust_amount_of_external_allocated_memory` so cppgc schedules collections
+/// based on the real memory footprint, not just the size of the JS wrapper.
+pub const NODE_EXTERNAL_BYTES: i64 = 1024;
 
 pub struct WindowEntry {
     pub dom: UIState,
@@ -85,6 +91,15 @@ pub struct AppState {
     pub clipboard: RefCell<clipboard::SystemClipboard>,
     pub gpu: GpuContext,
     pub image_cache: HashMap<String, crate::element::ImageData>,
+    /// Slab cleanup deferred from cppgc finalizers. Drained incrementally on
+    /// each event-loop tick so a GC pause that frees thousands of CoreNodes
+    /// never has to walk the slab synchronously.
+    pub pending_destroy: VecDeque<(WindowEntryId, UzNodeId)>,
+    /// Net change in external bytes attributable to retained DOM nodes since
+    /// the last flush. Pushed to V8 with
+    /// `Isolate::adjust_amount_of_external_allocated_memory` so cppgc sees the
+    /// real cost of CoreNodes, not just the wrapper struct.
+    pub external_memory_delta: i64,
 }
 
 impl AppState {
@@ -109,6 +124,24 @@ impl AppState {
             }
         }
     }
+    /// Process up to `budget` deferred node destroys. Adaptive: large
+    /// backlogs drain faster while small backlogs trickle through cheaply.
+    pub fn drain_pending_destroy(&mut self) {
+        let len = self.pending_destroy.len();
+        if len == 0 {
+            return;
+        }
+        let budget = (len / 8).clamp(64, 2048).min(len);
+        for _ in 0..budget {
+            let Some((window_id, node_id)) = self.pending_destroy.pop_front() else {
+                break;
+            };
+            if let Some(entry) = self.windows.get_mut(&window_id) {
+                entry.dom.destroy_node(node_id);
+            }
+        }
+    }
+
     pub fn on_resize(&mut self, id: &WindowEntryId, width: u32, height: u32) -> bool {
         if let Some(window) = self.windows.get_mut(id)
             && let Some(handle) = &mut window.handle
@@ -353,6 +386,8 @@ impl Application {
             modifiers: 0,
             clipboard: RefCell::new(system_clipboard),
             image_cache: HashMap::new(),
+            pending_destroy: VecDeque::new(),
+            external_memory_delta: 0,
         }));
 
         // Put shared state and event loop proxy into OpState
@@ -389,6 +424,22 @@ impl Application {
         let wake_handle = self.js_wake_handle.clone();
         wake_handle.clear();
 
+        let (delta, has_pending) = {
+            let mut state = self.app_state.borrow_mut();
+            let delta = std::mem::take(&mut state.external_memory_delta);
+            (delta, !state.pending_destroy.is_empty())
+        };
+        if delta != 0 {
+            self.worker
+                .js_runtime
+                .v8_isolate()
+                .adjust_amount_of_external_allocated_memory(delta);
+        }
+
+        if has_pending {
+            self.app_state.borrow_mut().drain_pending_destroy();
+        }
+
         let rt = &self.tokio_runtime;
         let _guard = rt.enter();
         let waker = waker(wake_handle);
@@ -401,6 +452,10 @@ impl Application {
         {
             Poll::Ready(Ok(())) | Poll::Pending => {}
             Poll::Ready(Err(e)) => eprintln!("JS error: {e}"),
+        }
+
+        if !self.app_state.borrow().pending_destroy.is_empty() {
+            JsWakeHandle::wake(&self.js_wake_handle);
         }
     }
 

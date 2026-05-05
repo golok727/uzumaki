@@ -381,6 +381,12 @@ impl UIState {
             return;
         }
         self.nodes[child_id].parent = None;
+        // The node lives on in the slab until its JS wrapper is collected, but
+        // every long-lived NodeId field (selection, focus, hit-state, scroll
+        // locks…) refers to nodes by their place in the tree. Once detached
+        // those references are stale, so scrub them now — same contract as
+        // before the GC refactor.
+        self.on_detached_subtree(child_id);
     }
 
     pub fn destroy_node(&mut self, node_id: UzNodeId) {
@@ -443,7 +449,23 @@ impl UIState {
         let children = std::mem::take(&mut self.nodes[parent_id].children);
         for child_id in children {
             self.nodes[child_id].parent = None;
+            self.on_detached_subtree(child_id);
         }
+    }
+
+    /// Walk the subtree rooted at `id` (still wired via `children` since we
+    /// only detach the root from its parent) and run `on_node_removed` on
+    /// every entry. The slab nodes themselves stay alive.
+    fn on_detached_subtree(&mut self, id: UzNodeId) {
+        let children: Vec<UzNodeId> = self
+            .nodes
+            .get(id)
+            .map(|node| node.children.clone())
+            .unwrap_or_default();
+        for child in children {
+            self.on_detached_subtree(child);
+        }
+        self.on_node_removed(id);
     }
 
     pub fn compute_layout(&mut self, width: f32, height: f32, text_renderer: &mut TextRenderer) {

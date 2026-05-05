@@ -3,7 +3,7 @@ use serde_json::Value;
 use std::cell::RefCell;
 use std::rc::{Rc, Weak};
 
-use crate::app::{AppState, SharedAppState, with_state};
+use crate::app::{AppState, NODE_EXTERNAL_BYTES, SharedAppState, with_state};
 use crate::element::{NodeData, UzNodeId};
 use crate::style::UzStyle;
 
@@ -28,6 +28,11 @@ pub struct CoreNode {
 
 impl CoreNode {
     pub fn new(app_state: &SharedAppState, window_id: u32, node_id: UzNodeId, owned: bool) -> Self {
+        if owned {
+            with_state(app_state, |s| {
+                s.external_memory_delta += NODE_EXTERNAL_BYTES;
+            });
+        }
         Self {
             app_state: Rc::downgrade(app_state),
             window_id,
@@ -81,11 +86,18 @@ impl Drop for CoreNode {
             return;
         };
 
-        with_state(&app_state, |s| {
-            if let Some(entry) = s.windows.get_mut(&self.window_id) {
-                entry.dom.destroy_node(self.node_id);
-            }
-        });
+        // cppgc finalizers can run inside any V8 turn, including ones where an
+        // op already holds AppState borrowed. Use try_borrow_mut and fall back
+        // to leaving the slab entry for the next finalizer pass — never panic.
+        let Ok(mut state) = app_state.try_borrow_mut() else {
+            return;
+        };
+        state.external_memory_delta -= NODE_EXTERNAL_BYTES;
+        if state.windows.contains_key(&self.window_id) {
+            state
+                .pending_destroy
+                .push_back((self.window_id, self.node_id));
+        }
     }
 }
 

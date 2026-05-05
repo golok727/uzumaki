@@ -3,6 +3,19 @@ import type { NodeId } from './types';
 
 const nodes = new Map<number, Map<NodeId, WeakRef<UzNode>>>();
 
+const finalizer = new FinalizationRegistry<{
+  windowId: number;
+  nodeId: NodeId;
+}>(({ windowId, nodeId }) => {
+  const bucket = nodes.get(windowId);
+  if (!bucket) return;
+  const ref = bucket.get(nodeId);
+  if (!ref || ref.deref() === undefined) {
+    bucket.delete(nodeId);
+    if (bucket.size === 0) nodes.delete(windowId);
+  }
+});
+
 export function __internalDebugNodeCount(windowID: number): number {
   return nodes.get(windowID)?.size ?? 0;
 }
@@ -20,8 +33,8 @@ function bucketFor(
 }
 
 export function registerNode(node: UzNode): void {
-  // console.log('registering node', node.nodeId);
   bucketFor(node.windowId, true)!.set(node.nodeId, new WeakRef(node));
+  finalizer.register(node, { windowId: node.windowId, nodeId: node.nodeId });
 }
 
 export function unregisterNode(windowId: number, nodeId: NodeId): void {
