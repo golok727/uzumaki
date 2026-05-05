@@ -7,6 +7,5 @@ export type Tab =
   | 'issues'
   | 'images'
   | 'timer'
-  | 'undoredo'
   // | 'window'
   | 'shiki';

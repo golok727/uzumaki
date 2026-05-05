@@ -10,7 +10,6 @@ const TABS: { id: Tab; label: string; icon: string }[] = [
   { id: 'events', label: 'Mouse Events', icon: 'mouse-pointer-click' },
   // { id: 'window', label: 'Window Lab', icon: 'square-stack' },
   { id: 'timer', label: 'Timers', icon: 'timer' },
-  { id: 'undoredo', label: 'Undo / Redo', icon: 'check' },
   { id: 'issues', label: 'GitHub Issues', icon: 'circle-dot' },
   { id: 'images', label: 'Images', icon: 'image' },
   { id: 'shiki', label: 'Code Highlight', icon: 'brackets' },

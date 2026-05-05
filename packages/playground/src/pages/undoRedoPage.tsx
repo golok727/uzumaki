@@ -46,7 +46,7 @@ export function UndoRedoPage() {
       <view display="flex" flexDir="col" gap={20} p={24}>
         <Section title="Uncontrolled Input">
           <text fontSize={11} color={C.textMuted}>
-            Type freely, then undo/redo. No React state — history lives entirely
+            Type freely, then undo/redo. No React state; history lives entirely
             in Rust.
           </text>
           <input
@@ -67,12 +67,12 @@ export function UndoRedoPage() {
         <Section title="Controlled Input (set_value clears history)">
           <text fontSize={11} color={C.textMuted}>
             Controlled via React state. Each keystroke calls set_value, which
-            clears the undo stack — undo should have no effect here.
+            clears the undo stack, so undo should have no effect here.
           </text>
           <input
             value={controlled}
             onChangeText={setControlled}
-            placeholder="Controlled input — undo won't work"
+            placeholder="Controlled input, undo won't work"
             fontSize={14}
             color={C.text}
             bg={C.surface2}
@@ -155,7 +155,7 @@ export function UndoRedoPage() {
 
         <Section title="Paste / Cut Isolation">
           <text fontSize={11} color={C.textMuted}>
-            Paste text (Ctrl+V), then undo — the entire paste should revert in
+            Paste text (Ctrl+V), then undo. The entire paste should revert in
             one step. Cut (Ctrl+X) with a selection, then undo to restore.
           </text>
           <input
@@ -175,11 +175,11 @@ export function UndoRedoPage() {
 
         <Section title="Event Log">
           <text fontSize={11} color={C.textMuted}>
-            Logs inputType from onInput — look for historyUndo / historyRedo
+            Logs inputType from onInput. Look for historyUndo / historyRedo
             events.
           </text>
           <input
-            placeholder="Type, undo, redo — watch the log below"
+            placeholder="Type, undo, redo, then watch the log below"
             fontSize={14}
             color={C.text}
             bg={C.surface2}
