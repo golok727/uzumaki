@@ -657,13 +657,11 @@ impl UzStyle {
         }
     }
 
-    /// Inherit text properties from the parent. Everything cascades except
-    /// `overflow_wrap` and `word_break`, which stay element-local so element
-    /// UA defaults set in `default_for_element` (e.g. `<input>`'s
-    /// `WordBreak::BreakAll`) aren't clobbered by an ancestor's defaults.
     pub fn inherit_from(&mut self, parent: &Self) {
+        /*Fixme: this is a work around  */
         let overflow_wrap = self.text.overflow_wrap;
         let word_break = self.text.word_break;
+
         self.text = parent.text.clone();
         self.text.overflow_wrap = overflow_wrap;
         self.text.word_break = word_break;
