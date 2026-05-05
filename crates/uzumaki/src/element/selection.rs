@@ -29,52 +29,53 @@ impl UIState {
     pub fn build_text_select_runs(&mut self) {
         self.selectable_text_runs.clear();
         let Some(root) = self.root else { return };
+        self.visit_text_select(root, None, None);
+    }
 
-        // DFS: (node_id, parent_style, current_run_index_or_none)
-        let mut stack = vec![(root, None, None)];
+    fn visit_text_select(
+        &mut self,
+        node_id: UzNodeId,
+        parent_style: Option<&crate::style::UzStyle>,
+        run_idx: Option<usize>,
+    ) {
+        let style = self.computed_style(node_id, parent_style);
+        let resolved_text_sel = style.text_selectable.selectable();
 
-        while let Some((node_id, parent_style, run_idx)) = stack.pop() {
-            let node = &self.nodes[node_id];
-            let style = self.computed_style(node_id, parent_style.as_deref());
-            let resolved_text_sel = style.text_selectable.selectable();
+        // A node that explicitly enables textSelect when the parent scope
+        // doesn't have it starts a new selection scope.
+        let current_run = if resolved_text_sel && run_idx.is_none() {
+            let idx = self.selectable_text_runs.len();
+            self.selectable_text_runs.push(TextSelectRun {
+                root_id: node_id,
+                entries: Vec::new(),
+                flat_text: String::new(),
+                total_graphemes: 0,
+            });
+            Some(idx)
+        } else if resolved_text_sel {
+            run_idx
+        } else {
+            None
+        };
 
-            // A node that explicitly enables textSelect when the parent scope
-            // doesn't have it starts a new selection scope.
-            let current_run = if resolved_text_sel && run_idx.is_none() {
-                let idx = self.selectable_text_runs.len();
-                self.selectable_text_runs.push(TextSelectRun {
-                    root_id: node_id,
-                    entries: Vec::new(),
-                    flat_text: String::new(),
-                    total_graphemes: 0,
-                });
-                Some(idx)
-            } else if resolved_text_sel {
-                run_idx
-            } else {
-                None
-            };
+        if let Some(idx) = current_run
+            && let Some(tc) = self.nodes[node_id].get_text_content()
+        {
+            let gc = tc.content.graphemes(true).count();
+            let run = &mut self.selectable_text_runs[idx];
+            run.entries.push(TextRunEntry {
+                node_id,
+                flat_start: run.total_graphemes,
+                grapheme_count: gc,
+            });
+            run.flat_text.push_str(&tc.content);
+            run.total_graphemes += gc;
+        }
 
-            // Add text nodes to the current run
-            if let Some(tc) = node.get_text_content()
-                && let Some(idx) = current_run
-            {
-                let gc = tc.content.graphemes(true).count();
-                let run = &mut self.selectable_text_runs[idx];
-                run.entries.push(TextRunEntry {
-                    node_id,
-                    flat_start: run.total_graphemes,
-                    grapheme_count: gc,
-                });
-                run.flat_text.push_str(&tc.content);
-                run.total_graphemes += gc;
-            }
-
-            // Push children in reverse order for correct DFS traversal
-            let children = node.children.clone();
-            for &cid in children.iter().rev() {
-                stack.push((cid, Some(Box::new(style.clone())), current_run));
-            }
+        let child_count = self.nodes[node_id].children.len();
+        for i in 0..child_count {
+            let cid = self.nodes[node_id].children[i];
+            self.visit_text_select(cid, Some(&style), current_run);
         }
     }
 
