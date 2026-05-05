@@ -2,7 +2,6 @@ use std::collections::VecDeque;
 use std::time::{Duration, Instant};
 
 use parley::PlainEditor;
-use unicode_segmentation::UnicodeSegmentation;
 use winit::keyboard::{Key, NamedKey};
 
 use crate::text::{TextBrush, TextRenderer};
@@ -255,11 +254,6 @@ impl InputState {
         }
     }
 
-    fn grapheme_count_to_byte(text: &str, byte_idx: usize) -> usize {
-        let clamped = byte_idx.min(text.len());
-        text.get(..clamped).unwrap_or(text).graphemes(true).count()
-    }
-
     fn build_change(
         old_text: &str,
         new_text: &str,
@@ -346,31 +340,15 @@ impl InputState {
     }
 
     fn restore_selection(&mut self, selection: &SelectionSnapshot, renderer: &mut TextRenderer) {
-        let text = self.editor.raw_text();
-        let anchor_byte = selection.anchor_byte.min(text.len());
-        let focus_byte = selection.focus_byte.min(text.len());
-        let anchor_graphemes = Self::grapheme_count_to_byte(text, anchor_byte);
-        let focus_graphemes = Self::grapheme_count_to_byte(text, focus_byte);
-
+        let text_len = self.editor.raw_text().len();
+        let anchor = selection.anchor_byte.min(text_len);
+        let focus = selection.focus_byte.min(text_len);
         self.with_driver(renderer, |d| {
-            d.move_to_text_start();
-            for _ in 0..anchor_graphemes {
-                d.move_right();
-            }
-            if focus_graphemes >= anchor_graphemes {
-                for _ in 0..(focus_graphemes - anchor_graphemes) {
-                    d.select_right();
-                }
-            } else {
-                for _ in 0..(anchor_graphemes - focus_graphemes) {
-                    d.select_left();
-                }
-            }
+            d.select_byte_range(anchor, focus);
         });
     }
 
-    fn apply_change_item(&mut self, item: &ChangeItem, undo: bool) {
-        let mut text = self.editor.raw_text().to_string();
+    fn apply_item_to_string(text: &mut String, item: &ChangeItem, undo: bool) {
         if item.insert {
             let start = item.start_byte.min(text.len());
             if undo {
@@ -393,21 +371,26 @@ impl InputState {
                 text.replace_range(start..end, "");
             }
         }
-        self.editor.set_text(&text);
     }
 
     fn apply_change(&mut self, change: &Change, undo: bool, renderer: &mut TextRenderer) {
+        let mut text = self.editor.raw_text().to_string();
         if undo {
             for item in change.items.iter().rev() {
-                self.apply_change_item(item, true);
+                Self::apply_item_to_string(&mut text, item, true);
             }
-            self.restore_selection(&change.before_selection, renderer);
         } else {
             for item in &change.items {
-                self.apply_change_item(item, false);
+                Self::apply_item_to_string(&mut text, item, false);
             }
-            self.restore_selection(&change.after_selection, renderer);
         }
+        self.editor.set_text(&text);
+        let target = if undo {
+            &change.before_selection
+        } else {
+            &change.after_selection
+        };
+        self.restore_selection(target, renderer);
     }
 
     /// Break the current undo batch. The next edit will start a new batch.
