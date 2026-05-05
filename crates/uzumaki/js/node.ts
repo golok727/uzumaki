@@ -4,6 +4,12 @@ import { getNode, registerNode, unregisterNode } from './registry';
 import type { NodeId } from './types';
 import type { Window } from './window';
 
+export const NodeType = {
+  Root: 1,
+  Element: 2,
+  Text: 3,
+} as const;
+
 export class UzNode {
   readonly _native: CoreNode;
   readonly _window: Window;
@@ -28,12 +34,15 @@ export class UzNode {
   }
 
   get nodeType(): number {
+    // NodeData::Root => 1,
+    // NodeData::Element(_) => 2,
+    // NodeData::Text(_) => 3,
     return this._native.nodeType;
   }
 
-  get nodeName(): string {
-    return this._native.nodeName;
-  }
+  // get nodeName(): string {
+  //   return this._native.nodeName;
+  // }
 
   get parentNode(): UzNode | null {
     return UzNode.fromNative(this._window, this._native.parentNode);

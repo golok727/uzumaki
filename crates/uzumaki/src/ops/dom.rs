@@ -2,7 +2,7 @@ use deno_core::*;
 use serde_json::Value;
 
 use crate::app::{SharedAppState, with_state};
-use crate::element::UzNodeId;
+use crate::element::{NodeData, UzNodeId};
 use crate::style::UzStyle;
 
 fn window_not_found() -> deno_error::JsErrorBox {
@@ -21,16 +21,28 @@ fn invalid_child() -> deno_error::JsErrorBox {
 pub struct CoreNode {
     window_id: u32,
     node_id: UzNodeId,
-    node_name: String,
 }
 
 impl CoreNode {
-    pub fn new(window_id: u32, node_id: UzNodeId, node_name: impl Into<String>) -> Self {
-        Self {
-            window_id,
-            node_id,
-            node_name: node_name.into(),
-        }
+    pub fn new(window_id: u32, node_id: UzNodeId) -> Self {
+        Self { window_id, node_id }
+    }
+
+    fn read_node<R>(
+        &self,
+        state: &OpState,
+        read: impl FnOnce(&crate::element::Node) -> R,
+    ) -> Option<R> {
+        let app_state = state.borrow::<SharedAppState>().clone();
+        with_state(&app_state, |s| {
+            let Some(entry) = s.windows.get(&self.window_id) else {
+                return None;
+            };
+            let Some(node) = entry.dom.nodes.get(self.node_id) else {
+                return None;
+            };
+            Some(read(node))
+        })
     }
 
     fn related_node(
@@ -49,24 +61,9 @@ impl CoreNode {
             let Some(related_id) = read(node) else {
                 return Ok(None);
             };
-            let Some(related) = entry.dom.nodes.get(related_id) else {
-                return Ok(None);
-            };
-            Ok(Some(CoreNode::new(
-                self.window_id,
-                related_id,
-                node_kind_name(related),
-            )))
-        })
-    }
-}
 
-fn node_kind_name(node: &crate::element::Node) -> &'static str {
-    use crate::element::NodeData;
-    match &node.data {
-        NodeData::Root => "#root",
-        NodeData::Text(_) => "#text",
-        NodeData::Element(_) => "#element",
+            Ok(Some(CoreNode::new(self.window_id, related_id)))
+        })
     }
 }
 
@@ -90,7 +87,7 @@ pub fn op_get_root_node(
             return Err(window_not_found());
         };
         let root = entry.dom.root.expect("no root node");
-        Ok(CoreNode::new(window_id, root, "#root"))
+        Ok(CoreNode::new(window_id, root))
     })
 }
 
@@ -102,7 +99,7 @@ pub fn op_create_element_node(
     #[string] element_type: String,
 ) -> Result<CoreNode, deno_error::JsErrorBox> {
     let node_id = create_element(state, window_id, &element_type)?;
-    Ok(CoreNode::new(window_id, node_id as UzNodeId, element_type))
+    Ok(CoreNode::new(window_id, node_id as UzNodeId))
 }
 
 #[op2]
@@ -113,7 +110,7 @@ pub fn op_create_text_node(
     #[string] text: String,
 ) -> Result<CoreNode, deno_error::JsErrorBox> {
     let node_id = create_text_node(state, window_id, text)?;
-    Ok(CoreNode::new(window_id, node_id as UzNodeId, "#text"))
+    Ok(CoreNode::new(window_id, node_id as UzNodeId))
 }
 
 #[op2]
@@ -134,16 +131,20 @@ impl CoreNode {
     #[getter]
     #[smi]
     #[allow(non_snake_case)]
-    pub fn nodeType(&self) -> u32 {
-        if self.node_name == "#text" { 3 } else { 1 }
+    pub fn nodeType(&self, state: &OpState) -> Option<u32> {
+        self.read_node(state, |node| match node.data {
+            NodeData::Root => 1,
+            NodeData::Element(_) => 2,
+            NodeData::Text(_) => 3,
+        })
     }
 
-    #[getter]
-    #[string]
-    #[allow(non_snake_case)]
-    pub fn nodeName(&self) -> String {
-        self.node_name.clone()
-    }
+    // #[getter]
+    // #[string]
+    // #[allow(non_snake_case)]
+    // pub fn nodeName(&self) -> String {
+    //    todo!()
+    // }
 
     #[getter]
     #[cppgc]
