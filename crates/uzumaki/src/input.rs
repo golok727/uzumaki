@@ -80,11 +80,6 @@ pub struct PreeditState {
     pub cursor: Option<(usize, usize)>,
 }
 
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
-struct Cursor {
-    byte: usize,
-}
-
 #[derive(Clone, Debug, Default)]
 struct SelectionSnapshot {
     anchor_byte: usize,
@@ -93,8 +88,8 @@ struct SelectionSnapshot {
 
 #[derive(Clone, Debug)]
 struct ChangeItem {
-    start: Cursor,
-    end: Cursor,
+    start_byte: usize,
+    end_byte: usize,
     text: String,
     insert: bool,
 }
@@ -304,16 +299,16 @@ impl InputState {
         let mut items = Vec::new();
         if !deleted.is_empty() {
             items.push(ChangeItem {
-                start: Cursor { byte: prefix },
-                end: Cursor { byte: old_end },
+                start_byte: prefix,
+                end_byte: old_end,
                 text: deleted.to_string(),
                 insert: false,
             });
         }
         if !inserted.is_empty() {
             items.push(ChangeItem {
-                start: Cursor { byte: prefix },
-                end: Cursor { byte: prefix },
+                start_byte: prefix,
+                end_byte: prefix,
                 text: inserted.to_string(),
                 insert: true,
             });
@@ -377,7 +372,7 @@ impl InputState {
     fn apply_change_item(&mut self, item: &ChangeItem, undo: bool) {
         let mut text = self.editor.raw_text().to_string();
         if item.insert {
-            let start = item.start.byte.min(text.len());
+            let start = item.start_byte.min(text.len());
             if undo {
                 let end = (start + item.text.len()).min(text.len());
                 if text.is_char_boundary(start) && text.is_char_boundary(end) {
@@ -387,13 +382,13 @@ impl InputState {
                 text.insert_str(start, &item.text);
             }
         } else if undo {
-            let start = item.start.byte.min(text.len());
+            let start = item.start_byte.min(text.len());
             if text.is_char_boundary(start) {
                 text.insert_str(start, &item.text);
             }
         } else {
-            let start = item.start.byte.min(text.len());
-            let end = item.end.byte.min(text.len());
+            let start = item.start_byte.min(text.len());
+            let end = item.end_byte.min(text.len());
             if start <= end && text.is_char_boundary(start) && text.is_char_boundary(end) {
                 text.replace_range(start..end, "");
             }
