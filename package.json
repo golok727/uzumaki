@@ -30,6 +30,7 @@
     "lint-staged": "^16.4.0",
     "oxlint": "^1.59.0",
     "prettier": "^3.8.1",
+    "tsdown": "^0.21.10",
     "typescript": "^6.0.2"
   }
 }

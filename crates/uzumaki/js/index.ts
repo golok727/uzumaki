@@ -31,16 +31,16 @@ export { EventPhase } from './events';
 export type {
   EventName,
   EventHandler,
-  UzEventMap as EventHandlerMap,
+  UzEventMap,
   WindowEventName,
   WindowEventHandler,
   WindowEventMap,
   UzumakiEvent,
-  UzMouseEvent as UzumakiMouseEvent,
-  UzKeyboardEvent as UzumakiKeyboardEvent,
-  UzInputEvent as UzumakiInputEvent,
-  UzFocusEvent as UzumakiFocusEvent,
-  UzClipboardEvent as UzumakiClipboardEvent,
+  UzMouseEvent,
+  UzKeyboardEvent,
+  UzInputEvent,
+  UzFocusEvent,
+  UzClipboardEvent,
   UzumakiResizeEvent,
 } from './events';
 
