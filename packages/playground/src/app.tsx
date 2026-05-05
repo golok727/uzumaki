@@ -10,6 +10,7 @@ import { StressPage } from './pages/stressPage';
 import { EventsPage } from './pages/eventsPage';
 import { IssuesPage } from './pages/issuesPage';
 import { TimerPage } from './pages/timerPage';
+import { UndoRedoPage } from './pages/undoRedoPage';
 
 export function App() {
   const [activeTab, setActiveTab] = useState<Tab>('dashboard');
@@ -23,6 +24,7 @@ export function App() {
     events: <EventsPage />,
     issues: <IssuesPage />,
     timer: <TimerPage />,
+    undoredo: <UndoRedoPage />,
   }[activeTab];
 
   return (
