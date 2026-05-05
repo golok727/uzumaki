@@ -4,5 +4,5 @@
     "composite": true,
     "allowJs": false
   },
-  "include": ["index.d.ts", "globals.d.ts"]
+  "include": ["index.d.ts", "uzumaki.d.ts"]
 }

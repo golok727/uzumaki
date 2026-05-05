@@ -1,10 +1,10 @@
 import { render } from 'uzumaki-ui/react';
 import { App } from './app';
-import { RUNTIME_VERSION } from 'uzumaki';
+// import { RUNTIME_VERSION } from 'uzumaki';
 import { Window } from 'uzumaki-ui';
 import { C } from './theme';
 
-console.log('Uzumaki Version:', RUNTIME_VERSION);
+// console.log('Uzumaki Version:', RUNTIME_VERSION);
 
 export const window = new Window('main', {
   width: 1200,
