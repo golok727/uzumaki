@@ -10,6 +10,7 @@ function AbsClickCounter({ color }: { color: string }) {
       p={7}
       bg={color}
       hover:bg={C.surface4}
+      active:bg={C.accentDim}
       rounded={4}
       cursor="pointer"
       display="flex"

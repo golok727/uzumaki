@@ -38,7 +38,7 @@ const LineRenderer = memo(function LineComponent({
       <text selectable={false} color={C.textMuted} fontSize={14} w={32}>
         {String(lineNumber)}
       </text>
-      <view display="flex" flexDir="row" flexWrap="wrap" flex={1}>
+      <view display="flex" flexDir="row" flexWrap="wrap" flex={1} fontSize={20}>
         {tokens.map((token, j) => (
           <TokenRenderer key={j} token={token} />
         ))}

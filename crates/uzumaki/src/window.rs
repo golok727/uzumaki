@@ -147,12 +147,8 @@ impl Window {
             &mut self.text_renderer,
         );
 
-        // Prepaint walks the freshly rebuilt layout tree, refreshes hit/scroll
-        // caches and yields a pure paint list. Hover changes take effect on the
-        // next redraw instead of forcing a second prepaint in this frame.
-        let list = Painter::new(dom, &mut self.text_renderer, scale).prepaint();
+        Painter::new(dom, &mut self.text_renderer, scale).paint(&mut self.scene);
         dom.refresh_hit_test();
-        list.paint(&mut self.scene, &mut self.text_renderer);
 
         let target_view = Self::ensure_vello_target(&mut self.vello_target, device, width, height);
 

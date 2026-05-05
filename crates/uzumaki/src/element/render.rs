@@ -10,7 +10,7 @@ use crate::element::input::InputRenderInfo;
 use crate::element::scroll::{self, ScrollAxisInfo, ThumbGeometry};
 use crate::element::{ImageMeasureInfo, ScrollAxis, ScrollState, ScrollThumbRect, UzNodeId};
 use crate::layout::NodeContext;
-use crate::style::{Bounds, ScrollbarStyle, TextStyle, UzStyle, Visibility};
+use crate::style::{Bounds, ScrollbarStyle, UzStyle, Visibility};
 use crate::text::{
     TextRenderer, apply_text_style_to_editor, secure_cursor_geometry, secure_selection_geometry,
 };
@@ -31,7 +31,7 @@ impl<'a> Painter<'a> {
         }
     }
 
-    pub fn prepaint(mut self) -> PaintList {
+    pub fn paint(mut self, scene: &mut Scene) {
         self.dom.hitbox_store.clear();
         self.dom.scroll_thumbs.clear();
         for (_, node) in self.dom.nodes.iter_mut() {
@@ -39,38 +39,44 @@ impl<'a> Painter<'a> {
         }
         self.dom.build_text_select_runs();
 
+        // Computed once up-front; depends only on dom.text_selection which is
+        // settled before we enter the paint walk.
         let text_selections = self.compute_text_selections_map();
-        let mut items: Vec<PaintItem> = Vec::new();
 
-        if let Some(root) = self.dom.root {
-            let mut stack: Vec<Frame> = vec![Frame::Visit(VisitFrame {
-                node_id: root,
-                parent_x: 0.0,
-                parent_y: 0.0,
-                parent_paint_transform: Affine::scale(self.scale),
-                parent_hit_transform: Affine::IDENTITY,
-                parent_style: None,
-            })];
+        let Some(root) = self.dom.root else {
+            return;
+        };
 
-            while let Some(frame) = stack.pop() {
-                match frame {
-                    Frame::Visit(v) => self.visit(v, &mut stack, &mut items),
-                    Frame::PushClip { rect, transform } => {
-                        items.push(PaintItem::PushClip { rect, transform })
-                    }
-                    Frame::PopClip => items.push(PaintItem::PopClip),
-                    Frame::Scrollbar(s) => items.push(PaintItem::Scrollbar(s)),
+        let mut stack: Vec<PaintCommand> = vec![PaintCommand::Visit(VisitFrame {
+            node_id: root,
+            parent_x: 0.0,
+            parent_y: 0.0,
+            parent_paint_transform: Affine::scale(self.scale),
+            parent_hit_transform: Affine::IDENTITY,
+            parent_style: None,
+        })];
+
+        while let Some(frame) = stack.pop() {
+            match frame {
+                PaintCommand::Visit(v) => self.visit(v, &mut stack, scene, &text_selections),
+                PaintCommand::PushClip { rect, transform } => {
+                    scene.push_clip_layer(Fill::NonZero, transform, &rect);
+                }
+                PaintCommand::PopClip => scene.pop_layer(),
+                PaintCommand::Scrollbar(s) => {
+                    scroll::paint_thumb(scene, s.transform, &s.geom, s.hovered, &s.style);
                 }
             }
         }
-
-        PaintList {
-            items,
-            text_selections,
-        }
     }
 
-    fn visit(&mut self, frame: VisitFrame, stack: &mut Vec<Frame>, items: &mut Vec<PaintItem>) {
+    fn visit(
+        &mut self,
+        frame: VisitFrame,
+        stack: &mut Vec<PaintCommand>,
+        scene: &mut Scene,
+        text_selections: &HashMap<UzNodeId, (usize, usize)>,
+    ) {
         let VisitFrame {
             node_id,
             parent_x,
@@ -80,45 +86,32 @@ impl<'a> Painter<'a> {
             parent_style,
         } = frame;
 
-        let snap = match self.snapshot(node_id, parent_style.as_deref()) {
-            Some(snap) => snap,
-            None => return,
-        };
-
+        // Copy layout out first so we don't hold a borrow into dom while we
+        // mutate hitboxes / scroll state below.
         let layout = match self.dom.layout_engine.layout(node_id) {
             Some(l) => LayoutSnapshot::from(l),
             None => return,
         };
 
+        let computed_style = self.dom.computed_style(node_id, parent_style.as_deref());
+
+        if computed_style.visibility == Visibility::Hidden
+            || computed_style.display == crate::style::Display::None
+        {
+            return;
+        }
+
         let x = parent_x + layout.location_x;
         let y = parent_y + layout.location_y;
         let w = layout.size_w;
         let h = layout.size_h;
-        let local_style_transform = snap.computed_style.transform.to_affine(w, h);
+
+        let local_style_transform = computed_style.transform.to_affine(w, h);
         let local_translate = Affine::translate((layout.location_x, layout.location_y));
         let transform = parent_paint_transform * local_translate * local_style_transform;
         let hit_transform = parent_hit_transform * local_translate * local_style_transform;
 
-        // Build per-frame input render info (mutates editor) BEFORE we register
-        // hitboxes — we want geometry for the scrollbar that follows.
-        let input = snap
-            .input_seed
-            .map(|seed| self.build_input_render_info(node_id, &snap.computed_style, &layout, seed));
-
-        let input_scrollbar = input.as_ref().and_then(|info| {
-            self.register_input_scrollbar(
-                node_id,
-                &snap.computed_style,
-                w,
-                h,
-                info,
-                transform,
-                x,
-                y,
-            )
-        });
-
-        // Every visible box participates in hit testing.
+        // Register hitbox for this node.
         let hitbox_id = self.dom.hitbox_store.insert_transformed(
             node_id,
             Bounds::new(0.0, 0.0, w, h),
@@ -126,52 +119,40 @@ impl<'a> Painter<'a> {
         );
         self.dom.nodes[node_id].interactivity.hitbox_id = Some(hitbox_id);
 
+        // Paint this node directly into the scene.
+        self.paint_node(
+            node_id,
+            &layout,
+            &computed_style,
+            Bounds::new(0.0, 0.0, w, h),
+            Bounds::new(x, y, w, h),
+            transform,
+            scene,
+            text_selections,
+        );
+
+        // Set up view scrolling (clamps offsets, registers scroll thumbs).
         let view_scroll = self.prepare_view_scroll(
             node_id,
-            &snap.computed_style,
+            &computed_style,
             &layout,
             Bounds::new(x, y, w, h),
             transform,
         );
 
-        let mut children = Vec::new();
-        let mut next = snap.first_child;
+        // collect children
+        let mut children: Vec<UzNodeId> = Vec::new();
+        let mut next = self.dom.nodes[node_id].first_child;
         while let Some(child_id) = next {
             children.push(child_id);
             next = self.dom.nodes[child_id].next_sibling;
         }
 
-        let content = if let Some(input_info) = input {
-            NodeContent::Input(input_info)
-        } else if let Some(cb) = snap.checkbox {
-            NodeContent::Checkbox(cb)
-        } else if let Some(img) = snap.image {
-            NodeContent::Image(img)
-        } else if let Some((text, style)) = snap.text {
-            NodeContent::Text { text, style }
-        } else {
-            NodeContent::View
-        };
-
-        items.push(PaintItem::Node(Box::new(NodePaint {
-            node_id,
-            bounds: Bounds::new(0.0, 0.0, w, h),
-            transform,
-            style: Box::new(snap.computed_style.clone()),
-            content,
-        })));
-
-        // Input scrollbar paints immediately after the input itself, OUTSIDE
-        // the input's internal text clip.
-        if let Some(thumb) = input_scrollbar {
-            items.push(PaintItem::Scrollbar(thumb));
-        }
-
-        // Children + clip + view scrollbars. The stack is LIFO, so push in
-        // reverse of execution order: PushClip → children → PopClip → thumbs.
+        // push in reverse execution order.
         let needs_clip = view_scroll.is_some()
-            || snap.computed_style.overflow_x.clips()
-            || snap.computed_style.overflow_y.clips();
+            || computed_style.overflow_x.clips()
+            || computed_style.overflow_y.clips();
+
         let (offset_x, offset_y, mouse_in_view, view_thumbs) = match view_scroll {
             Some(v) => (v.offset_x, v.offset_y, v.mouse_in_view, v.thumbs),
             None => (0.0, 0.0, false, Vec::new()),
@@ -179,11 +160,11 @@ impl<'a> Painter<'a> {
 
         if mouse_in_view {
             for thumb in view_thumbs.into_iter().rev() {
-                stack.push(Frame::Scrollbar(thumb));
+                stack.push(PaintCommand::Scrollbar(thumb));
             }
         }
         if needs_clip {
-            stack.push(Frame::PopClip);
+            stack.push(PaintCommand::PopClip);
         }
 
         let scroll_translate = if offset_x != 0.0 || offset_y != 0.0 {
@@ -193,76 +174,152 @@ impl<'a> Painter<'a> {
         };
         let child_paint_transform = transform * scroll_translate;
         let child_hit_transform = hit_transform * scroll_translate;
+
         for &child_id in children.iter().rev() {
-            stack.push(Frame::Visit(VisitFrame {
+            stack.push(PaintCommand::Visit(VisitFrame {
                 node_id: child_id,
                 parent_x: x - offset_x,
                 parent_y: y - offset_y,
                 parent_paint_transform: child_paint_transform,
                 parent_hit_transform: child_hit_transform,
-                parent_style: Some(Box::new(snap.computed_style.clone())),
+                // Box only when we actually have children to propagate style to.
+                parent_style: Some(Box::new(computed_style.clone())),
             }));
         }
+
         if needs_clip {
-            stack.push(Frame::PushClip {
+            stack.push(PaintCommand::PushClip {
                 rect: Rect::new(0.0, 0.0, w, h),
                 transform,
             });
         }
     }
 
-    /// Pull everything we need from the node into local state. Returning `None`
-    /// means the node is hidden and should be skipped.
-    fn snapshot(&self, node_id: UzNodeId, parent_style: Option<&UzStyle>) -> Option<NodeSnapshot> {
-        let computed_style = self.dom.computed_style(node_id, parent_style);
-        if computed_style.visibility == Visibility::Hidden
-            || computed_style.display == crate::style::Display::None
-        {
-            return None;
+    #[allow(clippy::too_many_arguments)]
+    fn paint_node(
+        &mut self,
+        node_id: UzNodeId,
+        layout: &LayoutSnapshot,
+        style: &UzStyle,
+        bounds: Bounds,      // local (0,0,w,h)
+        view_bounds: Bounds, // absolute (x,y,w,h) for scrollbar placement
+        transform: Affine,
+        scene: &mut Scene,
+        text_selections: &HashMap<UzNodeId, (usize, usize)>,
+    ) {
+        if self.dom.nodes[node_id].is_text_input() {
+            let info = self.build_input_render_info(node_id, style, layout);
+            crate::element::input::paint_input(
+                scene,
+                self.text_renderer,
+                bounds,
+                style,
+                &info,
+                transform,
+            );
+            // Input scrollbar paints outside the input's text clip.
+            if let Some(thumb) = self.register_input_scrollbar(
+                node_id,
+                style,
+                layout.size_w,
+                layout.size_h,
+                &info,
+                transform,
+                view_bounds.x,
+                view_bounds.y,
+            ) {
+                scroll::paint_thumb(
+                    scene,
+                    thumb.transform,
+                    &thumb.geom,
+                    thumb.hovered,
+                    &thumb.style,
+                );
+            }
+            return;
         }
 
         let node = &self.dom.nodes[node_id];
-        let first_child = node.first_child;
 
-        let text = node
-            .get_text_content()
-            .map(|tc| (tc.content.clone(), computed_style.text.clone()));
-
-        let input_seed = node.is_text_input().then(|| {
-            let is = node.as_text_input().unwrap();
-            let focused = self.dom.focused_node == Some(node_id);
-            InputSeed {
-                display_text: is.display_text(),
-                placeholder: is.placeholder.clone(),
-                focused,
-                scroll_offset: is.scroll_offset,
-                scroll_offset_y: is.scroll_offset_y,
-                blink_visible: is.blink_visible(focused, self.dom.window_focused),
-                multiline: is.multiline,
-                preedit: is.preedit.clone(),
-            }
-        });
-
-        let checkbox = node
-            .as_checkbox_input()
-            .copied()
-            .map(|checked| CheckboxRenderInfo {
+        if let Some(&checked) = node.as_checkbox_input() {
+            let info = CheckboxRenderInfo {
                 checked,
                 focused: self.dom.focused_node == Some(node_id),
+            };
+            crate::element::checkbox::paint_checkbox(scene, bounds, style, &info, transform);
+        } else if let Some(img) = node.as_image() {
+            let info = ImageRenderInfo {
+                data: img.data.clone(),
+            };
+            crate::element::image::paint_image(scene, bounds, style, &info, transform);
+        } else if let Some(tc) = node.get_text_content() {
+            let sel = text_selections.get(&node_id).copied();
+            Self::paint_text_node(
+                &mut self.text_renderer,
+                scene,
+                bounds,
+                style,
+                &tc.content,
+                transform,
+                sel,
+            );
+        } else {
+            crate::element::view::paint_view(scene, bounds, style, transform, |_| {});
+        }
+    }
+
+    /// Draw a text node, optionally with a selection highlight.
+    fn paint_text_node(
+        text_renderer: &mut TextRenderer,
+        scene: &mut Scene,
+        bounds: Bounds,
+        style: &UzStyle,
+        text: &str,
+        transform: Affine,
+        selection: Option<(usize, usize)>,
+    ) {
+        if let Some((sel_start, sel_end)) = selection {
+            style.paint(bounds, scene, transform, |scene| {
+                let rects = text_renderer.selection_rects(
+                    text,
+                    &style.text,
+                    Some(bounds.width as f32),
+                    sel_start,
+                    sel_end,
+                );
+                let sel_color = VelloColor::from_rgba8(56, 121, 185, 128);
+                for rect in rects {
+                    scene.fill(
+                        Fill::NonZero,
+                        transform,
+                        sel_color,
+                        None,
+                        &Rect::new(rect.x0, rect.y0, rect.x1, rect.y1),
+                    );
+                }
+                text_renderer.draw_text(
+                    scene,
+                    text,
+                    &style.text,
+                    bounds.width as f32,
+                    bounds.height as f32,
+                    (0.0, 0.0),
+                    style.text.color.to_vello(),
+                    transform,
+                );
             });
-
-        let image = node.as_image().map(|image| ImageRenderInfo {
-            data: image.data.clone(),
-        });
-
-        Some(NodeSnapshot {
-            computed_style,
-            first_child,
-            text,
-            input_seed,
-            checkbox,
-            image,
-        })
+        } else {
+            crate::element::text::paint_text(
+                scene,
+                text_renderer,
+                bounds,
+                style,
+                text,
+                &style.text,
+                style.text.color,
+                transform,
+            );
+        }
     }
 
     fn build_input_render_info(
@@ -270,25 +327,34 @@ impl<'a> Painter<'a> {
         node_id: UzNodeId,
         style: &UzStyle,
         layout: &LayoutSnapshot,
-        seed: InputSeed,
     ) -> InputRenderInfo {
         let pad_h = style.padding.left + style.padding.right;
         let text_w = (layout.size_w as f32 - pad_h).max(0.0);
         let text_style = style.text.clone();
+
+        // Grab seed values first so we can drop the immutable borrow.
+        let (multiline, secure, has_preedit) = {
+            let is = self.dom.nodes[node_id].as_text_input().unwrap();
+            (is.multiline, is.secure, is.preedit.is_some())
+        };
+
+        let focused = self.dom.focused_node == Some(node_id);
 
         let node_mut = &mut self.dom.nodes[node_id];
         let is = node_mut.as_text_input_mut().unwrap();
 
         apply_text_style_to_editor(&mut is.editor, &text_style);
         is.editor
-            .set_width(if seed.multiline { Some(text_w) } else { None });
+            .set_width(if multiline { Some(text_w) } else { None });
         is.editor.refresh_layout(
             &mut self.text_renderer.font_ctx,
             &mut self.text_renderer.layout_ctx,
         );
 
-        let cursor_rect = if seed.blink_visible || seed.preedit.is_some() {
-            if is.secure {
+        let blink_visible = is.blink_visible(focused, self.dom.window_focused);
+
+        let cursor_rect = if blink_visible || has_preedit {
+            if secure {
                 secure_cursor_geometry(&is.editor, 1.5, &text_style, self.text_renderer)
             } else {
                 is.editor.cursor_geometry(1.5)
@@ -297,7 +363,7 @@ impl<'a> Painter<'a> {
             None
         };
 
-        let selection_rects = if is.secure {
+        let selection_rects = if secure {
             secure_selection_geometry(&is.editor, &text_style, self.text_renderer)
         } else {
             is.editor
@@ -309,7 +375,7 @@ impl<'a> Painter<'a> {
 
         let layout_height = is.editor.try_layout().map(|l| l.height()).unwrap_or(0.0);
 
-        let preedit = seed.preedit.map(|ps| {
+        let preedit = is.preedit.clone().map(|ps| {
             let positions = self
                 .text_renderer
                 .grapheme_x_positions(&ps.text, &text_style);
@@ -330,17 +396,19 @@ impl<'a> Painter<'a> {
             }
         });
 
+        let is = self.dom.nodes[node_id].as_text_input().unwrap();
+
         InputRenderInfo {
-            display_text: seed.display_text,
-            placeholder: seed.placeholder,
+            display_text: is.display_text(),
+            placeholder: is.placeholder.clone(),
             text_style,
-            focused: seed.focused,
+            focused,
             cursor_rect,
             selection_rects,
-            scroll_offset: seed.scroll_offset,
-            scroll_offset_y: seed.scroll_offset_y,
-            blink_visible: seed.blink_visible,
-            multiline: seed.multiline,
+            scroll_offset: is.scroll_offset,
+            scroll_offset_y: is.scroll_offset_y,
+            blink_visible,
+            multiline,
             layout_height,
             preedit,
         }
@@ -381,8 +449,7 @@ impl<'a> Painter<'a> {
             geom.thumb_width,
             geom.thumb_height,
         );
-        // Inputs always register the thumb hit rect, even when not visible —
-        // matches the legacy behaviour and keeps wheel/drag responsive.
+
         self.dom.scroll_thumbs.push(ScrollThumbRect {
             node_id,
             axis: ScrollAxis::Y,
@@ -417,10 +484,6 @@ impl<'a> Painter<'a> {
         })
     }
 
-    /// For scrollable views, ensure scroll state exists, clamp offsets, and
-    /// register a hit rect per scrollable axis. Returns the resolved offsets
-    /// (so the child walk can translate into scrolled space) plus the per-axis
-    /// thumb paint commands and a flag for whether to actually emit them.
     fn prepare_view_scroll(
         &mut self,
         node_id: UzNodeId,
@@ -552,9 +615,6 @@ impl<'a> Painter<'a> {
             .is_some_and(|d| d.node_id == node_id)
     }
 
-    /// Pre-compute selection ranges for text-select mode. This depends only on
-    /// `dom.text_selection`, which is settled before prepaint runs, so a
-    /// re-prepaint after a hit-test refresh produces the same map.
     fn compute_text_selections_map(&self) -> HashMap<UzNodeId, (usize, usize)> {
         let mut map = HashMap::new();
         let sel = self.dom.text_selection;
@@ -604,151 +664,6 @@ impl<'a> Painter<'a> {
     }
 }
 
-// ---------------------------------------------------------------------------
-// Paint
-// ---------------------------------------------------------------------------
-
-pub struct PaintList {
-    items: Vec<PaintItem>,
-    text_selections: HashMap<UzNodeId, (usize, usize)>,
-}
-
-impl PaintList {
-    pub fn paint(&self, scene: &mut Scene, text_renderer: &mut TextRenderer) {
-        for item in &self.items {
-            match item {
-                PaintItem::Node(node) => {
-                    paint_node(node, scene, text_renderer, &self.text_selections)
-                }
-                PaintItem::PushClip { rect, transform } => {
-                    scene.push_clip_layer(Fill::NonZero, *transform, rect);
-                }
-                PaintItem::PopClip => scene.pop_layer(),
-                PaintItem::Scrollbar(s) => {
-                    scroll::paint_thumb(scene, s.transform, &s.geom, s.hovered, &s.style)
-                }
-            }
-        }
-    }
-}
-
-fn paint_node(
-    node: &NodePaint,
-    scene: &mut Scene,
-    text_renderer: &mut TextRenderer,
-    text_selections: &HashMap<UzNodeId, (usize, usize)>,
-) {
-    match &node.content {
-        NodeContent::Input(input) => {
-            crate::element::input::paint_input(
-                scene,
-                text_renderer,
-                node.bounds,
-                &node.style,
-                input,
-                node.transform,
-            );
-        }
-        NodeContent::Checkbox(cb) => {
-            crate::element::checkbox::paint_checkbox(
-                scene,
-                node.bounds,
-                &node.style,
-                cb,
-                node.transform,
-            );
-        }
-        NodeContent::Image(img) => {
-            crate::element::image::paint_image(
-                scene,
-                node.bounds,
-                &node.style,
-                img,
-                node.transform,
-            );
-        }
-        NodeContent::Text { text, style } => {
-            if let Some((sel_start, sel_end)) = text_selections.get(&node.node_id).copied() {
-                node.style
-                    .paint(node.bounds, scene, node.transform, |scene| {
-                        let rects = text_renderer.selection_rects(
-                            text,
-                            style,
-                            Some(node.bounds.width as f32),
-                            sel_start,
-                            sel_end,
-                        );
-                        let sel_color = VelloColor::from_rgba8(56, 121, 185, 128);
-                        for rect in rects {
-                            scene.fill(
-                                Fill::NonZero,
-                                node.transform,
-                                sel_color,
-                                None,
-                                &Rect::new(rect.x0, rect.y0, rect.x1, rect.y1),
-                            );
-                        }
-                        text_renderer.draw_text(
-                            scene,
-                            text,
-                            style,
-                            node.bounds.width as f32,
-                            node.bounds.height as f32,
-                            (0.0, 0.0),
-                            style.color.to_vello(),
-                            node.transform,
-                        );
-                    });
-            } else {
-                crate::element::text::paint_text(
-                    scene,
-                    text_renderer,
-                    node.bounds,
-                    &node.style,
-                    text,
-                    style,
-                    style.color,
-                    node.transform,
-                );
-            }
-        }
-        NodeContent::View => {
-            crate::element::view::paint_view(
-                scene,
-                node.bounds,
-                &node.style,
-                node.transform,
-                |_| {},
-            );
-        }
-    }
-}
-
-// ---------------------------------------------------------------------------
-// Internal types
-// ---------------------------------------------------------------------------
-
-struct NodeSnapshot {
-    computed_style: UzStyle,
-    first_child: Option<UzNodeId>,
-    text: Option<(String, TextStyle)>,
-    input_seed: Option<InputSeed>,
-    checkbox: Option<CheckboxRenderInfo>,
-    image: Option<ImageRenderInfo>,
-}
-
-struct InputSeed {
-    display_text: String,
-    placeholder: String,
-    focused: bool,
-    scroll_offset: f32,
-    scroll_offset_y: f32,
-    blink_visible: bool,
-    multiline: bool,
-    preedit: Option<crate::input::PreeditState>,
-}
-
-/// Layout fields copied out of taffy so we can mutate dom while reading them.
 struct LayoutSnapshot {
     location_x: f64,
     location_y: f64,
@@ -778,35 +693,12 @@ struct ViewScroll {
     thumbs: Vec<ScrollbarPaint>,
 }
 
-struct NodePaint {
-    node_id: UzNodeId,
-    bounds: Bounds,
-    transform: Affine,
-    style: Box<UzStyle>,
-    content: NodeContent,
-}
-
-enum NodeContent {
-    View,
-    Text { text: String, style: TextStyle },
-    Input(InputRenderInfo),
-    Checkbox(CheckboxRenderInfo),
-    Image(ImageRenderInfo),
-}
-
 #[derive(Clone)]
 struct ScrollbarPaint {
     transform: Affine,
     geom: ThumbGeometry,
     hovered: bool,
     style: ScrollbarStyle,
-}
-
-enum PaintItem {
-    Node(Box<NodePaint>),
-    PushClip { rect: Rect, transform: Affine },
-    PopClip,
-    Scrollbar(ScrollbarPaint),
 }
 
 struct VisitFrame {
@@ -818,7 +710,7 @@ struct VisitFrame {
     parent_style: Option<Box<UzStyle>>,
 }
 
-enum Frame {
+enum PaintCommand {
     Visit(VisitFrame),
     PushClip { rect: Rect, transform: Affine },
     PopClip,
@@ -863,7 +755,6 @@ pub(crate) fn measure(
                 .height
                 .or_else(|| available_as_option(available_space.height)),
         );
-
         return taffy::Size {
             width: measured_width,
             height: measured_height,
@@ -874,7 +765,6 @@ pub(crate) fn measure(
         if *width <= 0.0 || *height <= 0.0 {
             return default_size;
         }
-
         let aspect_ratio = *width / *height;
         let measured_width = known_dimensions.width.unwrap_or({
             if let Some(known_height) = known_dimensions.height {
@@ -890,7 +780,6 @@ pub(crate) fn measure(
                 *height
             }
         });
-
         return taffy::Size {
             width: measured_width,
             height: measured_height,
