@@ -2,7 +2,7 @@
   "extends": "../../tsconfig.base.json",
   "compilerOptions": {
     "composite": true,
-    "types": ["uzumaki-types"]
+    "allowJs": false
   },
-  "include": ["js/**/*.ts"]
+  "include": ["index.d.ts", "globals.d.ts"]
 }

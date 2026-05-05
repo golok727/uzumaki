@@ -2,7 +2,9 @@
   "name": "uzumaki-types",
   "type": "module",
   "version": "0.0.0",
-  "scripts": {},
+  "scripts": {
+    "typecheck": "tsc -p tsconfig.json --noEmit --pretty false"
+  },
   "types": "./index.d.ts",
   "exports": {
     ".": {

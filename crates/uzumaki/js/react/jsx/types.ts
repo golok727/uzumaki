@@ -143,6 +143,10 @@ export namespace JSX {
 
   export interface ElementClass {}
 
+  export interface IntrinsicAttributes {
+    key?: string | number;
+  }
+
   export interface IntrinsicElements {
     view: ElementAttributes &
       EventProps<UzViewElement> & {

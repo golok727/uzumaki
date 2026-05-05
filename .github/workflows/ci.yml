@@ -142,5 +142,17 @@ jobs:
 
       - run: pnpm install --frozen-lockfile
 
+      - name: typecheck uzumaki-ui
+        run: pnpm --filter uzumaki-ui typecheck
+
+      - name: typecheck uzumaki-react
+        run: pnpm --filter uzumaki-react typecheck
+
+      - name: typecheck uzumaki-types
+        run: pnpm --filter uzumaki-types typecheck
+
+      - name: typecheck playground
+        run: pnpm --filter playground typecheck
+
       - name: oxlint
         run: pnpm lint
