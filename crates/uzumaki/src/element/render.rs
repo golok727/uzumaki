@@ -255,7 +255,7 @@ impl<'a> Painter<'a> {
         } else if let Some(tc) = node.get_text_content() {
             let sel = text_selections.get(&node_id).copied();
             Self::paint_text_node(
-                &mut self.text_renderer,
+                self.text_renderer,
                 scene,
                 bounds,
                 style,
