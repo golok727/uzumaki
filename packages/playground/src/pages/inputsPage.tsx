@@ -16,9 +16,6 @@ export function InputsPage() {
   const [rounded, setRounded] = useState(true);
   const [circle, setCircle] = useState(false);
 
-  const [undoSingle, setUndoSingle] = useState('');
-  const [undoMulti, setUndoMulti] = useState('');
-
   const inputPadding = 8;
 
   const pwMatch = password === confirm && confirm.length > 0;
@@ -344,71 +341,6 @@ export function InputsPage() {
             </view>
           </view>
         </view>
-        <Divider />
-
-        <view display="flex" flexDir="col" gap={12}>
-          <text fontSize={14} fontWeight={700} color={C.text}>
-            Undo / Redo
-          </text>
-          <text fontSize={12} color={C.textMuted}>
-            Ctrl+Z to undo, Ctrl+Y or Ctrl+Shift+Z to redo. Try typing,
-            deleting, pasting, and cutting — each action group can be undone
-            individually.
-          </text>
-
-          <view display="flex" flexDir="row" gap={16}>
-            <view display="flex" flexDir="col" gap={8} flex={1}>
-              <text fontSize={13} fontWeight={600} color={C.textSub}>
-                Single-line
-              </text>
-              <input
-                value={undoSingle}
-                onValueChange={setUndoSingle}
-                placeholder="Type here, then Ctrl+Z..."
-                fontSize={14}
-                color={C.text}
-                bg={C.surface2}
-                p={inputPadding}
-                rounded={8}
-                border={1}
-                borderColor={C.border}
-                w="full"
-              />
-              <Badge
-                label={`${undoSingle.length} chars`}
-                color={undoSingle.length > 0 ? C.accentHi : C.textMuted}
-                bg={undoSingle.length > 0 ? C.accentDark : C.surface3}
-              />
-            </view>
-
-            <view display="flex" flexDir="col" gap={8} flex={1}>
-              <text fontSize={13} fontWeight={600} color={C.textSub}>
-                Multiline
-              </text>
-              <input
-                multiline
-                value={undoMulti}
-                onValueChange={setUndoMulti}
-                placeholder="Multiline undo/redo test..."
-                fontSize={14}
-                color={C.text}
-                bg={C.surface2}
-                p={12}
-                rounded={8}
-                border={1}
-                borderColor={C.border}
-                w="full"
-                h={80}
-              />
-              <Badge
-                label={`${undoMulti.length} chars`}
-                color={undoMulti.length > 0 ? C.accentHi : C.textMuted}
-                bg={undoMulti.length > 0 ? C.accentDark : C.surface3}
-              />
-            </view>
-          </view>
-        </view>
-
         <Divider />
 
         <view display="flex" flexDir="col" gap={8}>
