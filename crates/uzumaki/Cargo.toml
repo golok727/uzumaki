@@ -15,7 +15,6 @@ snapshot = ["deno_runtime/only_snapshotted_js_sources", "deno_runtime/snapshot"]
 refineable.workspace = true
 serde.workspace = true
 serde_json.workspace = true
-unicode-segmentation = "1.11"
 pollster.workspace = true
 anyhow.workspace = true
 arboard = "3.6.1"

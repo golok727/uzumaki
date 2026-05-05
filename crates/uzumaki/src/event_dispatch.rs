@@ -1267,7 +1267,7 @@ pub fn handle_key_for_view_selection(
     match &key_event.logical_key {
         Key::Named(NamedKey::ArrowLeft) if shift && ctrl => {
             // Move active to previous word boundary
-            let new_active = prev_word_boundary_in_run(dom, root, active);
+            let new_active = dom.prev_word_boundary_in_run(root, active);
             if let Some(focus) =
                 dom.endpoint_from_flat_index(root, new_active, Affinity::Downstream)
             {
@@ -1276,7 +1276,7 @@ pub fn handle_key_for_view_selection(
             true
         }
         Key::Named(NamedKey::ArrowRight) if shift && ctrl => {
-            let new_active = next_word_boundary_in_run(dom, root, active);
+            let new_active = dom.next_word_boundary_in_run(root, active);
             if let Some(focus) =
                 dom.endpoint_from_flat_index(root, new_active, Affinity::Downstream)
             {
@@ -1586,79 +1586,6 @@ pub fn apply_clipboard_command(
     }
 
     (needs_redraw, events)
-}
-
-/// Find the previous word boundary from a flat grapheme index in a text select run.
-fn prev_word_boundary_in_run(
-    dom: &UIState,
-    root_id: crate::element::UzNodeId,
-    flat_idx: usize,
-) -> usize {
-    let Some(run) = dom
-        .selectable_text_runs
-        .iter()
-        .find(|r| r.root_id == root_id)
-    else {
-        return flat_idx;
-    };
-    let graphemes: Vec<&str> =
-        unicode_segmentation::UnicodeSegmentation::graphemes(run.flat_text.as_str(), true)
-            .collect();
-    if flat_idx == 0 {
-        return 0;
-    }
-    let is_word = |g: &str| {
-        g.chars()
-            .next()
-            .is_some_and(|c| c.is_alphanumeric() || c == '_')
-    };
-    let mut i = flat_idx;
-    // Skip whitespace/non-word backwards
-    while i > 0 && !is_word(graphemes[i - 1]) {
-        i -= 1;
-    }
-    // Skip word chars backwards
-    while i > 0 && is_word(graphemes[i - 1]) {
-        i -= 1;
-    }
-    i
-}
-
-/// Find the next word boundary from a flat grapheme index in a text select run.
-fn next_word_boundary_in_run(
-    dom: &UIState,
-    root_id: crate::element::UzNodeId,
-    flat_idx: usize,
-) -> usize {
-    let Some(run) = dom
-        .selectable_text_runs
-        .iter()
-        .find(|r| r.root_id == root_id)
-    else {
-        return flat_idx;
-    };
-    let graphemes: Vec<&str> =
-        unicode_segmentation::UnicodeSegmentation::graphemes(run.flat_text.as_str(), true)
-            .collect();
-    let len = graphemes.len();
-    if flat_idx >= len {
-        return len;
-    }
-    let is_word = |g: &str| {
-        g.chars()
-            .next()
-            .is_some_and(|c| c.is_alphanumeric() || c == '_')
-    };
-    let mut i = flat_idx;
-    // Skip word chars forward
-    while i < len && is_word(graphemes[i]) {
-        i += 1;
-    }
-    // Skip whitespace/non-word forward
-    while i < len && !is_word(graphemes[i]) {
-        i += 1;
-    }
-    i
 }
 
 pub fn handle_mouse_wheel(

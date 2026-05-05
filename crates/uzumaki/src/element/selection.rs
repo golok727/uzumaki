@@ -1,30 +1,12 @@
-use unicode_segmentation::UnicodeSegmentation;
+use parley::Cluster;
 
 use crate::selection::{Affinity, SelectionEndpoint, TextSelection};
+use crate::text::{cluster_count, layout_byte_to_grapheme, layout_grapheme_to_byte};
 use crate::ui::UIState;
 
 use super::{TextRunEntry, TextSelectRun, UzNodeId};
 
 impl UIState {
-    fn grapheme_to_byte(text: &str, grapheme_index: usize) -> usize {
-        text.graphemes(true)
-            .take(grapheme_index)
-            .map(str::len)
-            .sum::<usize>()
-            .min(text.len())
-    }
-
-    fn byte_to_grapheme(text: &str, byte_offset: usize) -> usize {
-        text.graphemes(true)
-            .scan(0, |offset, grapheme| {
-                let start = *offset;
-                *offset += grapheme.len();
-                Some(start)
-            })
-            .take_while(|&start| start < byte_offset)
-            .count()
-    }
-
     /// Build text runs for all textSelect subtrees. Called each frame before render.
     pub fn build_text_select_runs(&mut self) {
         self.selectable_text_runs.clear();
@@ -48,7 +30,6 @@ impl UIState {
             self.selectable_text_runs.push(TextSelectRun {
                 root_id: node_id,
                 entries: Vec::new(),
-                flat_text: String::new(),
                 total_graphemes: 0,
             });
             Some(idx)
@@ -59,16 +40,19 @@ impl UIState {
         };
 
         if let Some(idx) = current_run
-            && let Some(tc) = self.nodes[node_id].get_text_content()
+            && self.nodes[node_id].get_text_content().is_some()
         {
-            let gc = tc.content.graphemes(true).count();
+            let gc = self.nodes[node_id]
+                .text_layout
+                .as_ref()
+                .map(cluster_count)
+                .unwrap_or(0);
             let run = &mut self.selectable_text_runs[idx];
             run.entries.push(TextRunEntry {
                 node_id,
                 flat_start: run.total_graphemes,
                 grapheme_count: gc,
             });
-            run.flat_text.push_str(&tc.content);
             run.total_graphemes += gc;
         }
 
@@ -217,8 +201,8 @@ impl UIState {
             let entry_end = entry.flat_start + entry.grapheme_count;
             if flat_index <= entry_end {
                 let local_grapheme = flat_index.saturating_sub(entry.flat_start);
-                let text = self.nodes.get(entry.node_id)?.get_text_content()?;
-                let offset = Self::grapheme_to_byte(&text.content, local_grapheme);
+                let layout = self.nodes.get(entry.node_id)?.text_layout.as_ref()?;
+                let offset = layout_grapheme_to_byte(layout, local_grapheme);
                 return Some(SelectionEndpoint::new(entry.node_id, offset, affinity));
             }
         }
@@ -233,8 +217,113 @@ impl UIState {
 
     pub fn flat_index_for_endpoint(&self, endpoint: SelectionEndpoint) -> Option<usize> {
         let (_run, entry) = self.find_run_entry_for_node(endpoint.node)?;
-        let text = self.nodes.get(endpoint.node)?.get_text_content()?;
-        Some(entry.flat_start + Self::byte_to_grapheme(&text.content, endpoint.offset))
+        let layout = self.nodes.get(endpoint.node)?.text_layout.as_ref()?;
+        Some(entry.flat_start + layout_byte_to_grapheme(layout, endpoint.offset))
+    }
+
+    /// Walk forward from `flat_idx` to the next word boundary inside the
+    /// textSelect run rooted at `root_id`. Word boundaries are decided by
+    /// parley (UAX#29-aware) on each entry's cached layout. Returns
+    /// `total_graphemes` when there's no further boundary.
+    pub fn next_word_boundary_in_run(&self, root_id: UzNodeId, flat_idx: usize) -> usize {
+        let Some(run) = self
+            .selectable_text_runs
+            .iter()
+            .find(|r| r.root_id == root_id)
+        else {
+            return flat_idx;
+        };
+        let total = run.total_graphemes;
+        if flat_idx >= total {
+            return total;
+        }
+        let Some((mut entry_i, mut local)) = locate_in_run(run, flat_idx) else {
+            return total;
+        };
+        let mut crossed_entry = false;
+        loop {
+            let entry = &run.entries[entry_i];
+            if let Some(layout) = self
+                .nodes
+                .get(entry.node_id)
+                .and_then(|n| n.text_layout.as_ref())
+            {
+                if crossed_entry
+                    && let Some(first) = Cluster::from_byte_index(layout, 0)
+                    && first.is_word_boundary()
+                {
+                    return entry.flat_start;
+                }
+                if local < entry.grapheme_count {
+                    let byte = layout_grapheme_to_byte(layout, local);
+                    if let Some(cur) = Cluster::from_byte_index(layout, byte)
+                        && let Some(next) = cur.next_logical_word()
+                    {
+                        let g = layout_byte_to_grapheme(layout, next.text_range().start);
+                        return entry.flat_start + g;
+                    }
+                }
+            }
+            entry_i += 1;
+            if entry_i >= run.entries.len() {
+                return total;
+            }
+            local = 0;
+            crossed_entry = true;
+        }
+    }
+
+    /// Walk backward from `flat_idx` to the previous word boundary in the run.
+    /// Returns `0` when there's no previous boundary.
+    pub fn prev_word_boundary_in_run(&self, root_id: UzNodeId, flat_idx: usize) -> usize {
+        let Some(run) = self
+            .selectable_text_runs
+            .iter()
+            .find(|r| r.root_id == root_id)
+        else {
+            return flat_idx;
+        };
+        if flat_idx == 0 {
+            return 0;
+        }
+        let Some((mut entry_i, mut local)) = locate_in_run(run, flat_idx) else {
+            return 0;
+        };
+        loop {
+            let entry = &run.entries[entry_i];
+            if let Some(layout) = self
+                .nodes
+                .get(entry.node_id)
+                .and_then(|n| n.text_layout.as_ref())
+            {
+                let cur = if local >= entry.grapheme_count && entry.grapheme_count > 0 {
+                    let last_byte = layout_grapheme_to_byte(layout, entry.grapheme_count - 1);
+                    let last = Cluster::from_byte_index(layout, last_byte);
+                    if let Some(c) = &last
+                        && c.is_word_boundary()
+                    {
+                        return entry.flat_start + entry.grapheme_count - 1;
+                    }
+                    last
+                } else if local > 0 {
+                    let byte = layout_grapheme_to_byte(layout, local);
+                    Cluster::from_byte_index(layout, byte)
+                } else {
+                    None
+                };
+                if let Some(c) = cur
+                    && let Some(prev) = c.previous_logical_word()
+                {
+                    let g = layout_byte_to_grapheme(layout, prev.text_range().start);
+                    return entry.flat_start + g;
+                }
+            }
+            if entry_i == 0 {
+                return 0;
+            }
+            entry_i -= 1;
+            local = run.entries[entry_i].grapheme_count;
+        }
     }
 
     pub fn selection_flat_range(&self, selection: &TextSelection) -> Option<(usize, usize)> {
@@ -391,6 +480,19 @@ impl UIState {
 pub struct FocusChange {
     pub old: Option<UzNodeId>,
     pub new: UzNodeId,
+}
+
+/// Resolve a flat grapheme index to `(entry index, local grapheme index in that entry)`.
+/// Indices at the end of the run map to the last non-empty entry's past-the-end.
+fn locate_in_run(run: &TextSelectRun, flat_idx: usize) -> Option<(usize, usize)> {
+    for (i, entry) in run.entries.iter().enumerate() {
+        let end = entry.flat_start + entry.grapheme_count;
+        if flat_idx < end {
+            return Some((i, flat_idx - entry.flat_start));
+        }
+    }
+    let last = run.entries.iter().rposition(|e| e.grapheme_count > 0)?;
+    Some((last, run.entries[last].grapheme_count))
 }
 
 #[cfg(test)]

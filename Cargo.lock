@@ -9333,7 +9333,6 @@ dependencies = [
  "sys_traits",
  "taffy",
  "tokio",
- "unicode-segmentation",
  "usvg",
  "vello",
  "wgpu",

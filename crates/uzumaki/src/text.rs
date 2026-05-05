@@ -1,7 +1,7 @@
 use parley::{
-    Affinity as ParleyAffinity, BoundingBox, Cursor, FontContext, Layout, LayoutContext, Selection,
+    Affinity as ParleyAffinity, BoundingBox, Cluster, Cursor, FontContext, Layout, LayoutContext,
+    Selection,
 };
-use unicode_segmentation::UnicodeSegmentation;
 use vello::Scene;
 use vello::kurbo::Affine;
 use vello::peniko::{Brush, Color, Fill};
@@ -69,17 +69,6 @@ impl TextRenderer {
         layout
     }
 
-    fn grapheme_boundaries(text: &str) -> Vec<usize> {
-        let mut boundaries = Vec::with_capacity(text.graphemes(true).count() + 1);
-        boundaries.push(0);
-        let mut byte_offset = 0;
-        for grapheme in text.graphemes(true) {
-            byte_offset += grapheme.len();
-            boundaries.push(byte_offset);
-        }
-        boundaries
-    }
-
     fn grapheme_to_byte(boundaries: &[usize], grapheme_index: usize) -> usize {
         boundaries
             .get(grapheme_index)
@@ -117,7 +106,7 @@ impl TextRenderer {
 
         let layout = self.build_layout(text, style, None);
         let layout_width = layout.width();
-        let boundaries = Self::grapheme_boundaries(text);
+        let boundaries = cluster_byte_boundaries(&layout);
 
         let mut positions = Vec::with_capacity(boundaries.len());
         positions.push(0.0);
@@ -147,7 +136,7 @@ impl TextRenderer {
         }
 
         let layout = self.build_layout(text, style, wrap_width);
-        let boundaries = Self::grapheme_boundaries(text);
+        let boundaries = cluster_byte_boundaries(&layout);
         let cursor = Cursor::from_point(&layout, x, y);
         Self::byte_to_grapheme(&boundaries, cursor.index())
     }
@@ -177,7 +166,7 @@ impl TextRenderer {
         grapheme_index: usize,
     ) -> BoundingBox {
         let layout = self.build_layout(text, style, wrap_width);
-        let boundaries = Self::grapheme_boundaries(text);
+        let boundaries = cluster_byte_boundaries(&layout);
         let byte_index = Self::grapheme_to_byte(&boundaries, grapheme_index);
         let cursor = Cursor::from_byte_index(&layout, byte_index, ParleyAffinity::Downstream);
         cursor.geometry(&layout, layout.width())
@@ -196,7 +185,7 @@ impl TextRenderer {
         }
 
         let layout = self.build_layout(text, style, wrap_width);
-        let boundaries = Self::grapheme_boundaries(text);
+        let boundaries = cluster_byte_boundaries(&layout);
         let selection = Selection::word_from_point(&layout, x, y);
         let range = selection.text_range();
         (
@@ -235,7 +224,7 @@ impl TextRenderer {
         }
 
         let layout = self.build_layout(text, style, wrap_width);
-        let boundaries = Self::grapheme_boundaries(text);
+        let boundaries = cluster_byte_boundaries(&layout);
         let selection = Selection::line_from_point(&layout, x, y);
         let range = selection.text_range();
         (
@@ -315,6 +304,60 @@ impl TextRenderer {
 
         (w.ceil(), h.ceil())
     }
+}
+
+/// Byte offsets at parley cluster boundaries for the given layout. Always
+/// starts with `0`; for a non-empty layout the last entry is the text length.
+pub fn cluster_byte_boundaries(layout: &Layout<TextBrush>) -> Vec<usize> {
+    let mut out = vec![0];
+    let mut cur = Cluster::from_byte_index(layout, 0);
+    while let Some(c) = cur {
+        out.push(c.text_range().end);
+        cur = c.next_logical();
+    }
+    out
+}
+
+/// Number of parley clusters (graphemes) in the layout.
+pub fn cluster_count(layout: &Layout<TextBrush>) -> usize {
+    let mut count = 0;
+    let mut cur = Cluster::from_byte_index(layout, 0);
+    while let Some(c) = cur {
+        count += 1;
+        cur = c.next_logical();
+    }
+    count
+}
+
+/// Convert a grapheme index into a byte offset within the layout's source
+/// text. Out-of-range indices clamp to the end.
+pub fn layout_grapheme_to_byte(layout: &Layout<TextBrush>, grapheme_index: usize) -> usize {
+    let Some(mut cur) = Cluster::from_byte_index(layout, 0) else {
+        return 0;
+    };
+    for _ in 0..grapheme_index {
+        match cur.next_logical() {
+            Some(next) => cur = next,
+            None => return cur.text_range().end,
+        }
+    }
+    cur.text_range().start
+}
+
+/// Convert a byte offset within the layout's source text into a grapheme
+/// index. Offsets in the middle of a cluster round down to that cluster's
+/// index.
+pub fn layout_byte_to_grapheme(layout: &Layout<TextBrush>, byte: usize) -> usize {
+    let mut count = 0;
+    let mut cur = Cluster::from_byte_index(layout, 0);
+    while let Some(c) = cur {
+        if c.text_range().start >= byte {
+            break;
+        }
+        count += 1;
+        cur = c.next_logical();
+    }
+    count
 }
 
 /// Draw a parley layout that has already been built. Pure draw — no layout
