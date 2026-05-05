@@ -109,14 +109,12 @@ impl LayoutEngine {
         );
 
         let mut children = Vec::new();
-        let mut child = node.first_child;
-        while let Some(child_id) = child {
+        for &child_id in &node.children {
             if let Some(taffy_child) =
                 self.build_node(nodes, child_id, Some(&style), hit_state, focused_node)
             {
                 children.push(taffy_child);
             }
-            child = nodes[child_id].next_sibling;
         }
 
         let context = NodeContext {

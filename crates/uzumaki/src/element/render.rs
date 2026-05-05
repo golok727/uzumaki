@@ -141,12 +141,7 @@ impl<'a> Painter<'a> {
         );
 
         // collect children
-        let mut children: Vec<UzNodeId> = Vec::new();
-        let mut next = self.dom.nodes[node_id].first_child;
-        while let Some(child_id) = next {
-            children.push(child_id);
-            next = self.dom.nodes[child_id].next_sibling;
-        }
+        let children = self.dom.nodes[node_id].children.clone();
 
         // push in reverse execution order.
         let needs_clip = view_scroll.is_some()

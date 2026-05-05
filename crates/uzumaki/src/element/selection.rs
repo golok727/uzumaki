@@ -71,12 +71,7 @@ impl UIState {
             }
 
             // Push children in reverse order for correct DFS traversal
-            let mut children = Vec::new();
-            let mut child = node.first_child;
-            while let Some(cid) = child {
-                children.push(cid);
-                child = self.nodes[cid].next_sibling;
-            }
+            let children = node.children.clone();
             for &cid in children.iter().rev() {
                 stack.push((cid, Some(Box::new(style.clone())), current_run));
             }
@@ -288,10 +283,10 @@ impl UIState {
         let mut look_in_children = true;
         loop {
             let cur = self.nodes.get(node_id)?;
-            let next_id = if look_in_children && let Some(first) = cur.first_child {
+            let next_id = if look_in_children && let Some(first) = cur.children.first().copied() {
                 first
             } else if let Some(parent_id) = cur.parent {
-                if let Some(sibling) = cur.next_sibling {
+                if let Some(sibling) = self.next_sibling(node_id) {
                     look_in_children = true;
                     sibling
                 } else {
@@ -326,7 +321,7 @@ impl UIState {
         let mut node_id = start_id;
         loop {
             let cur = self.nodes.get(node_id)?;
-            let next_id = if let Some(prev) = cur.prev_sibling {
+            let next_id = if let Some(prev) = self.prev_sibling(node_id) {
                 self.deepest_last(prev)
             } else if let Some(parent) = cur.parent {
                 parent
@@ -346,7 +341,7 @@ impl UIState {
     }
 
     fn deepest_last(&self, mut id: UzNodeId) -> UzNodeId {
-        while let Some(last) = self.nodes.get(id).and_then(|n| n.last_child) {
+        while let Some(last) = self.nodes.get(id).and_then(|n| n.children.last().copied()) {
             id = last;
         }
         id

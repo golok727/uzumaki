@@ -509,13 +509,7 @@ impl NodeData {
 pub struct Node {
     pub parent: Option<UzNodeId>,
 
-    pub first_child: Option<UzNodeId>,
-
-    pub last_child: Option<UzNodeId>,
-
-    pub next_sibling: Option<UzNodeId>,
-
-    pub prev_sibling: Option<UzNodeId>,
+    pub children: Vec<UzNodeId>,
 
     pub data: NodeData,
 
@@ -533,10 +527,7 @@ impl Node {
     pub fn new(style: UzStyle, data: impl Into<NodeData>) -> Self {
         Self {
             parent: None,
-            first_child: None,
-            last_child: None,
-            next_sibling: None,
-            prev_sibling: None,
+            children: Vec::new(),
             data: data.into(),
             style,
             interactivity: Interactivity::new(),

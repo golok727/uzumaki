@@ -159,7 +159,16 @@ impl CoreNode {
         &self,
         state: &mut OpState,
     ) -> Result<Option<CoreNode>, deno_error::JsErrorBox> {
-        self.related_node(state, |node| node.first_child)
+        let app_state = state.borrow::<SharedAppState>().clone();
+        with_state(&app_state, |s| {
+            let Some(entry) = s.windows.get(&self.window_id) else {
+                return Err(window_not_found());
+            };
+            Ok(entry
+                .dom
+                .first_child(self.node_id)
+                .map(|id| CoreNode::new(self.window_id, id)))
+        })
     }
 
     #[getter]
@@ -169,7 +178,16 @@ impl CoreNode {
         &self,
         state: &mut OpState,
     ) -> Result<Option<CoreNode>, deno_error::JsErrorBox> {
-        self.related_node(state, |node| node.last_child)
+        let app_state = state.borrow::<SharedAppState>().clone();
+        with_state(&app_state, |s| {
+            let Some(entry) = s.windows.get(&self.window_id) else {
+                return Err(window_not_found());
+            };
+            Ok(entry
+                .dom
+                .last_child(self.node_id)
+                .map(|id| CoreNode::new(self.window_id, id)))
+        })
     }
 
     #[getter]
@@ -179,7 +197,16 @@ impl CoreNode {
         &self,
         state: &mut OpState,
     ) -> Result<Option<CoreNode>, deno_error::JsErrorBox> {
-        self.related_node(state, |node| node.next_sibling)
+        let app_state = state.borrow::<SharedAppState>().clone();
+        with_state(&app_state, |s| {
+            let Some(entry) = s.windows.get(&self.window_id) else {
+                return Err(window_not_found());
+            };
+            Ok(entry
+                .dom
+                .next_sibling(self.node_id)
+                .map(|id| CoreNode::new(self.window_id, id)))
+        })
     }
 
     #[getter]
@@ -189,7 +216,16 @@ impl CoreNode {
         &self,
         state: &mut OpState,
     ) -> Result<Option<CoreNode>, deno_error::JsErrorBox> {
-        self.related_node(state, |node| node.prev_sibling)
+        let app_state = state.borrow::<SharedAppState>().clone();
+        with_state(&app_state, |s| {
+            let Some(entry) = s.windows.get(&self.window_id) else {
+                return Err(window_not_found());
+            };
+            Ok(entry
+                .dom
+                .prev_sibling(self.node_id)
+                .map(|id| CoreNode::new(self.window_id, id)))
+        })
     }
 
     #[fast]

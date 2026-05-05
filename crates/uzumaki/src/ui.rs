@@ -234,17 +234,8 @@ impl UIState {
 
         self.detach_from_parent(child_id);
 
-        let old_last = self.nodes[parent_id].last_child;
         self.nodes[child_id].parent = Some(parent_id);
-        self.nodes[child_id].prev_sibling = old_last;
-        self.nodes[child_id].next_sibling = None;
-
-        if let Some(old_last_id) = old_last {
-            self.nodes[old_last_id].next_sibling = Some(child_id);
-        } else {
-            self.nodes[parent_id].first_child = Some(child_id);
-        }
-        self.nodes[parent_id].last_child = Some(child_id);
+        self.nodes[parent_id].children.push(child_id);
     }
 
     pub fn insert_before(&mut self, parent_id: UzNodeId, child_id: UzNodeId, before_id: UzNodeId) {
@@ -255,18 +246,74 @@ impl UIState {
             return;
         }
         self.detach_from_parent(child_id);
-
-        let prev = self.nodes[before_id].prev_sibling;
         self.nodes[child_id].parent = Some(parent_id);
-        self.nodes[child_id].next_sibling = Some(before_id);
-        self.nodes[child_id].prev_sibling = prev;
-        self.nodes[before_id].prev_sibling = Some(child_id);
+        let Some(index) = self.nodes[parent_id]
+            .children
+            .iter()
+            .position(|&id| id == before_id)
+        else {
+            self.nodes[child_id].parent = None;
+            return;
+        };
+        self.nodes[parent_id].children.insert(index, child_id);
+    }
 
-        if let Some(prev_id) = prev {
-            self.nodes[prev_id].next_sibling = Some(child_id);
-        } else {
-            self.nodes[parent_id].first_child = Some(child_id);
+    pub fn first_child(&self, node_id: UzNodeId) -> Option<UzNodeId> {
+        self.nodes
+            .get(node_id)
+            .and_then(|node| node.children.first().copied())
+    }
+
+    pub fn last_child(&self, node_id: UzNodeId) -> Option<UzNodeId> {
+        self.nodes
+            .get(node_id)
+            .and_then(|node| node.children.last().copied())
+    }
+
+    pub fn next_sibling(&self, node_id: UzNodeId) -> Option<UzNodeId> {
+        let node = self.nodes.get(node_id)?;
+        let parent_id = node.parent?;
+        let siblings = &self.nodes.get(parent_id)?.children;
+        let index = siblings.iter().position(|&id| id == node_id)?;
+        siblings.get(index + 1).copied()
+    }
+
+    pub fn prev_sibling(&self, node_id: UzNodeId) -> Option<UzNodeId> {
+        let node = self.nodes.get(node_id)?;
+        let parent_id = node.parent?;
+        let siblings = &self.nodes.get(parent_id)?.children;
+        let index = siblings.iter().position(|&id| id == node_id)?;
+        index
+            .checked_sub(1)
+            .and_then(|idx| siblings.get(idx).copied())
+    }
+
+    fn remove_child_ref(&mut self, parent_id: UzNodeId, child_id: UzNodeId) -> bool {
+        let Some(index) = self.nodes[parent_id]
+            .children
+            .iter()
+            .position(|&id| id == child_id)
+        else {
+            return false;
+        };
+        self.nodes[parent_id].children.remove(index);
+        true
+    }
+
+    fn collect_subtree(&self, root_id: UzNodeId) -> Vec<UzNodeId> {
+        let mut to_remove = Vec::new();
+        let mut stack = vec![root_id];
+
+        while let Some(nid) = stack.pop() {
+            to_remove.push(nid);
+            if let Some(node) = self.nodes.get(nid) {
+                for &cid in node.children.iter().rev() {
+                    stack.push(cid);
+                }
+            }
         }
+
+        to_remove
     }
 
     fn detach_from_parent(&mut self, child_id: UzNodeId) {
@@ -274,24 +321,8 @@ impl UIState {
             return;
         };
 
-        let prev = self.nodes[child_id].prev_sibling;
-        let next = self.nodes[child_id].next_sibling;
-
-        if let Some(prev_id) = prev {
-            self.nodes[prev_id].next_sibling = next;
-        } else {
-            self.nodes[parent_id].first_child = next;
-        }
-
-        if let Some(next_id) = next {
-            self.nodes[next_id].prev_sibling = prev;
-        } else {
-            self.nodes[parent_id].last_child = prev;
-        }
-
+        self.remove_child_ref(parent_id, child_id);
         self.nodes[child_id].parent = None;
-        self.nodes[child_id].prev_sibling = None;
-        self.nodes[child_id].next_sibling = None;
     }
 
     /// Single source of truth for clearing stale NodeId references when a node
@@ -355,34 +386,15 @@ impl UIState {
     }
 
     pub fn remove_child(&mut self, parent_id: UzNodeId, child_id: UzNodeId) {
-        let prev = self.nodes[child_id].prev_sibling;
-        let next = self.nodes[child_id].next_sibling;
-
-        if let Some(prev_id) = prev {
-            self.nodes[prev_id].next_sibling = next;
-        } else {
-            self.nodes[parent_id].first_child = next;
+        if !self.remove_child_ref(parent_id, child_id) {
+            return;
         }
-
-        if let Some(next_id) = next {
-            self.nodes[next_id].prev_sibling = prev;
-        } else {
-            self.nodes[parent_id].last_child = prev;
-        }
+        self.nodes[child_id].parent = None;
 
         // FIXME: (URGENT) dont remove only detach ( clean up on gc )
         //
         // Collect the entire subtree rooted at child_id (BFS)
-        let mut to_remove = Vec::new();
-        let mut stack = vec![child_id];
-        while let Some(nid) = stack.pop() {
-            to_remove.push(nid);
-            let mut c = self.nodes[nid].first_child;
-            while let Some(cid) = c {
-                stack.push(cid);
-                c = self.nodes[cid].next_sibling;
-            }
-        }
+        let to_remove = self.collect_subtree(child_id);
 
         // Remove slab nodes and scrub stale NodeId references first.
         for nid in to_remove {
@@ -423,21 +435,10 @@ impl UIState {
     /// the retained node entries. The parent node itself is kept.
     pub fn clear_children(&mut self, parent_id: UzNodeId) {
         // Collect every descendant via BFS
+        let children = self.nodes[parent_id].children.clone();
         let mut to_remove = Vec::new();
-        let mut stack = Vec::new();
-
-        let mut child = self.nodes[parent_id].first_child;
-        while let Some(cid) = child {
-            stack.push(cid);
-            child = self.nodes[cid].next_sibling;
-        }
-        while let Some(nid) = stack.pop() {
-            to_remove.push(nid);
-            let mut child = self.nodes[nid].first_child;
-            while let Some(cid) = child {
-                stack.push(cid);
-                child = self.nodes[cid].next_sibling;
-            }
+        for child_id in children {
+            to_remove.extend(self.collect_subtree(child_id));
         }
 
         // Remove descendants from slab; scrub stale NodeId references first.
@@ -447,8 +448,7 @@ impl UIState {
         }
 
         // Reset parent pointers
-        self.nodes[parent_id].first_child = None;
-        self.nodes[parent_id].last_child = None;
+        self.nodes[parent_id].children.clear();
     }
 
     pub fn compute_layout(&mut self, width: f32, height: f32, text_renderer: &mut TextRenderer) {
@@ -672,8 +672,7 @@ mod tests {
         dom.append_child(parent, child);
         dom.append_child(text, child);
 
-        assert_eq!(dom.nodes[text].first_child, None);
-        assert_eq!(dom.nodes[text].last_child, None);
+        assert!(dom.nodes[text].children.is_empty());
         assert_eq!(dom.nodes[child].parent, Some(parent));
     }
 
@@ -688,8 +687,7 @@ mod tests {
         dom.append_child(parent, child);
         dom.insert_before(text, child, before);
 
-        assert_eq!(dom.nodes[text].first_child, None);
-        assert_eq!(dom.nodes[text].last_child, None);
+        assert!(dom.nodes[text].children.is_empty());
         assert_eq!(dom.nodes[child].parent, Some(parent));
     }
 
