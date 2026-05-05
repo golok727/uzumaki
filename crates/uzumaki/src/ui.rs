@@ -307,22 +307,6 @@ impl UIState {
         true
     }
 
-    fn collect_subtree(&self, root_id: UzNodeId) -> Vec<UzNodeId> {
-        let mut to_remove = Vec::new();
-        let mut stack = vec![root_id];
-
-        while let Some(nid) = stack.pop() {
-            to_remove.push(nid);
-            if let Some(node) = self.nodes.get(nid) {
-                for &cid in node.children.iter().rev() {
-                    stack.push(cid);
-                }
-            }
-        }
-
-        to_remove
-    }
-
     fn detach_from_parent(&mut self, child_id: UzNodeId) {
         let Some(parent_id) = self.nodes[child_id].parent else {
             return;
@@ -397,6 +381,32 @@ impl UIState {
             return;
         }
         self.nodes[child_id].parent = None;
+    }
+
+    pub fn destroy_node(&mut self, node_id: UzNodeId) {
+        if !self.nodes.contains(node_id) || self.root == Some(node_id) {
+            return;
+        }
+
+        // eprintln!("[uzumaki] removing native node {node_id}",);
+
+        if let Some(parent_id) = self.nodes[node_id].parent
+            && self.nodes.contains(parent_id)
+        {
+            self.remove_child_ref(parent_id, node_id);
+        }
+
+        let children = std::mem::take(&mut self.nodes[node_id].children);
+        for child_id in children {
+            if let Some(child) = self.nodes.get_mut(child_id)
+                && child.parent == Some(node_id)
+            {
+                child.parent = None;
+            }
+        }
+
+        self.on_node_removed(node_id);
+        self.nodes.remove(node_id);
     }
 
     /// Update a text node's content.
@@ -746,6 +756,27 @@ mod tests {
 
         assert!(dom.nodes[text].children.is_empty());
         assert_eq!(dom.nodes[child].parent, Some(parent));
+    }
+
+    #[test]
+    fn remove_node_detaches_links_and_clears_long_lived_refs() {
+        let mut dom = UIState::new();
+        let parent = dom.create_view(Default::default());
+        let child = dom.create_view(Default::default());
+        let grandchild = dom.create_view(Default::default());
+
+        dom.append_child(parent, child);
+        dom.append_child(child, grandchild);
+        dom.focused_node = Some(child);
+        dom.hit_state.top_node = Some(child);
+
+        dom.destroy_node(child);
+
+        assert!(!dom.nodes.contains(child));
+        assert!(dom.nodes[parent].children.is_empty());
+        assert_eq!(dom.nodes[grandchild].parent, None);
+        assert_eq!(dom.focused_node, None);
+        assert_eq!(dom.hit_state.top_node, None);
     }
 
     #[test]

@@ -1,7 +1,9 @@
 use deno_core::*;
 use serde_json::Value;
+use std::cell::RefCell;
+use std::rc::{Rc, Weak};
 
-use crate::app::{SharedAppState, with_state};
+use crate::app::{AppState, SharedAppState, with_state};
 use crate::element::{NodeData, UzNodeId};
 use crate::style::UzStyle;
 
@@ -17,15 +19,21 @@ fn invalid_child() -> deno_error::JsErrorBox {
     deno_error::JsErrorBox::new("InvalidChild", "child belongs to a different window")
 }
 
-#[derive(Clone, Debug)]
 pub struct CoreNode {
+    app_state: Weak<RefCell<AppState>>,
     window_id: u32,
     node_id: UzNodeId,
+    owned: bool,
 }
 
 impl CoreNode {
-    pub fn new(window_id: u32, node_id: UzNodeId) -> Self {
-        Self { window_id, node_id }
+    pub fn new(app_state: &SharedAppState, window_id: u32, node_id: UzNodeId, owned: bool) -> Self {
+        Self {
+            app_state: Rc::downgrade(app_state),
+            window_id,
+            node_id,
+            owned,
+        }
     }
 
     fn read_node<R>(
@@ -41,11 +49,11 @@ impl CoreNode {
         })
     }
 
-    fn related_node(
+    fn related_node_id(
         &self,
         state: &mut OpState,
         read: impl FnOnce(&crate::element::Node) -> Option<UzNodeId>,
-    ) -> Result<Option<CoreNode>, deno_error::JsErrorBox> {
+    ) -> Result<Option<u32>, deno_error::JsErrorBox> {
         let app_state = state.borrow::<SharedAppState>().clone();
         with_state(&app_state, |s| {
             let Some(entry) = s.windows.get(&self.window_id) else {
@@ -58,8 +66,26 @@ impl CoreNode {
                 return Ok(None);
             };
 
-            Ok(Some(CoreNode::new(self.window_id, related_id)))
+            Ok(Some(related_id as u32))
         })
+    }
+}
+
+impl Drop for CoreNode {
+    fn drop(&mut self) {
+        if !self.owned {
+            return;
+        }
+
+        let Some(app_state) = self.app_state.upgrade() else {
+            return;
+        };
+
+        with_state(&app_state, |s| {
+            if let Some(entry) = s.windows.get_mut(&self.window_id) {
+                entry.dom.destroy_node(self.node_id);
+            }
+        });
     }
 }
 
@@ -83,7 +109,7 @@ pub fn op_get_root_node(
             return Err(window_not_found());
         };
         let root = entry.dom.root.expect("no root node");
-        Ok(CoreNode::new(window_id, root))
+        Ok(CoreNode::new(&app_state, window_id, root, false))
     })
 }
 
@@ -94,8 +120,14 @@ pub fn op_create_element_node(
     #[smi] window_id: u32,
     #[string] element_type: String,
 ) -> Result<CoreNode, deno_error::JsErrorBox> {
+    let app_state = state.borrow::<SharedAppState>().clone();
     let node_id = create_element(state, window_id, &element_type)?;
-    Ok(CoreNode::new(window_id, node_id as UzNodeId))
+    Ok(CoreNode::new(
+        &app_state,
+        window_id,
+        node_id as UzNodeId,
+        true,
+    ))
 }
 
 #[op2]
@@ -105,8 +137,14 @@ pub fn op_create_text_node(
     #[smi] window_id: u32,
     #[string] text: String,
 ) -> Result<CoreNode, deno_error::JsErrorBox> {
+    let app_state = state.borrow::<SharedAppState>().clone();
     let node_id = create_text_node(state, window_id, text)?;
-    Ok(CoreNode::new(window_id, node_id as UzNodeId))
+    Ok(CoreNode::new(
+        &app_state,
+        window_id,
+        node_id as UzNodeId,
+        true,
+    ))
 }
 
 #[op2]
@@ -143,88 +181,67 @@ impl CoreNode {
     // }
 
     #[getter]
-    #[cppgc]
+    #[smi]
     #[allow(non_snake_case)]
-    pub fn parentNode(
-        &self,
-        state: &mut OpState,
-    ) -> Result<Option<CoreNode>, deno_error::JsErrorBox> {
-        self.related_node(state, |node| node.parent)
+    pub fn parentNodeId(&self, state: &mut OpState) -> Result<Option<u32>, deno_error::JsErrorBox> {
+        self.related_node_id(state, |node| node.parent)
     }
 
     #[getter]
-    #[cppgc]
+    #[smi]
     #[allow(non_snake_case)]
-    pub fn firstChild(
-        &self,
-        state: &mut OpState,
-    ) -> Result<Option<CoreNode>, deno_error::JsErrorBox> {
+    pub fn firstChildId(&self, state: &mut OpState) -> Result<Option<u32>, deno_error::JsErrorBox> {
         let app_state = state.borrow::<SharedAppState>().clone();
         with_state(&app_state, |s| {
             let Some(entry) = s.windows.get(&self.window_id) else {
                 return Err(window_not_found());
             };
-            Ok(entry
-                .dom
-                .first_child(self.node_id)
-                .map(|id| CoreNode::new(self.window_id, id)))
+            Ok(entry.dom.first_child(self.node_id).map(|id| id as u32))
         })
     }
 
     #[getter]
-    #[cppgc]
+    #[smi]
     #[allow(non_snake_case)]
-    pub fn lastChild(
-        &self,
-        state: &mut OpState,
-    ) -> Result<Option<CoreNode>, deno_error::JsErrorBox> {
+    pub fn lastChildId(&self, state: &mut OpState) -> Result<Option<u32>, deno_error::JsErrorBox> {
         let app_state = state.borrow::<SharedAppState>().clone();
         with_state(&app_state, |s| {
             let Some(entry) = s.windows.get(&self.window_id) else {
                 return Err(window_not_found());
             };
-            Ok(entry
-                .dom
-                .last_child(self.node_id)
-                .map(|id| CoreNode::new(self.window_id, id)))
+            Ok(entry.dom.last_child(self.node_id).map(|id| id as u32))
         })
     }
 
     #[getter]
-    #[cppgc]
+    #[smi]
     #[allow(non_snake_case)]
-    pub fn nextSibling(
+    pub fn nextSiblingId(
         &self,
         state: &mut OpState,
-    ) -> Result<Option<CoreNode>, deno_error::JsErrorBox> {
+    ) -> Result<Option<u32>, deno_error::JsErrorBox> {
         let app_state = state.borrow::<SharedAppState>().clone();
         with_state(&app_state, |s| {
             let Some(entry) = s.windows.get(&self.window_id) else {
                 return Err(window_not_found());
             };
-            Ok(entry
-                .dom
-                .next_sibling(self.node_id)
-                .map(|id| CoreNode::new(self.window_id, id)))
+            Ok(entry.dom.next_sibling(self.node_id).map(|id| id as u32))
         })
     }
 
     #[getter]
-    #[cppgc]
+    #[smi]
     #[allow(non_snake_case)]
-    pub fn previousSibling(
+    pub fn previousSiblingId(
         &self,
         state: &mut OpState,
-    ) -> Result<Option<CoreNode>, deno_error::JsErrorBox> {
+    ) -> Result<Option<u32>, deno_error::JsErrorBox> {
         let app_state = state.borrow::<SharedAppState>().clone();
         with_state(&app_state, |s| {
             let Some(entry) = s.windows.get(&self.window_id) else {
                 return Err(window_not_found());
             };
-            Ok(entry
-                .dom
-                .prev_sibling(self.node_id)
-                .map(|id| CoreNode::new(self.window_id, id)))
+            Ok(entry.dom.prev_sibling(self.node_id).map(|id| id as u32))
         })
     }
 
@@ -293,6 +310,11 @@ impl CoreNode {
             self.node_id as u32,
             child.node_id as u32,
         )
+    }
+
+    #[fast]
+    pub fn remove(&self, state: &mut OpState) -> Result<(), deno_error::JsErrorBox> {
+        detach_from_parent(state, self.window_id, self.node_id as u32)
     }
 
     #[fast]
@@ -464,6 +486,25 @@ fn remove_child(
             return Err(window_not_found());
         };
         entry.dom.remove_child(pid, cid);
+        Ok(())
+    })
+}
+
+fn detach_from_parent(
+    state: &mut OpState,
+    window_id: u32,
+    child_id: u32,
+) -> Result<(), deno_error::JsErrorBox> {
+    let cid = child_id as UzNodeId;
+    let app_state = state.borrow::<SharedAppState>().clone();
+    with_state(&app_state, |s| {
+        let Some(entry) = s.windows.get_mut(&window_id) else {
+            return Err(window_not_found());
+        };
+        let Some(parent_id) = entry.dom.nodes.get(cid).and_then(|node| node.parent) else {
+            return Ok(());
+        };
+        entry.dom.remove_child(parent_id, cid);
         Ok(())
     })
 }

@@ -3,6 +3,7 @@ import { dispatchDomEvent } from './dispatcher';
 import { EventType } from './events';
 import { disposeWindow, Window } from './window';
 
+export { __internalDebugNodeCount } from './registry';
 export { getWindow, Window } from './window';
 export type {
   WindowOptions,

@@ -20,9 +20,9 @@ export class UzNode {
     registerNode(this);
   }
 
-  static fromNative(window: Window, native: CoreNode | null): UzNode | null {
-    if (!native) return null;
-    return getNode(window.id, native.id) ?? null;
+  static fromNodeId(window: Window, nodeId: NodeId | null): UzNode | null {
+    if (nodeId == null) return null;
+    return getNode(window.id, nodeId) ?? null;
   }
 
   get nodeId(): NodeId {
@@ -45,23 +45,23 @@ export class UzNode {
   // }
 
   get parentNode(): UzNode | null {
-    return UzNode.fromNative(this._window, this._native.parentNode);
+    return UzNode.fromNodeId(this._window, this._native.parentNodeId);
   }
 
   get firstChild(): UzNode | null {
-    return UzNode.fromNative(this._window, this._native.firstChild);
+    return UzNode.fromNodeId(this._window, this._native.firstChildId);
   }
 
   get lastChild(): UzNode | null {
-    return UzNode.fromNative(this._window, this._native.lastChild);
+    return UzNode.fromNodeId(this._window, this._native.lastChildId);
   }
 
   get nextSibling(): UzNode | null {
-    return UzNode.fromNative(this._window, this._native.nextSibling);
+    return UzNode.fromNodeId(this._window, this._native.nextSiblingId);
   }
 
   get previousSibling(): UzNode | null {
-    return UzNode.fromNative(this._window, this._native.previousSibling);
+    return UzNode.fromNodeId(this._window, this._native.previousSiblingId);
   }
 
   get textContent(): string | null {
@@ -93,7 +93,17 @@ export class UzNode {
     return child;
   }
 
+  /**
+   * Detach this node from its parent
+   */
+  remove(): void {
+    if (!this._window.isDisposed) {
+      this._native.remove();
+    }
+  }
+
   destroy(): void {
+    this.remove();
     let child = this.firstChild;
     while (child) {
       const next = child.nextSibling;
