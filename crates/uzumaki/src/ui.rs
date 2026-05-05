@@ -397,17 +397,6 @@ impl UIState {
             return;
         }
         self.nodes[child_id].parent = None;
-
-        // FIXME: (URGENT) dont remove only detach ( clean up on gc )
-        //
-        // Collect the entire subtree rooted at child_id (BFS)
-        let to_remove = self.collect_subtree(child_id);
-
-        // Remove slab nodes and scrub stale NodeId references first.
-        for nid in to_remove {
-            self.on_node_removed(nid);
-            self.nodes.remove(nid);
-        }
     }
 
     /// Update a text node's content.
@@ -438,24 +427,13 @@ impl UIState {
         image_node.clear();
     }
 
-    /// Remove all children (and their descendants) from `parent_id`, clearing
-    /// the retained node entries. The parent node itself is kept.
+    /// Detach all children from `parent_id`. Nodes themselves stay alive in
+    /// the slab;
     pub fn clear_children(&mut self, parent_id: UzNodeId) {
-        // Collect every descendant via BFS
-        let children = self.nodes[parent_id].children.clone();
-        let mut to_remove = Vec::new();
+        let children = std::mem::take(&mut self.nodes[parent_id].children);
         for child_id in children {
-            to_remove.extend(self.collect_subtree(child_id));
+            self.nodes[child_id].parent = None;
         }
-
-        // Remove descendants from slab; scrub stale NodeId references first.
-        for nid in to_remove {
-            self.on_node_removed(nid);
-            self.nodes.remove(nid);
-        }
-
-        // Reset parent pointers
-        self.nodes[parent_id].children.clear();
     }
 
     pub fn compute_layout(&mut self, width: f32, height: f32, text_renderer: &mut TextRenderer) {
