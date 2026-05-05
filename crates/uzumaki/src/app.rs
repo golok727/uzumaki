@@ -307,7 +307,10 @@ impl Application {
             ..Default::default()
         };
 
-        let mut worker = MainWorker::bootstrap_from_options(&main_module, services, options);
+        let mut worker = {
+            let _guard = tokio_runtime.enter();
+            MainWorker::bootstrap_from_options(&main_module, services, options)
+        };
 
         let global_app_event_dispatch_fn = {
             let context = worker.js_runtime.main_context();
