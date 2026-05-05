@@ -3,7 +3,7 @@ use winit::keyboard::{Key, NamedKey};
 
 use crate::clipboard::SystemClipboard;
 use crate::element::{ScrollDragState, UzNodeId};
-use crate::input::{self, KeyResult};
+use crate::input::KeyResult;
 use crate::selection::{SelectionRange, TextSelection};
 use crate::style::TextStyle;
 use crate::text::{apply_text_style_to_editor, secure_cursor_geometry};
@@ -1005,15 +1005,7 @@ pub fn handle_key_for_input(
                 match result {
                     KeyResult::Edit(edit) => {
                         let value = input_state.text();
-                        let input_type = match edit.kind {
-                            input::EditKind::Insert => "insertText",
-                            input::EditKind::InsertFromPaste => "insertFromPaste",
-                            input::EditKind::DeleteBackward => "deleteContentBackward",
-                            input::EditKind::DeleteForward => "deleteContentForward",
-                            input::EditKind::DeleteWordBackward => "deleteWordBackward",
-                            input::EditKind::DeleteWordForward => "deleteWordForward",
-                            input::EditKind::DeleteByCut => "deleteByCut",
-                        };
+                        let input_type = edit.kind.input_type();
                         events.push(AppEvent::Input(InputEventData {
                             window_id: wid,
                             node_id: focused_id,
@@ -1392,15 +1384,15 @@ pub fn apply_clipboard_command(
                 && let Some(target_id) = target
                 && let Some(node) = dom.nodes.get_mut(target_id)
                 && let Some(is) = node.as_text_input_mut()
-                && let Some((_cut_text, _edit)) = is.cut_selected_text(text_renderer)
+                && let Some((_cut_text, edit)) = is.cut_selected_text(text_renderer)
             {
                 let value = is.text();
                 events.push(AppEvent::Input(InputEventData {
                     window_id: wid,
                     node_id: target_id,
                     value,
-                    input_type: "deleteByCut".to_string(),
-                    data: None,
+                    input_type: edit.kind.input_type().to_string(),
+                    data: edit.inserted,
                 }));
                 needs_redraw = true;
             }
@@ -1415,15 +1407,15 @@ pub fn apply_clipboard_command(
                 && let (Some(target_id), Some(text)) = (target, clipboard_text)
                 && let Some(node) = dom.nodes.get_mut(target_id)
                 && let Some(is) = node.as_text_input_mut()
-                && let Some(_edit) = is.paste_text(&text, text_renderer)
+                && let Some(edit) = is.paste_text(&text, text_renderer)
             {
                 let value = is.text();
                 events.push(AppEvent::Input(InputEventData {
                     window_id: wid,
                     node_id: target_id,
                     value,
-                    input_type: "insertFromPaste".to_string(),
-                    data: Some(text),
+                    input_type: edit.kind.input_type().to_string(),
+                    data: edit.inserted,
                 }));
                 needs_redraw = true;
             }
