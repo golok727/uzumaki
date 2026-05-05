@@ -789,6 +789,12 @@ impl InputState {
                     }
                     KeyResult::Handled
                 }
+                NamedKey::Undo => self
+                    .undo(renderer)
+                    .map_or(KeyResult::Handled, KeyResult::Edit),
+                NamedKey::Redo => self
+                    .redo(renderer)
+                    .map_or(KeyResult::Handled, KeyResult::Edit),
                 NamedKey::ArrowUp => {
                     self.move_up(shift, renderer);
                     KeyResult::Handled
