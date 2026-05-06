@@ -1,6 +1,8 @@
-use std::collections::VecDeque;
 use std::time::{Duration, Instant};
 
+mod history;
+
+use history::{Change, ChangeItem, EditHistory, SelectionSnapshot};
 use parley::PlainEditor;
 use winit::keyboard::{Key, NamedKey};
 
@@ -79,108 +81,11 @@ pub struct PreeditState {
     pub cursor: Option<(usize, usize)>,
 }
 
-#[derive(Clone, Debug, Default)]
-struct SelectionSnapshot {
-    anchor_byte: usize,
-    focus_byte: usize,
-}
-
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 enum WordCharClass {
     Whitespace,
     Word,
     Other,
-}
-
-#[derive(Clone, Debug)]
-struct ChangeItem {
-    start_byte: usize,
-    end_byte: usize,
-    text: String,
-    insert: bool,
-}
-
-#[derive(Clone, Debug, Default)]
-struct Change {
-    items: Vec<ChangeItem>,
-    before_selection: SelectionSnapshot,
-    after_selection: SelectionSnapshot,
-}
-
-/// Maximum number of undo entries to keep per input.
-const MAX_HISTORY: usize = 100;
-
-/// Consecutive edits within this window are merged into one undo batch.
-const BATCH_TIMEOUT_MS: u128 = 500;
-
-struct EditHistory {
-    undo_stack: VecDeque<Change>,
-    redo_stack: Vec<Change>,
-    /// Timestamp of the last edit (for time-based batch breaking).
-    last_edit_time: Option<Instant>,
-}
-
-impl EditHistory {
-    fn new() -> Self {
-        Self {
-            undo_stack: VecDeque::new(),
-            redo_stack: Vec::new(),
-            last_edit_time: None,
-        }
-    }
-
-    /// Determine whether the incoming edit should start a new undo batch.
-    fn should_start_new_batch(&self, kind: EditKind, inserted: Option<&str>) -> bool {
-        // Non-batchable edits (paste, cut, word-delete, history) always start a new batch.
-        if !kind.is_batchable() {
-            return true;
-        }
-
-        // No previous edit means this is the first batch.
-        let Some(last_edit_insert) = self
-            .undo_stack
-            .back()
-            .and_then(|change| change.items.last())
-            .map(|item| item.insert)
-        else {
-            return true;
-        };
-
-        let Some(last_time) = self.last_edit_time else {
-            return true;
-        };
-
-        // Time gap exceeds threshold.
-        if last_time.elapsed().as_millis() > BATCH_TIMEOUT_MS {
-            return true;
-        }
-
-        // Switching between insert and delete batches.
-        if last_edit_insert != kind.is_insert_batch() {
-            return true;
-        }
-
-        // Newline insertion always starts a new batch.
-        if kind == EditKind::Insert && inserted.is_some_and(|s| s.contains('\n')) {
-            return true;
-        }
-
-        false
-    }
-
-    fn break_batch(&mut self) {
-        self.last_edit_time = None;
-    }
-
-    fn reset_batching(&mut self) {
-        self.last_edit_time = None;
-    }
-
-    fn clear(&mut self) {
-        self.undo_stack.clear();
-        self.redo_stack.clear();
-        self.reset_batching();
-    }
 }
 
 impl Default for InputState {
@@ -327,17 +232,7 @@ impl InputState {
             return;
         }
 
-        if self.history.should_start_new_batch(kind, inserted) {
-            self.history.undo_stack.push_back(change);
-            if self.history.undo_stack.len() > MAX_HISTORY {
-                self.history.undo_stack.pop_front();
-            }
-        } else if let Some(last) = self.history.undo_stack.back_mut() {
-            last.items.extend(change.items);
-            last.after_selection = change.after_selection;
-        } else {
-            self.history.undo_stack.push_back(change);
-        }
+        self.history.push_with_inserted(change, kind, inserted);
         self.history.redo_stack.clear();
         if kind.is_batchable() {
             self.history.last_edit_time = Some(Instant::now());
