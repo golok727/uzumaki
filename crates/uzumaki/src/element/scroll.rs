@@ -1,4 +1,4 @@
-//! Shared scrollbar geometry and painting.
+//! Shared scrolling math, scrollbar geometry, and painting.
 //!
 //! The render walker registers per-axis hit rects and emits paint commands;
 //! the actual visual style of the thumb (width, colors, radius) lives in
@@ -15,6 +15,31 @@ use crate::style::{Bounds, ScrollbarStyle};
 pub const SCROLLBAR_SIDE_MARGIN: f64 = 4.0; // gap between thumb and container edge (perpendicular axis)
 pub const SCROLLBAR_END_MARGIN: f64 = 8.0; // gap at track start/end (along scroll axis)
 pub const THUMB_MIN_LENGTH: f64 = 24.0;
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum ScrollAlign {
+    Start,
+    Center,
+    End,
+    Nearest,
+}
+
+#[derive(Clone, Copy, Debug)]
+pub struct ScrollIntoViewOptions {
+    pub block: ScrollAlign,
+    pub inline: ScrollAlign,
+    pub margin: f32,
+}
+
+impl Default for ScrollIntoViewOptions {
+    fn default() -> Self {
+        Self {
+            block: ScrollAlign::Nearest,
+            inline: ScrollAlign::Nearest,
+            margin: 8.0,
+        }
+    }
+}
 
 /// A scrollable extent on one axis. Geometry-only — the owner of this info
 /// (e.g. `ScrollState` for views, `InputState` for multiline inputs) holds
@@ -56,6 +81,50 @@ pub fn vertical_scroll_visible_height(
         h = ((h as f64) - reserve).max(1.0) as f32;
     }
     h
+}
+
+pub fn compute_scroll_offset(
+    rel: f32,
+    target_extent: f32,
+    viewport_extent: f32,
+    content_extent: f32,
+    cur_offset: f32,
+    align: ScrollAlign,
+    margin: f32,
+) -> Option<f32> {
+    if !rel.is_finite()
+        || !target_extent.is_finite()
+        || !viewport_extent.is_finite()
+        || !content_extent.is_finite()
+        || !cur_offset.is_finite()
+    {
+        return None;
+    }
+    let max_scroll = (content_extent - viewport_extent).max(0.0);
+    let target_start = rel;
+    let target_end = rel + target_extent;
+    let next = match align {
+        ScrollAlign::Start => target_start - margin,
+        ScrollAlign::End => target_end - viewport_extent + margin,
+        ScrollAlign::Center => target_start + target_extent / 2.0 - viewport_extent / 2.0,
+        ScrollAlign::Nearest => {
+            let inner_usable = (viewport_extent - 2.0 * margin).max(0.0);
+            if target_extent > inner_usable && inner_usable > 0.0 {
+                target_start - margin
+            } else {
+                let inner_start = cur_offset + margin;
+                let inner_end = cur_offset + viewport_extent - margin;
+                if target_start < inner_start {
+                    target_start - margin
+                } else if target_end > inner_end {
+                    target_end - viewport_extent + margin
+                } else {
+                    cur_offset
+                }
+            }
+        }
+    };
+    Some(next.clamp(0.0, max_scroll))
 }
 
 /// Local-space rect of a scrollbar thumb in the view's transform space, plus
@@ -161,4 +230,75 @@ pub fn paint_thumb(
     );
     let rounded = RoundedRect::from_rect(rect, RoundedRectRadii::from_single_radius(radius));
     scene.fill(Fill::NonZero, transform, color.to_vello(), None, &rounded);
+}
+
+#[cfg(test)]
+mod tests {
+    use super::{ScrollAlign, compute_scroll_offset};
+
+    const M: f32 = 8.0;
+
+    #[test]
+    fn nearest_no_op_when_target_in_inner_band() {
+        let off = compute_scroll_offset(20.0, 20.0, 100.0, 500.0, 0.0, ScrollAlign::Nearest, M);
+        assert_eq!(off, Some(0.0));
+    }
+
+    #[test]
+    fn nearest_scrolls_down_when_target_below_band() {
+        let off = compute_scroll_offset(200.0, 20.0, 100.0, 500.0, 0.0, ScrollAlign::Nearest, M);
+        assert_eq!(off, Some(128.0));
+    }
+
+    #[test]
+    fn nearest_scrolls_up_when_target_above_band() {
+        let off = compute_scroll_offset(50.0, 20.0, 100.0, 500.0, 200.0, ScrollAlign::Nearest, M);
+        assert_eq!(off, Some(42.0));
+    }
+
+    #[test]
+    fn target_taller_than_inner_usable_aligns_to_start() {
+        let off = compute_scroll_offset(50.0, 200.0, 100.0, 500.0, 0.0, ScrollAlign::Nearest, M);
+        assert_eq!(off, Some(42.0));
+    }
+
+    #[test]
+    fn align_start_clamps_at_zero() {
+        let off = compute_scroll_offset(5.0, 20.0, 100.0, 500.0, 0.0, ScrollAlign::Start, M);
+        assert_eq!(off, Some(0.0));
+    }
+
+    #[test]
+    fn align_end_clamps_to_max_scroll() {
+        let off = compute_scroll_offset(180.0, 20.0, 100.0, 200.0, 0.0, ScrollAlign::End, M);
+        assert_eq!(off, Some(100.0));
+    }
+
+    #[test]
+    fn align_center_centers_target_in_viewport() {
+        let off = compute_scroll_offset(200.0, 20.0, 100.0, 500.0, 0.0, ScrollAlign::Center, M);
+        assert_eq!(off, Some(160.0));
+    }
+
+    #[test]
+    fn no_overflow_returns_zero() {
+        let off = compute_scroll_offset(5.0, 20.0, 100.0, 80.0, 0.0, ScrollAlign::End, M);
+        assert_eq!(off, Some(0.0));
+    }
+
+    #[test]
+    fn non_finite_inputs_return_none() {
+        let off = compute_scroll_offset(f32::NAN, 20.0, 100.0, 500.0, 0.0, ScrollAlign::Nearest, M);
+        assert_eq!(off, None);
+        let off = compute_scroll_offset(
+            20.0,
+            20.0,
+            f32::INFINITY,
+            500.0,
+            0.0,
+            ScrollAlign::Nearest,
+            M,
+        );
+        assert_eq!(off, None);
+    }
 }

@@ -625,9 +625,6 @@ impl ApplicationHandler<UserEvent> for Application {
                     }
                     Err(e) => eprintln!("Error creating window: {:#?}", e),
                 }
-                drop(state);
-                self.pump_js();
-                let mut state = self.app_state.borrow_mut();
                 state.paint_window(&id);
                 drop(state);
                 self.refresh_cursor_blink_timer(id);
@@ -728,7 +725,6 @@ impl ApplicationHandler<UserEvent> for Application {
                 });
             }
             WindowEvent::RedrawRequested => {
-                self.pump_js();
                 let mut state = self.app_state.borrow_mut();
                 state.on_redraw_requested(&wid);
             }

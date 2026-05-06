@@ -620,7 +620,7 @@ pub fn op_focus_element(
             return Err(window_not_found());
         };
         entry.dom.focus_element(nid);
-        entry.dom.request_scroll_node_into_view(nid);
+        entry.dom.request_scroll_focus_into_view(nid);
         Ok(())
     })
 }

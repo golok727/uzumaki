@@ -1195,7 +1195,7 @@ pub fn handle_tab_focus(
             node_id: change.new,
         }));
 
-        dom.request_scroll_node_into_view(change.new);
+        dom.request_scroll_focus_into_view(change.new);
 
         outcome.needs_redraw = true;
     }

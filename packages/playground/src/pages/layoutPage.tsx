@@ -1045,6 +1045,24 @@ function ScrollDemo() {
                 </text>
               </view>
             ))}
+            <button
+              w={140}
+              h={80}
+              flexShrink={0}
+              bg={C.accent}
+              hover:bg={C.accentHi}
+              rounded={8}
+              px={10}
+              py={10}
+              cursor="pointer"
+              display="flex"
+              items="center"
+              justify="center"
+            >
+              <text fontSize={12} fontWeight={700} color="#fff">
+                Tab to me
+              </text>
+            </button>
           </view>
         </view>
 
