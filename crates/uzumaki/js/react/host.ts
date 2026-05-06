@@ -1,7 +1,7 @@
 import { CHECKBOX_ATTR_NAMES, INPUT_ATTR_NAMES } from '../constants';
-import { Element } from '../elements/element';
+import { UzElement } from '../elements/base';
 import { UzImageElement } from '../elements/image';
-import { UzNode } from '../node';
+import { UzTextNode } from '../node';
 import type { ListenerEntry } from '../types';
 import {
   assignNativeStyle,
@@ -14,116 +14,56 @@ import type { Window } from '../window';
 const RESERVED_PROPS = new Set(['children', 'key', 'ref', 'id']);
 const IMAGE_RESERVED_PROPS = new Set([...RESERVED_PROPS, 'src']);
 
-export interface HostInstance {
-  /** The DOM node — Element for intrinsics, UzNode for #text instances. */
-  node: UzNode;
-  type: string;
-}
-
-export function createHostInstance(
+export function createElement(
   window: Window,
   type: string,
   props: Record<string, any>,
-  textContent?: string,
-): HostInstance {
-  if (type === '#text') {
-    const node = window.createTextNode(textContent ?? '');
-    return { node, type };
-  }
-
-  const node = window.createElement(type);
-  const instance: HostInstance = { node, type };
-  applyReactProps(instance, props, {});
-  return instance;
+): UzElement {
+  const element = window.createElement(type) as UzElement;
+  applyProps(element, props, {});
+  return element;
 }
 
-export function appendChild(parent: HostInstance, child: HostInstance): void {
-  parent.node.appendChild(child.node);
+export function createText(window: Window, text: string): UzTextNode {
+  return window.createTextNode(text);
 }
 
-export function insertBefore(
-  parent: HostInstance,
-  child: HostInstance,
-  before: HostInstance,
-): void {
-  parent.node.insertBefore(child.node, before.node);
+export function commitText(node: UzTextNode, text: string): void {
+  node.textContent = text;
 }
 
-export function removeChild(parent: HostInstance, child: HostInstance): void {
-  disposeHostInstance(child);
-  parent.node.removeChild(child.node);
+export function resetText(element: UzElement): void {
+  element.textContent = '';
 }
 
-export function appendChildToContainer(
-  container: UzNode,
-  child: HostInstance,
-): void {
-  container.appendChild(child.node);
+export function hide(element: UzElement): void {
+  element.setAttribute('visibility', false);
 }
 
-export function insertInContainerBefore(
-  container: UzNode,
-  child: HostInstance,
-  before: HostInstance,
-): void {
-  container.insertBefore(child.node, before.node);
+export function unhide(element: UzElement): void {
+  element.setAttribute('visibility', true);
 }
 
-export function removeChildFromContainer(
-  container: UzNode,
-  child: HostInstance,
-): void {
-  disposeHostInstance(child);
-  container.removeChild(child.node);
-}
-
-export function commitTextUpdate(instance: HostInstance, text: string): void {
-  instance.node.textContent = text;
-}
-
-export function resetTextContent(instance: HostInstance): void {
-  instance.node.textContent = '';
-}
-
-export function hideInstance(instance: HostInstance): void {
-  if (instance.node instanceof Element) {
-    instance.node.setAttribute('visibility', false);
-  }
-}
-
-export function unhideInstance(instance: HostInstance): void {
-  if (instance.node instanceof Element) {
-    instance.node.setAttribute('visibility', true);
-  }
-}
-
-export function disposeHostInstance(instance: HostInstance): void {
-  instance.node.destroy();
-}
-
-export function applyReactProps(
-  instance: HostInstance,
+export function applyProps(
+  element: UzElement,
   newProps: Record<string, any>,
   oldProps: Record<string, any>,
 ): void {
-  if (!(instance.node instanceof Element)) return;
-  const node = instance.node;
-
-  const oldBuckets = collectProps(instance.type, oldProps);
-  const newBuckets = collectProps(instance.type, newProps);
+  const oldBuckets = collectProps(element.type, oldProps);
+  const newBuckets = collectProps(element.type, newProps);
 
   if (newProps.id !== oldProps.id) {
-    node.id = newProps.id ?? null;
+    element.id = newProps.id ?? null;
   }
-  updateAttributes(node, oldBuckets.styles, newBuckets.styles);
-  updateAttributes(node, oldBuckets.attrs, newBuckets.attrs);
-  updateEvents(instance, oldBuckets.events, newBuckets.events);
-  syncInteractive(instance, newBuckets.events.size > 0);
-  if (instance.type === 'text') {
-    node.textContent = String(newProps.children ?? '');
+  updateAttributes(element, oldBuckets.styles, newBuckets.styles);
+  updateAttributes(element, oldBuckets.attrs, newBuckets.attrs);
+  updateEvents(element, oldBuckets.events, newBuckets.events);
+  syncInteractive(element, newBuckets.events.size > 0);
+  if (element.type === 'text') {
+    element.textContent = String(newProps.children ?? '');
   }
-  if (instance.type === 'image' && node instanceof UzImageElement) {
-    node.src = newProps.src;
+  if (element instanceof UzImageElement) {
+    element.src = newProps.src;
   }
 }
 
@@ -173,29 +113,28 @@ function attrNamesForType(type: string): Set<string> {
 }
 
 function updateAttributes(
-  node: Element,
+  element: UzElement,
   oldAttrs: Record<string, any>,
   newAttrs: Record<string, any>,
 ): void {
   for (const [key, value] of Object.entries(newAttrs)) {
     if (oldAttrs[key] !== value) {
-      node.setAttribute(key, value);
+      element.setAttribute(key, value);
     }
   }
   for (const key of Object.keys(oldAttrs)) {
     if (!(key in newAttrs)) {
-      node.removeAttribute(key);
+      element.removeAttribute(key);
     }
   }
 }
 
 function updateEvents(
-  instance: HostInstance,
+  element: UzElement,
   oldListeners: Map<string, ListenerEntry>,
   newListeners: Map<string, ListenerEntry>,
 ): void {
-  if (!(instance.node instanceof Element)) return;
-  const el = instance.node as Element<any>;
+  const el = element as UzElement<any>;
   for (const [key, newEntry] of newListeners) {
     const old = oldListeners.get(key);
     if (
@@ -219,10 +158,6 @@ function updateEvents(
   }
 }
 
-function syncInteractive(
-  instance: HostInstance,
-  hasReactEvents: boolean,
-): void {
-  if (!(instance.node instanceof Element)) return;
-  instance.node.setAttribute('interactive', hasReactEvents);
+function syncInteractive(element: UzElement, hasReactEvents: boolean): void {
+  element.setAttribute('interactive', hasReactEvents);
 }

@@ -7,33 +7,23 @@ import { INTRINSIC_ELEMENTS, __DEV__ } from '../constants';
 import type { JSX } from './jsx/runtime';
 
 import core from '../core';
-import { UzNode } from '../node';
+import { UzElement } from '../elements/base';
+import { UzNode, UzTextNode } from '../node';
 import { Window } from '../window';
 import {
-  appendChild as appendHostChild,
-  appendChildToContainer as appendHostChildToContainer,
-  applyReactProps,
-  commitTextUpdate,
-  createHostInstance,
-  disposeHostInstance,
-  hideInstance as hideHostInstance,
-  insertBefore as insertHostBefore,
-  insertInContainerBefore as insertHostInContainerBefore,
-  removeChild as removeHostChild,
-  removeChildFromContainer as removeHostChildFromContainer,
-  resetTextContent as resetHostTextContent,
-  type HostInstance,
-  unhideInstance as unhideHostInstance,
+  applyProps,
+  commitText,
+  createElement as createHostElement,
+  createText as createHostText,
+  hide,
+  resetText,
+  unhide,
 } from './host';
 
 type Container = {
   window: Window;
   rootNode: UzNode;
 };
-
-function getWindowId(container: Container): number {
-  return container.window.id;
-}
 
 /**
  * Get text content of a <text> node. will throw an error if you nest a react element inside this
@@ -72,7 +62,7 @@ function createElementInstance(
   type: string,
   props: Record<string, any>,
   window: Window,
-): HostInstance {
+): UzElement {
   if (!INTRINSIC_ELEMENTS.has(type)) {
     throw new Error(
       `[uzumaki] Unknown intrinsic element: <${type}>. Did you mean <view>?`,
@@ -81,13 +71,13 @@ function createElementInstance(
   const normalizedProps = isTextElementType(type)
     ? { ...props, children: getTextContent(props.children) }
     : props;
-  return createHostInstance(window, type, normalizedProps);
+  return createHostElement(window, type, normalizedProps);
 }
 
 type Type = string;
 type Props = Record<string, any>;
-type Instance = HostInstance;
-type TextInstance = HostInstance;
+type Instance = UzElement;
+type TextInstance = UzTextNode;
 type SuspenseInstance = any;
 type HydratableInstance = any;
 type FormInstance = any;
@@ -125,7 +115,7 @@ function createReconciler() {
     },
 
     createTextInstance(text, rootContainer) {
-      return createHostInstance(rootContainer.window, '#text', {}, text);
+      return createHostText(rootContainer.window, text);
     },
 
     shouldSetTextContent(type) {
@@ -133,7 +123,7 @@ function createReconciler() {
     },
 
     appendInitialChild(parent, child) {
-      appendHostChild(parent, child);
+      parent.appendChild(child);
     },
 
     finalizeInitialChildren() {
@@ -142,82 +132,77 @@ function createReconciler() {
 
     appendChildToContainer(container, child) {
       if (container.window.isDisposed) return;
-      appendHostChildToContainer(container.rootNode, child);
+      container.rootNode.appendChild(child);
     },
 
     appendChild(parent, child) {
-      appendHostChild(parent, child);
+      parent.appendChild(child);
     },
 
     insertBefore(parent, child, before) {
-      insertHostBefore(parent, child, before);
+      parent.insertBefore(child, before);
     },
 
     insertInContainerBefore(container, child, before) {
       if (container.window.isDisposed) return;
-      insertHostInContainerBefore(container.rootNode, child, before);
+      container.rootNode.insertBefore(child, before);
     },
 
     removeChild(parent, child) {
-      if (!parent.node.window.isDisposed) {
-        removeHostChild(parent, child);
-      }
+      if (parent.window.isDisposed) return;
+      child.destroy();
+      parent.removeChild(child);
     },
 
     removeChildFromContainer(container, child) {
-      if (!container.window.isDisposed) {
-        removeHostChildFromContainer(container.rootNode, child);
-      }
+      if (container.window.isDisposed) return;
+      child.destroy();
+      container.rootNode.removeChild(child);
     },
 
     commitUpdate(instance, _type, oldProps, newProps, _internalHandle) {
-      if (instance.node.window.isDisposed) return;
+      if (instance.window.isDisposed) return;
       const normalizedNewProps = isTextElementType(instance.type)
         ? { ...newProps, children: getTextContent(newProps.children) }
         : newProps;
       const normalizedOldProps = isTextElementType(instance.type)
         ? { ...oldProps, children: getTextContent(oldProps.children) }
         : oldProps;
-      applyReactProps(instance, normalizedNewProps, normalizedOldProps);
+      applyProps(instance, normalizedNewProps, normalizedOldProps);
     },
 
     commitTextUpdate(instance, _oldText, newText) {
-      if (instance.node.window.isDisposed) return;
-      commitTextUpdate(instance, newText);
+      if (instance.window.isDisposed) return;
+      commitText(instance, newText);
     },
 
     detachDeletedInstance(instance) {
-      disposeHostInstance(instance);
+      instance.destroy();
     },
 
     hideInstance(instance) {
-      hideHostInstance(instance);
+      hide(instance);
     },
 
     unhideInstance(instance) {
-      unhideHostInstance(instance);
+      unhide(instance);
     },
 
-    hideTextInstance(instance) {
-      hideHostInstance(instance);
-    },
+    hideTextInstance() {},
 
-    unhideTextInstance(instance) {
-      unhideHostInstance(instance);
-    },
+    unhideTextInstance() {},
 
     resetTextContent(instance) {
-      resetHostTextContent(instance);
+      resetText(instance);
     },
 
     clearContainer(container) {
-      const windowId = getWindowId(container);
-      core.resetDom(windowId);
+      core.resetDom(container.window.id);
     },
 
     getRootHostContext: () => ({}),
     getChildHostContext: (parentHostContext) => parentHostContext,
-    getPublicInstance: (instance) => instance.node,
+    getPublicInstance: (instance) => instance,
 
     prepareForCommit(_container) {
       return null;
