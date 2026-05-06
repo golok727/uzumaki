@@ -2,7 +2,7 @@ import { isValidElement as isReactElement } from 'react';
 import ReactReconciler, { type EventPriority } from 'react-reconciler';
 import { DefaultEventPriority } from 'react-reconciler/constants.js';
 
-import { INTRINSIC_ELEMENTS, __DEV__ } from '../constants';
+import { INTRINSIC_ELEMENTS, __DEV__ } from './constants';
 
 import type { JSX } from './jsx/runtime';
 

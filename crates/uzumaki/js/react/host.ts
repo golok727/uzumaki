@@ -1,4 +1,4 @@
-import { CHECKBOX_ATTR_NAMES, INPUT_ATTR_NAMES } from '../constants';
+import { CHECKBOX_ATTR_NAMES, INPUT_ATTR_NAMES } from './constants';
 import { UzElement } from '../elements/base';
 import { UzImageElement } from '../elements/image';
 import { UzTextNode } from '../node';
