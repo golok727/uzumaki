@@ -1,8 +1,11 @@
 {
-  "extends": "../../tsconfig.base.json",
+  "extends": "../../tsconfig.json",
   "compilerOptions": {
     "composite": true,
-    "types": ["uzumaki-types"]
+    "types": ["uzumaki-types"],
+    "paths": {
+      "ext:uzumaki/*": ["./js/*"]
+    }
   },
-  "include": ["js/**/*.ts"]
+  "include": ["js/**/*.ts", "js/react/**/*.ts"]
 }

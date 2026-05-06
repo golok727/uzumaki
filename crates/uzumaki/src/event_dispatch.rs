@@ -119,10 +119,7 @@ pub fn input_layout_meta(dom: &UIState, focused_id: UzNodeId) -> Option<FocusedI
     let top_pad = node.style.padding.top;
     let pad_h = node.style.padding.left + node.style.padding.right;
     let text_style = node.style.text.clone();
-    let hb = node
-        .interactivity
-        .hitbox_id
-        .and_then(|hid| dom.hitbox_store.get(hid))?;
+    let hb = node.hitbox_id.and_then(|hid| dom.hitbox_store.get(hid))?;
     let layout = &node.final_layout;
     Some(FocusedInputLayoutMeta {
         taffy_x: hb.bounds.x,
@@ -311,7 +308,6 @@ pub fn handle_cursor_moved(
                 let input_padding = node.style.padding.left as f64;
                 let top_pad = node.style.padding.top;
                 let hb = node
-                    .interactivity
                     .hitbox_id
                     .and_then(|hid| dom.hitbox_store.get(hid))?
                     .bounds;
@@ -417,7 +413,7 @@ fn hit_text_in_run(
     let mut best: Option<(crate::element::UzNodeId, f64, Bounds)> = None;
     for entry in &run.entries {
         let node = dom.nodes.get(entry.node_id)?;
-        let hid = node.interactivity.hitbox_id?;
+        let hid = node.hitbox_id?;
         let hb = dom.hitbox_store.get(hid)?;
         let dist = point_to_rect_dist(mx, my, &hb.bounds);
         if best.is_none() || dist < best.unwrap().1 {
@@ -484,7 +480,6 @@ fn text_range_at_point(
     let node = dom.nodes.get(node_id)?;
     let text = node.get_text_content()?;
     let bounds = node
-        .interactivity
         .hitbox_id
         .and_then(|hid| dom.hitbox_store.get(hid))
         .map(|hb| hb.bounds)?;
@@ -548,13 +543,6 @@ pub fn handle_mouse_input(
 
     let mut needs_redraw = false;
     let mut events: Vec<AppEvent> = Vec::new();
-
-    let mouse_button = match button {
-        winit::event::MouseButton::Left => crate::interactivity::MouseButton::Left,
-        winit::event::MouseButton::Right => crate::interactivity::MouseButton::Right,
-        winit::event::MouseButton::Middle => crate::interactivity::MouseButton::Middle,
-        _ => crate::interactivity::MouseButton::Left,
-    };
 
     let button_num: u8 = match button {
         winit::event::MouseButton::Left => 0,
@@ -629,7 +617,6 @@ pub fn handle_mouse_input(
     match btn_state {
         ElementState::Pressed => {
             dom.set_active(js_target);
-            dom.dispatch_mouse_down(mx, my, mouse_button);
             if let Some(target) = js_target {
                 events.push(AppEvent::MouseDown(MouseEventData {
                     window_id: wid,
@@ -644,7 +631,7 @@ pub fn handle_mouse_input(
             }
 
             // Input focus handling (left button)
-            if mouse_button == crate::interactivity::MouseButton::Left {
+            if button == winit::event::MouseButton::Left {
                 let clicked_is_input = js_target
                     .and_then(|nid| dom.nodes.get(nid))
                     .map(|n| n.is_text_input())
@@ -694,7 +681,6 @@ pub fn handle_mouse_input(
                         let input_padding = node.style.padding.left as f64;
                         let top_pad = node.style.padding.top;
                         let hb = node
-                            .interactivity
                             .hitbox_id
                             .and_then(|hid| dom.hitbox_store.get(hid))
                             .map(|hb| hb.bounds);
@@ -885,7 +871,6 @@ pub fn handle_mouse_input(
             needs_redraw = true;
         }
         ElementState::Released => {
-            dom.dispatch_mouse_up(mx, my, mouse_button);
             if let Some(target) = js_target {
                 events.push(AppEvent::MouseUp(MouseEventData {
                     window_id: wid,
@@ -902,7 +887,7 @@ pub fn handle_mouse_input(
             if let Some(active) = dom.hit_state.active_node
                 && dom.hit_state.is_hovered(active)
             {
-                if mouse_button == crate::interactivity::MouseButton::Left
+                if button == winit::event::MouseButton::Left
                     && let Some(target) = js_target
                     && let Some(node) = dom.nodes.get_mut(target)
                     && let Some(checked) = node.as_checkbox_input_mut()
@@ -915,7 +900,6 @@ pub fn handle_mouse_input(
                         data: None,
                     }));
                 }
-                dom.dispatch_click(mx, my, mouse_button);
                 if let Some(target) = js_target {
                     events.push(AppEvent::Click(MouseEventData {
                         window_id: wid,
@@ -1138,7 +1122,6 @@ pub fn handle_key_for_button(
     // otherwise (0, 0). The JS handler usually doesn't depend on coords for
     // keyboard activations.
     let (x, y) = node
-        .interactivity
         .hitbox_id
         .and_then(|hid| dom.hitbox_store.get(hid))
         .map(|hb| {
@@ -1148,8 +1131,6 @@ pub fn handle_key_for_button(
             )
         })
         .unwrap_or((0.0, 0.0));
-
-    dom.dispatch_click(x as f64, y as f64, crate::interactivity::MouseButton::Left);
 
     (
         true,

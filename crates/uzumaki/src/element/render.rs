@@ -35,7 +35,7 @@ impl<'a> Painter<'a> {
         self.dom.hitbox_store.clear();
         self.dom.scroll_thumbs.clear();
         for (_, node) in self.dom.nodes.iter_mut() {
-            node.interactivity.hitbox_id = None;
+            node.hitbox_id = None;
         }
         self.dom.build_text_select_runs();
 
@@ -97,7 +97,7 @@ impl<'a> Painter<'a> {
             Bounds::new(0.0, 0.0, w, h),
             hit_transform,
         );
-        self.dom.nodes[node_id].interactivity.hitbox_id = Some(hitbox_id);
+        self.dom.nodes[node_id].hitbox_id = Some(hitbox_id);
 
         self.paint_node(
             node_id,

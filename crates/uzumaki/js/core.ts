@@ -64,6 +64,7 @@ export interface CoreNode {
   insertBefore(child: CoreNode, before: CoreNode | null): void;
   removeChild(child: CoreNode): void;
   remove(): void;
+  removeChildren(): void;
   setStrAttribute(name: string, value: string): void;
   setNumberAttribute(name: string, value: number): void;
   setBoolAttribute(name: string, value: boolean): void;
@@ -86,7 +87,6 @@ interface Core {
   ): void;
   applyCachedImage(windowId: number, nodeId: NodeId, cacheKey: string): boolean;
   clearImageData(windowId: number, nodeId: NodeId): void;
-  resetDom(windowId: number): void;
   focusElement(windowId: number, nodeId: NodeId): void;
   getAncestorPath(windowId: number, nodeId: NodeId): NodeId[];
   getSelection(windowId: number): SelectionState | null;

@@ -3,8 +3,7 @@ import { dispatchDomEvent } from './dispatcher';
 import { EventType } from './events';
 import { disposeWindow, Window } from './window';
 
-export { __internalDebugNodeCount } from './registry';
-export { getWindow, Window } from './window';
+export { __internalDebugNodeCount, getWindow, Window } from './window';
 export type {
   WindowOptions,
   WindowLevel,
@@ -31,16 +30,16 @@ export { EventPhase } from './events';
 export type {
   EventName,
   EventHandler,
-  UzEventMap as EventHandlerMap,
+  UzEventMap,
   WindowEventName,
   WindowEventHandler,
   WindowEventMap,
   UzumakiEvent,
-  UzMouseEvent as UzumakiMouseEvent,
-  UzKeyboardEvent as UzumakiKeyboardEvent,
-  UzInputEvent as UzumakiInputEvent,
-  UzFocusEvent as UzumakiFocusEvent,
-  UzClipboardEvent as UzumakiClipboardEvent,
+  UzMouseEvent,
+  UzKeyboardEvent,
+  UzInputEvent,
+  UzFocusEvent,
+  UzClipboardEvent,
   UzumakiResizeEvent,
 } from './events';
 

@@ -137,7 +137,7 @@ export class UzImageElement extends UzElement<ImageEventMap> {
   private _isCurrent(generation: number): boolean {
     return (
       !this._disposed &&
-      !this._window.isDisposed &&
+      !this.window.isDisposed &&
       generation === this._generation
     );
   }

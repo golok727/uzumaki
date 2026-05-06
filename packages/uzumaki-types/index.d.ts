@@ -3,4 +3,4 @@
 /// <reference types="deno" />
 /// <reference types="node" />
 
-/// <reference path="./globals.d.ts" />
+/// <reference path="./uzumaki.d.ts" />

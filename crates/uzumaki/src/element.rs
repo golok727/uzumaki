@@ -1,6 +1,6 @@
 use crate::cursor::UzCursorIcon;
 use crate::input::InputState;
-use crate::interactivity::Interactivity;
+use crate::interactivity::{HitboxId, StyleVariants};
 use crate::style::{Bounds, TextSelectable, UzStyle};
 use crate::text::TextBrush;
 use parley::Layout as ParleyLayout;
@@ -16,8 +16,6 @@ pub mod scroll;
 pub mod selection;
 pub mod svg;
 pub mod view;
-
-use vello::kurbo::Affine;
 
 pub type UzNodeId = usize;
 
@@ -515,12 +513,12 @@ pub struct Node {
 
     /// The base style for this element. Converted to taffy for layout.
     pub style: UzStyle,
-    /// Interactivity: hover/active style overrides, hitbox, event listeners.
-    pub interactivity: Interactivity,
+    /// Hover/active/focus style refinements.
+    pub style_variants: StyleVariants,
+    /// Hitbox assigned during the latest paint pass. None if not painted yet.
+    pub hitbox_id: Option<HitboxId>,
     /// Scroll state, present only when overflow_y == Scroll.
     pub scroll_state: Option<ScrollState>,
-    // not used now todo use this :3
-    pub transform: Option<Affine>,
     /// Cached parley layout for text-bearing nodes (text node or `<text>`
     /// element). Refreshed once per frame after taffy compute, then reused by
     /// paint, selection geometry and hit-testing instead of rebuilding parley
@@ -539,9 +537,9 @@ impl Node {
             children: Vec::new(),
             data: data.into(),
             style,
-            interactivity: Interactivity::new(),
+            style_variants: StyleVariants::new(),
+            hitbox_id: None,
             scroll_state: None,
-            transform: None,
             text_layout: None,
             final_layout: taffy::Layout::new(),
         }

@@ -156,25 +156,10 @@ fn transformed_axis_aligned_bounds(bounds: Bounds, transform: Affine) -> Bounds 
     Bounds::new(min_x, min_y, max_x - min_x, max_y - min_y)
 }
 
-#[derive(Clone, Debug)]
-pub struct MouseEvent {
-    pub position: (f64, f64),
-    pub button: MouseButton,
-}
-
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
-pub enum MouseButton {
-    Left,
-    Right,
-    Middle,
-}
-
-pub type MouseEventListener = Box<dyn Fn(&MouseEvent, &Bounds) + Send + Sync>;
-
-/// Holds the style states and event listeners for an interactive element.
+/// Holds the style states for an interactive element.
 /// Elements embed this struct and delegate styling through it.
 #[derive(Default)]
-pub struct Interactivity {
+pub struct StyleVariants {
     /// Base style refinement (always applied).
     pub base_style: UzStyleRefinement,
     /// Applied when the element's hitbox is hovered.
@@ -183,34 +168,11 @@ pub struct Interactivity {
     pub active_style: Option<Box<UzStyleRefinement>>,
     /// Applied when the element has keyboard focus.
     pub focus_style: Option<Box<UzStyleRefinement>>,
-
-    /// The hitbox ID assigned to this element during paint. None if not interactive.
-    pub hitbox_id: Option<HitboxId>,
-
-    /// Mouse event listeners.
-    pub mouse_down_listeners: Vec<MouseEventListener>,
-    pub mouse_up_listeners: Vec<MouseEventListener>,
-    pub click_listeners: Vec<MouseEventListener>,
-
-    // todo remove
-    /// Set from JS side when a node has JS event listeners.
-    pub js_interactive: bool,
 }
 
-impl Interactivity {
+impl StyleVariants {
     pub fn new() -> Self {
         Self::default()
-    }
-
-    /// Returns true if this element needs a hitbox (has hover/active styles or listeners).
-    pub fn needs_hitbox(&self) -> bool {
-        self.js_interactive
-            || self.hover_style.is_some()
-            || self.active_style.is_some()
-            || self.focus_style.is_some()
-            || !self.mouse_down_listeners.is_empty()
-            || !self.mouse_up_listeners.is_empty()
-            || !self.click_listeners.is_empty()
     }
 
     /// Compute the final Style for this element by starting with the base style
@@ -303,23 +265,5 @@ impl Interactivity {
     /// Set the focus style refinement.
     pub fn on_focus(&mut self, style: UzStyleRefinement) {
         self.focus_style = Some(Box::new(style));
-    }
-
-    /// Add a click listener.
-    pub fn on_click(&mut self, listener: impl Fn(&MouseEvent, &Bounds) + Send + Sync + 'static) {
-        self.click_listeners.push(Box::new(listener));
-    }
-
-    /// Add a mouse down listener.
-    pub fn on_mouse_down(
-        &mut self,
-        listener: impl Fn(&MouseEvent, &Bounds) + Send + Sync + 'static,
-    ) {
-        self.mouse_down_listeners.push(Box::new(listener));
-    }
-
-    /// Add a mouse up listener.
-    pub fn on_mouse_up(&mut self, listener: impl Fn(&MouseEvent, &Bounds) + Send + Sync + 'static) {
-        self.mouse_up_listeners.push(Box::new(listener));
     }
 }

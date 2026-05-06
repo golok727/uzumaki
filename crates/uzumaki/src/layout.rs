@@ -100,7 +100,7 @@ impl LayoutEngine {
     ) -> Option<taffy::NodeId> {
         let node = nodes.get(node_id)?;
         let parent = parent_style.unwrap_or(&node.style);
-        let style = node.interactivity.compute_style_inherited(
+        let style = node.style_variants.compute_style_inherited(
             &node.style,
             parent,
             node_id,

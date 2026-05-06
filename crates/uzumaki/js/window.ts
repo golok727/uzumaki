@@ -23,7 +23,7 @@ import {
   type WindowEventName,
   type WindowEventHandler,
 } from './events';
-import { clearWindowNodes } from './registry';
+import { clearWindowNodes, nodeCount } from './registry';
 
 const windowsByLabel = new Map<string, Window>();
 const windowsById = new Map<number, Window>();
@@ -161,6 +161,10 @@ export class Window {
 
   focus(): void {
     this._native.focus();
+  }
+
+  requestRedraw(): void {
+    core.requestRedraw(this._id);
   }
 
   set contentProtected(contentProtected: boolean) {
@@ -360,7 +364,12 @@ export function disposeWindow(_window: Window) {
   }
   window._disposables = [];
   window._emitter._clear();
-  clearWindowNodes(window.id);
+  clearWindowNodes(_window);
   windowsByLabel.delete(window.label);
   windowsById.delete(window.id);
+}
+
+export function __internalDebugNodeCount(windowId: number): number {
+  const w = windowsById.get(windowId);
+  return w ? nodeCount(w) : 0;
 }

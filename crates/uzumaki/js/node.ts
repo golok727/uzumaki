@@ -1,6 +1,5 @@
 import core, { type CoreNode } from './core';
 import { getNode, registerNode, unregisterNode } from './registry';
-// registry is keyed by (windowId, nodeId) since node ids can collide across windows.
 import type { NodeId } from './types';
 import type { Window } from './window';
 
@@ -11,18 +10,18 @@ export const NodeType = {
 } as const;
 
 export class UzNode {
-  readonly _native: CoreNode;
-  readonly _window: Window;
+  protected readonly _native: CoreNode;
+  readonly window: Window;
 
   constructor(window: Window, native: CoreNode) {
-    this._window = window;
+    this.window = window;
     this._native = native;
     registerNode(this);
   }
 
   static fromNodeId(window: Window, nodeId: NodeId | null): UzNode | null {
     if (nodeId == null) return null;
-    return getNode(window.id, nodeId) ?? null;
+    return getNode(window, nodeId) ?? null;
   }
 
   get nodeId(): NodeId {
@@ -45,23 +44,23 @@ export class UzNode {
   // }
 
   get parentNode(): UzNode | null {
-    return UzNode.fromNodeId(this._window, this._native.parentNodeId);
+    return UzNode.fromNodeId(this.window, this._native.parentNodeId);
   }
 
   get firstChild(): UzNode | null {
-    return UzNode.fromNodeId(this._window, this._native.firstChildId);
+    return UzNode.fromNodeId(this.window, this._native.firstChildId);
   }
 
   get lastChild(): UzNode | null {
-    return UzNode.fromNodeId(this._window, this._native.lastChildId);
+    return UzNode.fromNodeId(this.window, this._native.lastChildId);
   }
 
   get nextSibling(): UzNode | null {
-    return UzNode.fromNodeId(this._window, this._native.nextSiblingId);
+    return UzNode.fromNodeId(this.window, this._native.nextSiblingId);
   }
 
   get previousSibling(): UzNode | null {
-    return UzNode.fromNodeId(this._window, this._native.previousSiblingId);
+    return UzNode.fromNodeId(this.window, this._native.previousSiblingId);
   }
 
   get textContent(): string | null {
@@ -73,21 +72,21 @@ export class UzNode {
   }
 
   appendChild<T extends UzNode>(child: T): T {
-    if (!this._window.isDisposed) {
+    if (!this.window.isDisposed) {
       this._native.appendChild(child._native);
     }
     return child;
   }
 
   insertBefore<T extends UzNode>(child: T, before: UzNode | null): T {
-    if (!this._window.isDisposed) {
+    if (!this.window.isDisposed) {
       this._native.insertBefore(child._native, before?._native ?? null);
     }
     return child;
   }
 
   removeChild<T extends UzNode>(child: T): T {
-    if (!this._window.isDisposed) {
+    if (!this.window.isDisposed) {
       this._native.removeChild(child._native);
     }
     return child;
@@ -97,8 +96,14 @@ export class UzNode {
    * Detach this node from its parent
    */
   remove(): void {
-    if (!this._window.isDisposed) {
+    if (!this.window.isDisposed) {
       this._native.remove();
+    }
+  }
+
+  removeChildren(): void {
+    if (!this.window.isDisposed) {
+      this._native.removeChildren();
     }
   }
 
@@ -110,7 +115,7 @@ export class UzNode {
       child.destroy();
       child = next;
     }
-    unregisterNode(this.windowId, this.nodeId);
+    unregisterNode(this.window, this.nodeId);
   }
 }
 

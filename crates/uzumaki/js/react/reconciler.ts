@@ -2,38 +2,22 @@ import { isValidElement as isReactElement } from 'react';
 import ReactReconciler, { type EventPriority } from 'react-reconciler';
 import { DefaultEventPriority } from 'react-reconciler/constants.js';
 
-import { INTRINSIC_ELEMENTS, __DEV__ } from '../constants';
+import { INTRINSIC_ELEMENTS, __DEV__ } from './constants';
 
 import type { JSX } from './jsx/runtime';
 
-import core from '../core';
-import { UzNode } from '../node';
+import { UzElement } from '../elements/base';
+import { UzNode, UzTextNode } from '../node';
 import { Window } from '../window';
 import {
-  appendChild as appendHostChild,
-  appendChildToContainer as appendHostChildToContainer,
-  applyReactProps,
-  commitTextUpdate,
-  createHostInstance,
-  disposeHostInstance,
-  hideInstance as hideHostInstance,
-  insertBefore as insertHostBefore,
-  insertInContainerBefore as insertHostInContainerBefore,
-  removeChild as removeHostChild,
-  removeChildFromContainer as removeHostChildFromContainer,
-  resetTextContent as resetHostTextContent,
-  type HostInstance,
-  unhideInstance as unhideHostInstance,
+  applyProps,
+  commitText,
+  createElement as createHostElement,
+  createText as createHostText,
+  hide,
+  resetText,
+  unhide,
 } from './host';
-
-type Container = {
-  window: Window;
-  rootNode: UzNode;
-};
-
-function getWindowId(container: Container): number {
-  return container.window.id;
-}
 
 /**
  * Get text content of a <text> node. will throw an error if you nest a react element inside this
@@ -72,7 +56,7 @@ function createElementInstance(
   type: string,
   props: Record<string, any>,
   window: Window,
-): HostInstance {
+): UzElement {
   if (!INTRINSIC_ELEMENTS.has(type)) {
     throw new Error(
       `[uzumaki] Unknown intrinsic element: <${type}>. Did you mean <view>?`,
@@ -81,13 +65,13 @@ function createElementInstance(
   const normalizedProps = isTextElementType(type)
     ? { ...props, children: getTextContent(props.children) }
     : props;
-  return createHostInstance(window, type, normalizedProps);
+  return createHostElement(window, type, normalizedProps);
 }
 
 type Type = string;
 type Props = Record<string, any>;
-type Instance = HostInstance;
-type TextInstance = HostInstance;
+type Instance = UzElement;
+type TextInstance = UzTextNode;
 type SuspenseInstance = any;
 type HydratableInstance = any;
 type FormInstance = any;
@@ -104,7 +88,7 @@ function createReconciler() {
   return ReactReconciler<
     Type,
     Props,
-    Container,
+    Window,
     Instance,
     TextInstance,
     SuspenseInstance,
@@ -120,12 +104,12 @@ function createReconciler() {
     supportsMutation: true,
     supportsPersistence: false,
 
-    createInstance(type, props, rootContainer) {
-      return createElementInstance(type, props, rootContainer.window);
+    createInstance(type, props, window) {
+      return createElementInstance(type, props, window);
     },
 
-    createTextInstance(text, rootContainer) {
-      return createHostInstance(rootContainer.window, '#text', {}, text);
+    createTextInstance(text, window) {
+      return createHostText(window, text);
     },
 
     shouldSetTextContent(type) {
@@ -133,98 +117,93 @@ function createReconciler() {
     },
 
     appendInitialChild(parent, child) {
-      appendHostChild(parent, child);
+      parent.appendChild(child);
     },
 
     finalizeInitialChildren() {
       return false;
     },
 
-    appendChildToContainer(container, child) {
-      if (container.window.isDisposed) return;
-      appendHostChildToContainer(container.rootNode, child);
+    appendChildToContainer(window, child) {
+      if (window.isDisposed) return;
+      window.root.appendChild(child);
     },
 
     appendChild(parent, child) {
-      appendHostChild(parent, child);
+      parent.appendChild(child);
     },
 
     insertBefore(parent, child, before) {
-      insertHostBefore(parent, child, before);
+      parent.insertBefore(child, before);
     },
 
-    insertInContainerBefore(container, child, before) {
-      if (container.window.isDisposed) return;
-      insertHostInContainerBefore(container.rootNode, child, before);
+    insertInContainerBefore(window, child, before) {
+      if (window.isDisposed) return;
+      window.root.insertBefore(child, before);
     },
 
     removeChild(parent, child) {
-      if (!parent.node._window.isDisposed) {
-        removeHostChild(parent, child);
-      }
+      if (parent.window.isDisposed) return;
+      child.destroy();
+      parent.removeChild(child);
     },
 
-    removeChildFromContainer(container, child) {
-      if (!container.window.isDisposed) {
-        removeHostChildFromContainer(container.rootNode, child);
-      }
+    removeChildFromContainer(window, child) {
+      if (window.isDisposed) return;
+      child.destroy();
+      window.root.removeChild(child);
     },
 
     commitUpdate(instance, _type, oldProps, newProps, _internalHandle) {
-      if (instance.node._window.isDisposed) return;
+      if (instance.window.isDisposed) return;
       const normalizedNewProps = isTextElementType(instance.type)
         ? { ...newProps, children: getTextContent(newProps.children) }
         : newProps;
       const normalizedOldProps = isTextElementType(instance.type)
         ? { ...oldProps, children: getTextContent(oldProps.children) }
         : oldProps;
-      applyReactProps(instance, normalizedNewProps, normalizedOldProps);
+      applyProps(instance, normalizedNewProps, normalizedOldProps);
     },
 
     commitTextUpdate(instance, _oldText, newText) {
-      if (instance.node._window.isDisposed) return;
-      commitTextUpdate(instance, newText);
+      if (instance.window.isDisposed) return;
+      commitText(instance, newText);
     },
 
     detachDeletedInstance(instance) {
-      disposeHostInstance(instance);
+      instance.destroy();
     },
 
     hideInstance(instance) {
-      hideHostInstance(instance);
+      hide(instance);
     },
 
     unhideInstance(instance) {
-      unhideHostInstance(instance);
+      unhide(instance);
     },
 
-    hideTextInstance(instance) {
-      hideHostInstance(instance);
-    },
+    hideTextInstance() {},
 
-    unhideTextInstance(instance) {
-      unhideHostInstance(instance);
-    },
+    unhideTextInstance() {},
 
     resetTextContent(instance) {
-      resetHostTextContent(instance);
+      resetText(instance);
     },
 
-    clearContainer(container) {
-      const windowId = getWindowId(container);
-      core.resetDom(windowId);
+    clearContainer(window) {
+      window.root.removeChildren();
     },
 
     getRootHostContext: () => ({}),
     getChildHostContext: (parentHostContext) => parentHostContext,
-    getPublicInstance: (instance) => instance.node,
+    getPublicInstance: (instance) => instance,
 
-    prepareForCommit(_container) {
+    prepareForCommit(_window) {
       return null;
     },
 
-    resetAfterCommit(container) {
-      core.requestRedraw(container.window.id);
+    resetAfterCommit(window) {
+      window.requestRedraw();
     },
 
     preparePortalMount: () => {},
@@ -263,15 +242,11 @@ function createReconciler() {
   });
 }
 
-const roots = new Map<string, { root: any; container: Container }>();
-
 export function render(window: Window, element: JSX.Element) {
-  const container: Container = { window, rootNode: window.root };
-
   const reconciler = createReconciler();
 
   const root = reconciler.createContainer(
-    container,
+    window,
     1,
     null,
     false,
@@ -283,12 +258,10 @@ export function render(window: Window, element: JSX.Element) {
     () => {},
   );
 
-  roots.set(window.label, { root, container });
   reconciler.updateContainer(element, root, null, null);
 
   function dispose() {
     reconciler.updateContainer(null, root, null, null);
-    roots.delete(window.label);
   }
 
   window.addDisposable(dispose);

@@ -1,8 +1,8 @@
 {
-  "extends": "../../tsconfig.base.json",
+  "extends": "../../tsconfig.json",
   "compilerOptions": {
     "composite": true,
     "allowJs": false
   },
-  "include": ["index.d.ts", "globals.d.ts"]
+  "include": ["index.d.ts", "uzumaki.d.ts"]
 }

@@ -114,7 +114,7 @@ impl UIState {
             return UzCursorIcon::Default;
         };
 
-        let style = node.interactivity.compute_style(
+        let style = node.style_variants.compute_style(
             &node.style,
             node_id,
             &self.hit_state,
@@ -139,7 +139,7 @@ impl UIState {
         let mut cur = node.parent;
         while let Some(id) = cur {
             let n = &self.nodes[id];
-            let style = n.interactivity.compute_style(
+            let style = n.style_variants.compute_style(
                 &n.style,
                 id,
                 &self.hit_state,
@@ -187,8 +187,6 @@ impl UIState {
         let node_id = self
             .nodes
             .insert(Node::new(style, ElementNode::new_text_input(is)));
-        // Input always needs a hitbox for click-to-focus
-        self.nodes[node_id].interactivity.js_interactive = true;
         self.nodes[node_id]
             .as_element_mut()
             .expect("input should be an element")
@@ -214,8 +212,6 @@ impl UIState {
         let node_id = self
             .nodes
             .insert(Node::new(style, ElementNode::new_checkbox_input(false)));
-
-        self.nodes[node_id].interactivity.js_interactive = true;
         self.nodes[node_id]
             .as_element_mut()
             .expect("checkbox should be an element")
@@ -684,7 +680,7 @@ impl UIState {
     pub(crate) fn computed_style(&self, node_id: UzNodeId, parent: Option<&UzStyle>) -> UzStyle {
         let node = &self.nodes[node_id];
         let parent = parent.unwrap_or(&node.style);
-        node.interactivity.compute_style_inherited(
+        node.style_variants.compute_style_inherited(
             &node.style,
             parent,
             node_id,
@@ -719,44 +715,6 @@ impl UIState {
         path
     }
 
-    fn dispatch_mouse_path(
-        &self,
-        x: f64,
-        y: f64,
-        button: crate::interactivity::MouseButton,
-        listeners: impl Fn(
-            &crate::interactivity::Interactivity,
-        ) -> &[crate::interactivity::MouseEventListener],
-    ) {
-        let event = crate::interactivity::MouseEvent {
-            position: (x, y),
-            button,
-        };
-
-        let Some(target) = self.hit_state.top_node else {
-            return;
-        };
-
-        let mut path = self.hit_path(target);
-        path.reverse();
-        for node_id in path {
-            let Some(node) = self.nodes.get(node_id) else {
-                continue;
-            };
-            let Some(bounds) = node
-                .interactivity
-                .hitbox_id
-                .and_then(|hid| self.hitbox_store.get(hid))
-                .map(|hitbox| hitbox.bounds)
-            else {
-                continue;
-            };
-            for listener in listeners(&node.interactivity) {
-                listener(&event, &bounds);
-            }
-        }
-    }
-
     /// Refresh hit-testing using the current pointer position after layout or
     /// paint invalidates the previous frame's hitboxes.
     pub fn refresh_hit_test(&mut self) -> bool {
@@ -774,21 +732,6 @@ impl UIState {
     /// Set the active node (mouse down on an element).
     pub fn set_active(&mut self, node_id: Option<UzNodeId>) {
         self.hit_state.active_node = node_id;
-    }
-
-    /// Dispatch mouse down event to listeners on hovered elements.
-    pub fn dispatch_mouse_down(&self, x: f64, y: f64, button: crate::interactivity::MouseButton) {
-        self.dispatch_mouse_path(x, y, button, |i| &i.mouse_down_listeners);
-    }
-
-    /// Dispatch mouse up event.
-    pub fn dispatch_mouse_up(&self, x: f64, y: f64, button: crate::interactivity::MouseButton) {
-        self.dispatch_mouse_path(x, y, button, |i| &i.mouse_up_listeners);
-    }
-
-    /// Dispatch click event.
-    pub fn dispatch_click(&self, x: f64, y: f64, button: crate::interactivity::MouseButton) {
-        self.dispatch_mouse_path(x, y, button, |i| &i.click_listeners);
     }
 
     /// Find the text run that contains a given text node.
@@ -847,11 +790,6 @@ mod tests {
         style::{Bounds, Length, Size, UzStyle},
         text::TextRenderer,
     };
-    use std::sync::{
-        Arc,
-        atomic::{AtomicUsize, Ordering},
-    };
-
     #[test]
     fn refresh_hit_test_retargets_stationary_pointer_after_hitboxes_change() {
         let mut dom = UIState::new();
@@ -980,49 +918,6 @@ mod tests {
         assert_eq!(first_layout.location.y, 0.0);
         assert_eq!(second_layout.location.y, first_layout.size.height);
         assert_eq!(second_layout.location.x, 0.0);
-    }
-
-    #[test]
-    fn hit_test_hover_and_dispatch_follow_top_node_ancestors_not_siblings() {
-        let mut dom = UIState::new();
-        let root = dom.create_view(Default::default());
-        let sibling = dom.create_view(Default::default());
-        let modal = dom.create_view(Default::default());
-        dom.append_child(root, sibling);
-        dom.append_child(root, modal);
-
-        let sibling_clicks = Arc::new(AtomicUsize::new(0));
-        let modal_clicks = Arc::new(AtomicUsize::new(0));
-
-        {
-            let clicks = Arc::clone(&sibling_clicks);
-            dom.nodes[sibling].interactivity.on_click(move |_, _| {
-                clicks.fetch_add(1, Ordering::Relaxed);
-            });
-        }
-        {
-            let clicks = Arc::clone(&modal_clicks);
-            dom.nodes[modal].interactivity.on_click(move |_, _| {
-                clicks.fetch_add(1, Ordering::Relaxed);
-            });
-        }
-
-        let sibling_hitbox = dom
-            .hitbox_store
-            .insert(sibling, Bounds::new(0.0, 0.0, 100.0, 100.0));
-        let modal_hitbox = dom
-            .hitbox_store
-            .insert(modal, Bounds::new(20.0, 20.0, 40.0, 40.0));
-        dom.nodes[sibling].interactivity.hitbox_id = Some(sibling_hitbox);
-        dom.nodes[modal].interactivity.hitbox_id = Some(modal_hitbox);
-
-        dom.update_hit_test(30.0, 30.0);
-        dom.dispatch_click(30.0, 30.0, crate::interactivity::MouseButton::Left);
-
-        assert_eq!(dom.hit_state.top_node, Some(modal));
-        assert_eq!(dom.hit_state.hovered_nodes, vec![root, modal]);
-        assert_eq!(modal_clicks.load(Ordering::Relaxed), 1);
-        assert_eq!(sibling_clicks.load(Ordering::Relaxed), 0);
     }
 
     #[test]

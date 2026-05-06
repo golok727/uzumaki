@@ -1,10 +1,9 @@
 {
-  "extends": "../../tsconfig.base.json",
+  "extends": "../../tsconfig.json",
   "compilerOptions": {
-    "composite": true,
+    "composite": false,
     "types": ["uzumaki-types"],
-    "jsxImportSource": "uzumaki-ui/react",
-    "verbatimModuleSyntax": false
+    "jsxImportSource": "uzumaki-ui/react"
   },
   "include": ["src/**/*.ts", "src/**/*.tsx"]
 }
