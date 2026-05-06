@@ -8,7 +8,7 @@ import {
   isEventProp,
   listenerKey,
   parseEventProp,
-} from '../utils';
+} from './utils';
 import type { Window } from '../window';
 
 const RESERVED_PROPS = new Set(['children', 'key', 'ref', 'id']);
