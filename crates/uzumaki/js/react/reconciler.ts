@@ -19,11 +19,6 @@ import {
   unhide,
 } from './host';
 
-type Container = {
-  window: Window;
-  rootNode: UzNode;
-};
-
 /**
  * Get text content of a <text> node. will throw an error if you nest a react element inside this
  */
@@ -93,7 +88,7 @@ function createReconciler() {
   return ReactReconciler<
     Type,
     Props,
-    Container,
+    Window,
     Instance,
     TextInstance,
     SuspenseInstance,
@@ -109,12 +104,12 @@ function createReconciler() {
     supportsMutation: true,
     supportsPersistence: false,
 
-    createInstance(type, props, rootContainer) {
-      return createElementInstance(type, props, rootContainer.window);
+    createInstance(type, props, window) {
+      return createElementInstance(type, props, window);
     },
 
-    createTextInstance(text, rootContainer) {
-      return createHostText(rootContainer.window, text);
+    createTextInstance(text, window) {
+      return createHostText(window, text);
     },
 
     shouldSetTextContent(type) {
@@ -129,9 +124,9 @@ function createReconciler() {
       return false;
     },
 
-    appendChildToContainer(container, child) {
-      if (container.window.isDisposed) return;
-      container.rootNode.appendChild(child);
+    appendChildToContainer(window, child) {
+      if (window.isDisposed) return;
+      window.root.appendChild(child);
     },
 
     appendChild(parent, child) {
@@ -142,9 +137,9 @@ function createReconciler() {
       parent.insertBefore(child, before);
     },
 
-    insertInContainerBefore(container, child, before) {
-      if (container.window.isDisposed) return;
-      container.rootNode.insertBefore(child, before);
+    insertInContainerBefore(window, child, before) {
+      if (window.isDisposed) return;
+      window.root.insertBefore(child, before);
     },
 
     removeChild(parent, child) {
@@ -153,10 +148,10 @@ function createReconciler() {
       parent.removeChild(child);
     },
 
-    removeChildFromContainer(container, child) {
-      if (container.window.isDisposed) return;
+    removeChildFromContainer(window, child) {
+      if (window.isDisposed) return;
       child.destroy();
-      container.rootNode.removeChild(child);
+      window.root.removeChild(child);
     },
 
     commitUpdate(instance, _type, oldProps, newProps, _internalHandle) {
@@ -195,20 +190,20 @@ function createReconciler() {
       resetText(instance);
     },
 
-    clearContainer(container) {
-      container.rootNode.removeChildren();
+    clearContainer(window) {
+      window.root.removeChildren();
     },
 
     getRootHostContext: () => ({}),
     getChildHostContext: (parentHostContext) => parentHostContext,
     getPublicInstance: (instance) => instance,
 
-    prepareForCommit(_container) {
+    prepareForCommit(_window) {
       return null;
     },
 
-    resetAfterCommit(container) {
-      container.window.requestRedraw();
+    resetAfterCommit(window) {
+      window.requestRedraw();
     },
 
     preparePortalMount: () => {},
@@ -247,15 +242,11 @@ function createReconciler() {
   });
 }
 
-const roots = new Map<string, { root: any; container: Container }>();
-
 export function render(window: Window, element: JSX.Element) {
-  const container: Container = { window, rootNode: window.root };
-
   const reconciler = createReconciler();
 
   const root = reconciler.createContainer(
-    container,
+    window,
     1,
     null,
     false,
@@ -267,12 +258,10 @@ export function render(window: Window, element: JSX.Element) {
     () => {},
   );
 
-  roots.set(window.label, { root, container });
   reconciler.updateContainer(element, root, null, null);
 
   function dispose() {
     reconciler.updateContainer(null, root, null, null);
-    roots.delete(window.label);
   }
 
   window.addDisposable(dispose);
