@@ -14,9 +14,9 @@ import { getNode } from './registry';
 import type { NodeId } from './types';
 import type { Window } from './window';
 
-function nodeAt(windowId: number, id: NodeId | null) {
+function nodeAt(window: Window, id: NodeId | null) {
   if (id == null) return null;
-  return getNode(windowId, id) ?? null;
+  return getNode(window, id) ?? null;
 }
 
 function eventNodeEmitter(
@@ -71,7 +71,7 @@ export function dispatchDomEvent(
   const name = EVENT_TYPE_TO_NAME[type];
   if (!name) return false;
 
-  const target = nodeAt(window.id, targetNodeId);
+  const target = nodeAt(window, targetNodeId);
   return dispatchEvent(
     window,
     name,
@@ -90,7 +90,7 @@ export function dispatchEvent(
   const path: NodeId[] =
     targetNodeId == null ? [] : core.getAncestorPath(windowId, targetNodeId);
 
-  const target = nodeAt(windowId, targetNodeId);
+  const target = nodeAt(window, targetNodeId);
   if (!event.target && '_setTarget' in event) {
     (event as any)._setTarget(target);
   }
@@ -111,7 +111,7 @@ export function dispatchEvent(
   fireEmitter(window._emitter as any, name, event, true);
 
   for (let i = path.length - 1; i > 0 && !flags._stopped; i--) {
-    const node = nodeAt(windowId, path[i]!);
+    const node = nodeAt(window, path[i]!);
     const emitter = eventNodeEmitter(node);
     if (emitter) {
       event.currentTarget = node;
@@ -122,7 +122,7 @@ export function dispatchEvent(
   // Target
   if (!flags._stopped) {
     _setEventPhase(event, EventPhase.Target);
-    const node = nodeAt(windowId, path[0]!);
+    const node = nodeAt(window, path[0]!);
     const emitter = eventNodeEmitter(node);
     if (emitter) {
       event.currentTarget = node;
@@ -134,7 +134,7 @@ export function dispatchEvent(
   if (bubbles && !flags._stopped) {
     _setEventPhase(event, EventPhase.Bubble);
     for (let i = 1; i < path.length && !flags._stopped; i++) {
-      const node = nodeAt(windowId, path[i]!);
+      const node = nodeAt(window, path[i]!);
       const emitter = eventNodeEmitter(node);
       if (emitter) {
         event.currentTarget = node;

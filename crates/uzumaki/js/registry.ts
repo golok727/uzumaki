@@ -1,64 +1,60 @@
 import type { UzNode } from './node';
+import type { Window } from './window';
 import type { NodeId } from './types';
 
-const nodes = new Map<number, Map<NodeId, WeakRef<UzNode>>>();
+const NODES = Symbol('uz.nodes');
+
+type NodeMap = Map<NodeId, WeakRef<UzNode>>;
+
+interface NodeHost {
+  [NODES]?: NodeMap;
+}
+
+function nodes(window: Window, create: true): NodeMap;
+function nodes(window: Window, create?: boolean): NodeMap | undefined;
+function nodes(window: Window, create = false): NodeMap | undefined {
+  const host = window as unknown as NodeHost;
+  if (!host[NODES] && create) host[NODES] = new Map();
+  return host[NODES];
+}
 
 const finalizer = new FinalizationRegistry<{
-  windowId: number;
+  window: WeakRef<Window>;
   nodeId: NodeId;
-}>(({ windowId, nodeId }) => {
-  const bucket = nodes.get(windowId);
-  if (!bucket) return;
-  const ref = bucket.get(nodeId);
-  if (!ref || ref.deref() === undefined) {
-    bucket.delete(nodeId);
-    if (bucket.size === 0) nodes.delete(windowId);
-  }
+}>(({ window, nodeId }) => {
+  const w = window.deref();
+  if (!w) return;
+  const map = nodes(w);
+  if (!map) return;
+  const ref = map.get(nodeId);
+  if (!ref || ref.deref() === undefined) map.delete(nodeId);
 });
 
-export function __internalDebugNodeCount(windowID: number): number {
-  return nodes.get(windowID)?.size ?? 0;
-}
-
-function bucketFor(
-  windowId: number,
-  create: boolean,
-): Map<NodeId, WeakRef<UzNode>> | undefined {
-  let bucket = nodes.get(windowId);
-  if (!bucket && create) {
-    bucket = new Map();
-    nodes.set(windowId, bucket);
-  }
-  return bucket;
-}
-
 export function registerNode(node: UzNode): void {
-  bucketFor(node.windowId, true)!.set(node.nodeId, new WeakRef(node));
-  finalizer.register(node, { windowId: node.windowId, nodeId: node.nodeId });
+  const window = node.window;
+  nodes(window, true).set(node.nodeId, new WeakRef(node));
+  finalizer.register(node, {
+    window: new WeakRef(window),
+    nodeId: node.nodeId,
+  });
 }
 
-export function unregisterNode(windowId: number, nodeId: NodeId): void {
-  const bucket = nodes.get(windowId);
-  if (!bucket) return;
-  bucket.delete(nodeId);
-  if (bucket.size === 0) nodes.delete(windowId);
+export function unregisterNode(window: Window, nodeId: NodeId): void {
+  nodes(window)?.delete(nodeId);
 }
 
-export function getNode(windowId: number, nodeId: NodeId): UzNode | undefined {
-  const bucket = nodes.get(windowId);
-  const ref = bucket?.get(nodeId);
+export function getNode(window: Window, nodeId: NodeId): UzNode | undefined {
+  const map = nodes(window);
+  const ref = map?.get(nodeId);
   const node = ref?.deref();
-  if (!node) {
-    bucket?.delete(nodeId);
-    if (bucket?.size === 0) nodes.delete(windowId);
-  }
+  if (!node && map) map.delete(nodeId);
   return node;
 }
 
-export function clearWindowNodes(windowId: number): void {
-  nodes.delete(windowId);
+export function clearWindowNodes(window: Window): void {
+  delete (window as unknown as NodeHost)[NODES];
 }
 
-export function clearNodeRegistry(): void {
-  nodes.clear();
+export function nodeCount(window: Window): number {
+  return nodes(window)?.size ?? 0;
 }

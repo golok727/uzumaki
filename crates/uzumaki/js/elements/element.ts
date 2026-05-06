@@ -34,13 +34,13 @@ export class Element<M extends UzEventMap = UzEventMap> extends UzNode {
             );
           }
           return dispatchEvent(
-            this._window,
+            this.window,
             name as EventName,
             this.nodeId,
             event,
           );
         }
-        return dispatchDomEvent(this._window, type, this.nodeId, event);
+        return dispatchDomEvent(this.window, type, this.nodeId, event);
       },
     });
   }
@@ -75,7 +75,7 @@ export class Element<M extends UzEventMap = UzEventMap> extends UzNode {
   }
 
   focus(): void {
-    core.focusElement(this._window.id, this._native.id);
+    core.focusElement(this.window.id, this._native.id);
   }
 
   setAttribute(name: string, value: unknown): void {

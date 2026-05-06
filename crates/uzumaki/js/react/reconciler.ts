@@ -159,7 +159,7 @@ function createReconciler() {
     },
 
     removeChild(parent, child) {
-      if (!parent.node._window.isDisposed) {
+      if (!parent.node.window.isDisposed) {
         removeHostChild(parent, child);
       }
     },
@@ -171,7 +171,7 @@ function createReconciler() {
     },
 
     commitUpdate(instance, _type, oldProps, newProps, _internalHandle) {
-      if (instance.node._window.isDisposed) return;
+      if (instance.node.window.isDisposed) return;
       const normalizedNewProps = isTextElementType(instance.type)
         ? { ...newProps, children: getTextContent(newProps.children) }
         : newProps;
@@ -182,7 +182,7 @@ function createReconciler() {
     },
 
     commitTextUpdate(instance, _oldText, newText) {
-      if (instance.node._window.isDisposed) return;
+      if (instance.node.window.isDisposed) return;
       commitTextUpdate(instance, newText);
     },
 
