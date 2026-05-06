@@ -515,7 +515,7 @@ pub struct Node {
 
     /// The base style for this element. Converted to taffy for layout.
     pub style: UzStyle,
-    /// Interactivity: hover/active style overrides, hitbox, event listeners.
+    /// Interactivity: hover/active style overrides and hitbox state.
     pub interactivity: Interactivity,
     /// Scroll state, present only when overflow_y == Scroll.
     pub scroll_state: Option<ScrollState>,

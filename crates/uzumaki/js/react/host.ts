@@ -63,7 +63,6 @@ export function applyProps(
   updateAttributes(element, oldBuckets.styles, newBuckets.styles);
   updateAttributes(element, oldBuckets.attrs, newBuckets.attrs);
   updateEvents(element, oldBuckets.events, newBuckets.events);
-  syncInteractive(element, newBuckets.events.size > 0);
   if (element.type === 'text') {
     element.textContent = String(newProps.children ?? '');
   }
@@ -161,8 +160,4 @@ function updateEvents(
       el.off(old.name, old.handler as any, { capture: old.capture });
     }
   }
-}
-
-function syncInteractive(element: UzElement, hasReactEvents: boolean): void {
-  element.setAttribute('interactive', hasReactEvents);
 }

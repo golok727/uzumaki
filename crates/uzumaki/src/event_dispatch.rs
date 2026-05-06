@@ -549,13 +549,6 @@ pub fn handle_mouse_input(
     let mut needs_redraw = false;
     let mut events: Vec<AppEvent> = Vec::new();
 
-    let mouse_button = match button {
-        winit::event::MouseButton::Left => crate::interactivity::MouseButton::Left,
-        winit::event::MouseButton::Right => crate::interactivity::MouseButton::Right,
-        winit::event::MouseButton::Middle => crate::interactivity::MouseButton::Middle,
-        _ => crate::interactivity::MouseButton::Left,
-    };
-
     let button_num: u8 = match button {
         winit::event::MouseButton::Left => 0,
         winit::event::MouseButton::Middle => 1,
@@ -629,7 +622,6 @@ pub fn handle_mouse_input(
     match btn_state {
         ElementState::Pressed => {
             dom.set_active(js_target);
-            dom.dispatch_mouse_down(mx, my, mouse_button);
             if let Some(target) = js_target {
                 events.push(AppEvent::MouseDown(MouseEventData {
                     window_id: wid,
@@ -644,7 +636,7 @@ pub fn handle_mouse_input(
             }
 
             // Input focus handling (left button)
-            if mouse_button == crate::interactivity::MouseButton::Left {
+            if button == winit::event::MouseButton::Left {
                 let clicked_is_input = js_target
                     .and_then(|nid| dom.nodes.get(nid))
                     .map(|n| n.is_text_input())
@@ -885,7 +877,6 @@ pub fn handle_mouse_input(
             needs_redraw = true;
         }
         ElementState::Released => {
-            dom.dispatch_mouse_up(mx, my, mouse_button);
             if let Some(target) = js_target {
                 events.push(AppEvent::MouseUp(MouseEventData {
                     window_id: wid,
@@ -902,7 +893,7 @@ pub fn handle_mouse_input(
             if let Some(active) = dom.hit_state.active_node
                 && dom.hit_state.is_hovered(active)
             {
-                if mouse_button == crate::interactivity::MouseButton::Left
+                if button == winit::event::MouseButton::Left
                     && let Some(target) = js_target
                     && let Some(node) = dom.nodes.get_mut(target)
                     && let Some(checked) = node.as_checkbox_input_mut()
@@ -915,7 +906,6 @@ pub fn handle_mouse_input(
                         data: None,
                     }));
                 }
-                dom.dispatch_click(mx, my, mouse_button);
                 if let Some(target) = js_target {
                     events.push(AppEvent::Click(MouseEventData {
                         window_id: wid,
@@ -1148,8 +1138,6 @@ pub fn handle_key_for_button(
             )
         })
         .unwrap_or((0.0, 0.0));
-
-    dom.dispatch_click(x as f64, y as f64, crate::interactivity::MouseButton::Left);
 
     (
         true,

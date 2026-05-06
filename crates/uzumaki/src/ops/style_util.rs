@@ -903,7 +903,6 @@ fn clear_variant_prop(node: &mut Node, prop: StyleProp, variant: StyleVariant) {
             }
             StyleProp::Display => style.display = None,
             StyleProp::Cursor => style.cursor = None,
-            StyleProp::Interactive => {}
             StyleProp::Visibility => style.visibility = None,
             StyleProp::Scroll => {
                 style.overflow_x = None;
@@ -1057,9 +1056,6 @@ fn parse_font_weight_number(value: f32) -> Option<FontWeight> {
 
 fn set_f32_style_prop(node: &mut Node, prop: StyleProp, v: f32) {
     match prop {
-        StyleProp::Interactive => {
-            node.interactivity.js_interactive = v > 0.5;
-        }
         StyleProp::Scroll => {
             if v > 0.5 {
                 node.style.overflow_x = Overflow::Auto;
@@ -1391,7 +1387,6 @@ fn clear_style_prop(node: &mut Node, prop: StyleProp, variant: StyleVariant) {
         StyleProp::ScaleY => node.style.transform.scale_y = default.transform.scale_y,
         StyleProp::Display => node.style.display = default.display,
         StyleProp::Cursor => node.style.cursor = default.cursor,
-        StyleProp::Interactive => node.interactivity.js_interactive = false,
         StyleProp::Visibility => node.style.visibility = default.visibility,
         StyleProp::Scroll => {
             node.style.overflow_x = default.overflow_x;
