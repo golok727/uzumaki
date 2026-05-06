@@ -453,8 +453,16 @@ impl<'a> Painter<'a> {
             return None;
         }
 
+        let visible_h = scroll::vertical_scroll_visible_height(
+            layout.size_h as f32,
+            layout.content_w as f32,
+            layout.size_w as f32,
+            scroll_x,
+            style.scrollbar.width,
+        ) as f64;
+
         let max_x = (layout.content_w - layout.size_w).max(0.0);
-        let max_y = (layout.content_h - layout.size_h).max(0.0);
+        let max_y = (layout.content_h - visible_h).max(0.0);
 
         if self.dom.nodes[node_id].scroll_state.is_none() {
             self.dom.nodes[node_id].scroll_state = Some(ScrollState::new());
@@ -477,13 +485,13 @@ impl<'a> Painter<'a> {
                 .is_some_and(|(mx, my)| view_bounds.contains(mx, my));
 
         let mut thumbs = Vec::new();
-        if scroll_y && layout.content_h > layout.size_h {
+        if scroll_y && layout.content_h > visible_h {
             thumbs.push(self.register_view_thumb(
                 node_id,
                 ScrollAxis::Y,
                 view_bounds,
                 layout.content_h,
-                layout.size_h,
+                visible_h,
                 offset_y,
                 transform,
                 &style.scrollbar,

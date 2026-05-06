@@ -40,6 +40,24 @@ impl ScrollAxisInfo {
     }
 }
 
+/// Vertical extent available for scrolling content when a horizontal scrollbar
+/// is shown along the bottom edge (matches thumb placement in `thumb_geometry`).
+#[inline]
+pub fn vertical_scroll_visible_height(
+    layout_height: f32,
+    layout_content_width: f32,
+    layout_size_width: f32,
+    overflow_x_scrollable: bool,
+    scrollbar_width: f32,
+) -> f32 {
+    let mut h = layout_height;
+    if overflow_x_scrollable && layout_content_width > layout_size_width + 0.5 {
+        let reserve = (scrollbar_width as f64 + SCROLLBAR_SIDE_MARGIN).max(0.0);
+        h = ((h as f64) - reserve).max(1.0) as f32;
+    }
+    h
+}
+
 /// Local-space rect of a scrollbar thumb in the view's transform space, plus
 /// the movable range along the drag axis (used by drag handlers) and the
 /// track rect (used by paint to draw the optional track background).

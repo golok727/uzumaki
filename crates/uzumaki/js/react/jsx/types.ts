@@ -153,6 +153,8 @@ export namespace JSX {
         children?: any;
         key?: string | number;
         id?: string;
+        onFocus?: (ev: UzFocusEvent<UzViewElement>) => void;
+        onBlur?: (ev: UzFocusEvent<UzViewElement>) => void;
       };
     text: ElementAttributes &
       EventProps<UzTextElement> & {
@@ -165,6 +167,8 @@ export namespace JSX {
         children?: any;
         key?: string | number;
         id?: string;
+        onFocus?: (ev: UzFocusEvent<UzButtonElement>) => void;
+        onBlur?: (ev: UzFocusEvent<UzButtonElement>) => void;
       };
     input: ElementAttributes &
       EventProps<UzInputElement> & {

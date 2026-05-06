@@ -3,8 +3,8 @@ use slab::Slab;
 use crate::{
     cursor::UzCursorIcon,
     element::{
-        ElementData, ElementNode, ImageData, ImageNode, Node, ScrollDragState, ScrollThumbRect,
-        TextContent, TextNode, TextRunEntry, TextSelectRun, UzNodeId,
+        ElementData, ElementNode, ImageData, ImageNode, Node, ScrollDragState, ScrollState,
+        ScrollThumbRect, TextContent, TextNode, TextRunEntry, TextSelectRun, UzNodeId, scroll,
     },
     input::InputState,
     interactivity::{HitTestState, HitboxStore},
@@ -25,6 +25,7 @@ pub struct UIState {
     pub hit_state: HitTestState,
     /// Currently focuswsed ndoe
     pub focused_node: Option<UzNodeId>,
+    pending_scroll_node_into_view: Option<UzNodeId>,
     /// Input node being dragged for selection.
     pub dragging_input: Option<UzNodeId>,
     /// Last click time (for multi-click detection).
@@ -70,6 +71,7 @@ impl UIState {
             hitbox_store: HitboxStore::default(),
             hit_state: HitTestState::default(),
             focused_node: None,
+            pending_scroll_node_into_view: None,
             dragging_input: None,
             last_click_time: None,
             last_click_node: None,
@@ -295,6 +297,145 @@ impl UIState {
             .and_then(|idx| siblings.get(idx).copied())
     }
 
+    pub fn request_scroll_node_into_view(&mut self, node_id: UzNodeId) {
+        self.pending_scroll_node_into_view = Some(node_id);
+    }
+
+    pub fn scroll_node_into_view(&mut self, node_id: UzNodeId) {
+        if !self.nodes.contains(node_id) {
+            return;
+        }
+
+        let target_id = if self.nodes.get(node_id).is_some_and(|n| n.is_text_input()) {
+            self.nodes
+                .get(node_id)
+                .and_then(|n| n.parent)
+                .unwrap_or(node_id)
+        } else {
+            node_id
+        };
+
+        let Some(scroller_id) = Self::nearest_overflow_scroller_y(&self.nodes, target_id) else {
+            return;
+        };
+
+        let Some(rel) = Self::accumulate_rel_y(&self.nodes, target_id, scroller_id) else {
+            return;
+        };
+
+        let Some(target_node) = self.nodes.get(target_id) else {
+            return;
+        };
+        let Some(scroller_ref) = self.nodes.get(scroller_id) else {
+            return;
+        };
+
+        let target_extent = target_node.final_layout.size.height;
+        let content_extent = scroller_ref.final_layout.content_size.height;
+
+        // Calculate the absolute Y position of the scroller to clamp its visible
+        // height to the actual window bounds. This fixes downward scroll lagging
+        // when the UI layout allows the scroll view to overflow the window bottom.
+        let mut scroller_abs_y = 0.0;
+        let mut cur = scroller_id;
+        while let Some(node) = self.nodes.get(cur) {
+            scroller_abs_y += node.final_layout.location.y;
+            if let Some(pid) = node.parent {
+                cur = pid;
+            } else {
+                break;
+            }
+        }
+
+        let root_height = self
+            .root
+            .and_then(|r| self.nodes.get(r))
+            .map(|n| n.final_layout.size.height)
+            .unwrap_or(f32::MAX);
+
+        let actual_scroller_height = scroller_ref.final_layout.size.height;
+        let clipped_bottom = (scroller_abs_y + actual_scroller_height).min(root_height);
+        let true_viewport_height = (clipped_bottom - scroller_abs_y).max(0.0);
+
+        let viewport_extent = scroll::vertical_scroll_visible_height(
+            true_viewport_height,
+            scroller_ref.final_layout.content_size.width,
+            scroller_ref.final_layout.size.width,
+            scroller_ref.style.overflow_x.is_scrollable(),
+            scroller_ref.style.scrollbar.width,
+        );
+        let cur_offset = scroller_ref
+            .scroll_state
+            .as_ref()
+            .map(|s| s.scroll_offset_y)
+            .unwrap_or(0.0);
+
+        if !rel.is_finite()
+            || !target_extent.is_finite()
+            || !viewport_extent.is_finite()
+            || !content_extent.is_finite()
+            || !cur_offset.is_finite()
+        {
+            return;
+        }
+
+        let max_scroll = (content_extent - viewport_extent).max(0.0);
+        const MARGIN: f32 = 8.0;
+        let inner_usable = (viewport_extent - 2.0 * MARGIN).max(0.0);
+        let target_top = rel;
+        let target_bottom = rel + target_extent;
+
+        let next_offset = if target_extent > inner_usable && inner_usable > 0.0 {
+            (target_top - MARGIN).clamp(0.0, max_scroll)
+        } else {
+            let inner_top = cur_offset + MARGIN;
+            let inner_bottom = cur_offset + viewport_extent - MARGIN;
+            if target_top < inner_top {
+                (target_top - MARGIN).clamp(0.0, max_scroll)
+            } else if target_bottom > inner_bottom {
+                (target_bottom - viewport_extent + MARGIN).clamp(0.0, max_scroll)
+            } else {
+                cur_offset
+            }
+        };
+
+        if next_offset.is_finite() {
+            let ss = self.nodes[scroller_id]
+                .scroll_state
+                .get_or_insert(ScrollState::new());
+            ss.scroll_offset_y = next_offset.clamp(0.0, max_scroll);
+        }
+    }
+
+    fn nearest_overflow_scroller_y(nodes: &Slab<Node>, target_id: UzNodeId) -> Option<UzNodeId> {
+        let mut ancestor = nodes.get(target_id).and_then(|n| n.parent)?;
+        loop {
+            let node = nodes.get(ancestor)?;
+            if node.style.overflow_y.is_scrollable() {
+                return Some(ancestor);
+            }
+            ancestor = node.parent?;
+        }
+    }
+
+    fn accumulate_rel_y(
+        nodes: &Slab<Node>,
+        mut cur: UzNodeId,
+        scroller_id: UzNodeId,
+    ) -> Option<f32> {
+        let mut rel = 0.0f32;
+        loop {
+            let node = nodes.get(cur)?;
+            rel += node.final_layout.location.y;
+            match node.parent {
+                Some(pid) if pid == scroller_id => break,
+                Some(pid) => cur = pid,
+                None => return None,
+            }
+        }
+        Some(rel)
+    }
+
     fn remove_child_ref(&mut self, parent_id: UzNodeId, child_id: UzNodeId) -> bool {
         let Some(index) = self.nodes[parent_id]
             .children
@@ -325,6 +466,9 @@ impl UIState {
     fn on_node_removed(&mut self, id: UzNodeId) {
         if self.focused_node == Some(id) {
             self.focused_node = None;
+        }
+        if self.pending_scroll_node_into_view == Some(id) {
+            self.pending_scroll_node_into_view = None;
         }
         if self.dragging_input == Some(id) {
             self.dragging_input = None;
@@ -480,6 +624,9 @@ impl UIState {
         );
         self.copy_final_layouts();
         self.refresh_text_layouts(text_renderer);
+        if let Some(nid) = self.pending_scroll_node_into_view.take() {
+            self.scroll_node_into_view(nid);
+        }
     }
 
     /// Copy taffy's layout result onto each node so the paint pass can read
