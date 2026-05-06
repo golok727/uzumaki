@@ -3,8 +3,9 @@ use slab::Slab;
 use crate::{
     cursor::UzCursorIcon,
     element::{
-        ElementData, ElementNode, ImageData, ImageNode, Node, ScrollAxis, ScrollDragState,
-        ScrollState, ScrollThumbRect, TextContent, TextNode, TextRunEntry, TextSelectRun, UzNodeId,
+        DragMode, ElementData, ElementNode, ImageData, ImageNode, Node, ScrollAxis, ScrollState,
+        ScrollThumbRect, ScrollWheelTarget, TextContent, TextNode, TextRunEntry, TextSelectRun,
+        UzNodeId,
         scroll::{self, ScrollAlign, ScrollIntoViewOptions},
     },
     input::InputState,
@@ -27,8 +28,6 @@ pub struct UIState {
     /// Currently focuswsed ndoe
     pub focused_node: Option<UzNodeId>,
     pending_scroll_node_into_view: Option<(UzNodeId, ScrollIntoViewOptions)>,
-    /// Input node being dragged for selection.
-    pub dragging_input: Option<UzNodeId>,
     /// Last click time (for multi-click detection).
     pub last_click_time: Option<std::time::Instant>,
     /// Last clicked node (for multi-click detection).
@@ -39,16 +38,13 @@ pub struct UIState {
     pub window_focused: bool,
     /// Scroll thumb rects from last paint pass (for hit testing).
     pub scroll_thumbs: Vec<ScrollThumbRect>,
-    /// Active scroll-thumb drag state (only one at a time).
-    pub scroll_drag: Option<ScrollDragState>,
-    /// Scroll lock: when scrolling starts, lock to that node for a short duration
-    /// to prevent inner scrollable views from stealing wheel events mid-scroll.
-    pub scroll_lock: Option<(UzNodeId, std::time::Instant)>,
+    /// Current UI-owned drag, following Blitz's document-level drag model.
+    pub drag_mode: DragMode,
+    /// Short-lived wheel routing capture for nested scroll continuity.
+    pub wheel_capture: Option<ScrollWheelTarget>,
     /// Current text selection within a textSelect view. `root == None` means
     /// there is no active view selection
     pub text_selection: TextSelection,
-    /// textSelect root being dragged for selection.
-    pub dragging_view_selection: Option<UzNodeId>,
     /// Text runs for textSelect subtrees, rebuilt each frame.
     pub selectable_text_runs: Vec<TextSelectRun>,
 }
@@ -73,16 +69,14 @@ impl UIState {
             hit_state: HitTestState::default(),
             focused_node: None,
             pending_scroll_node_into_view: None,
-            dragging_input: None,
             last_click_time: None,
             last_click_node: None,
             click_count: 0,
             window_focused: true,
             scroll_thumbs: Vec::new(),
-            scroll_drag: None,
-            scroll_lock: None,
+            drag_mode: DragMode::None,
+            wheel_capture: None,
             text_selection: TextSelection::default(),
-            dragging_view_selection: None,
             selectable_text_runs: Vec::new(),
         }
     }
@@ -490,26 +484,20 @@ impl UIState {
         if matches!(self.pending_scroll_node_into_view, Some((nid, _)) if nid == id) {
             self.pending_scroll_node_into_view = None;
         }
-        if self.dragging_input == Some(id) {
-            self.dragging_input = None;
-        }
-        if self.dragging_view_selection == Some(id) {
-            self.dragging_view_selection = None;
-        }
         if self.last_click_node == Some(id) {
             self.last_click_node = None;
             self.click_count = 0;
             self.last_click_time = None;
         }
-        if let Some(d) = &self.scroll_drag
-            && d.node_id == id
-        {
-            self.scroll_drag = None;
+        if self.drag_mode.node_id() == Some(id) {
+            self.drag_mode = DragMode::None;
         }
-        if let Some((nid, _)) = self.scroll_lock
-            && nid == id
+        if self
+            .wheel_capture
+            .as_ref()
+            .is_some_and(|capture| capture.node_id == id)
         {
-            self.scroll_lock = None;
+            self.wheel_capture = None;
         }
         if self
             .text_selection

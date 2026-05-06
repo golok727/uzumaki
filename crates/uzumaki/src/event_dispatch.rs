@@ -2,7 +2,7 @@ use serde::Serialize;
 use winit::keyboard::{Key, NamedKey};
 
 use crate::clipboard::SystemClipboard;
-use crate::element::{ScrollAxis, ScrollDragState, UzNodeId};
+use crate::element::{DragMode, ScrollAxis, ScrollDragState, ScrollWheelTarget, UzNodeId};
 use crate::input::KeyResult;
 use crate::selection::{Affinity, SelectionEndpoint, TextSelection};
 use crate::style::TextStyle;
@@ -273,7 +273,7 @@ pub fn handle_cursor_moved(
     }
 
     // Scroll thumb drag
-    if let Some(ref drag) = dom.scroll_drag {
+    if let Some(drag) = dom.drag_mode.as_scrollbar_thumb() {
         let mouse_pos = match drag.axis {
             ScrollAxis::Y => logical_y,
             ScrollAxis::X => logical_x,
@@ -302,7 +302,7 @@ pub fn handle_cursor_moved(
 
     // Input drag selection
     if mouse_buttons & 1 != 0 {
-        if let Some(drag_nid) = dom.dragging_input {
+        if let DragMode::InputSelection(drag_nid) = dom.drag_mode {
             let hit_info = dom.nodes.get(drag_nid).and_then(|node| {
                 let is = node.as_text_input()?;
                 let input_padding = node.style.padding.left as f64;
@@ -362,7 +362,7 @@ pub fn handle_cursor_moved(
         }
 
         // View text selection drag
-        if let Some(root_id) = dom.dragging_view_selection
+        if let DragMode::ViewSelection(root_id) = dom.drag_mode
             && let Some(hit) = hit_text_in_run(
                 dom,
                 &mut handle.text_renderer,
@@ -591,7 +591,7 @@ pub fn handle_mouse_input(
                         .unwrap_or(0.0)
                 })
                 .unwrap_or(0.0);
-            dom.scroll_drag = Some(ScrollDragState {
+            dom.drag_mode = DragMode::ScrollbarThumb(ScrollDragState {
                 node_id: nid,
                 axis,
                 start_mouse_pos,
@@ -606,9 +606,9 @@ pub fn handle_mouse_input(
     // End scroll drag on mouse up
     if btn_state == ElementState::Released
         && button == winit::event::MouseButton::Left
-        && dom.scroll_drag.is_some()
+        && matches!(dom.drag_mode, DragMode::ScrollbarThumb(_))
     {
-        dom.scroll_drag = None;
+        dom.drag_mode = DragMode::None;
     }
 
     // Resolve topmost hit → NodeId for JS event target
@@ -740,7 +740,7 @@ pub fn handle_mouse_input(
                     }
 
                     scroll_input_to_cursor(dom, handle);
-                    dom.dragging_input = Some(nid);
+                    dom.drag_mode = DragMode::InputSelection(nid);
                 } else if clicked_is_checkbox {
                     let nid = js_target.unwrap();
 
@@ -859,7 +859,7 @@ pub fn handle_mouse_input(
                                     dom.set_selection(TextSelection::new(endpoint, endpoint));
                                 }
                             }
-                            dom.dragging_view_selection = Some(run_root);
+                            dom.drag_mode = DragMode::ViewSelection(run_root);
                         }
                     } else {
                         // Clicked on non-selectable area: clear view selection
@@ -914,8 +914,12 @@ pub fn handle_mouse_input(
                 }
             }
             dom.set_active(None);
-            dom.dragging_input = None;
-            dom.dragging_view_selection = None;
+            if matches!(
+                dom.drag_mode,
+                DragMode::InputSelection(_) | DragMode::ViewSelection(_)
+            ) {
+                dom.drag_mode = DragMode::None;
+            }
             needs_redraw = true;
         }
     }
@@ -1603,14 +1607,13 @@ pub fn handle_mouse_wheel(
 fn apply_wheel_axis(dom: &mut UIState, mx: f64, my: f64, axis: ScrollAxis, delta: f64) -> bool {
     const SCROLL_LOCK_TIMEOUT: std::time::Duration = std::time::Duration::from_millis(150);
 
-    // Honour the existing scroll lock for momentum/inertia continuity, but only
-    // when the locked node is actually scrollable on this axis.
-    let locked = dom.scroll_lock.and_then(|(nid, t)| {
-        if t.elapsed() < SCROLL_LOCK_TIMEOUT {
-            dom.scroll_thumbs
-                .iter()
-                .rev()
-                .find(|tr| tr.node_id == nid && tr.axis == axis && tr.view_bounds.contains(mx, my))
+    // Honour the existing wheel capture for momentum/inertia continuity, but
+    // only when the captured node is actually scrollable on this axis.
+    let locked = dom.wheel_capture.as_ref().and_then(|capture| {
+        if capture.axis == axis && capture.started_at.elapsed() < SCROLL_LOCK_TIMEOUT {
+            dom.scroll_thumbs.iter().rev().find(|tr| {
+                tr.node_id == capture.node_id && tr.axis == axis && tr.view_bounds.contains(mx, my)
+            })
         } else {
             None
         }
@@ -1654,6 +1657,10 @@ fn apply_wheel_axis(dom: &mut UIState, mx: f64, my: f64, axis: ScrollAxis, delta
         return false;
     }
 
-    dom.scroll_lock = Some((nid, std::time::Instant::now()));
+    dom.wheel_capture = Some(ScrollWheelTarget {
+        node_id: nid,
+        axis,
+        started_at: std::time::Instant::now(),
+    });
     true
 }

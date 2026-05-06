@@ -54,6 +54,7 @@ impl ScrollState {
 }
 
 /// Active scroll-thumb drag. Stored on the dom (only one drag at a time).
+#[derive(Clone, Copy, Debug, PartialEq)]
 pub struct ScrollDragState {
     pub node_id: UzNodeId,
     pub axis: ScrollAxis,
@@ -65,6 +66,46 @@ pub struct ScrollDragState {
     pub track_range: f64,
     /// Maximum scroll offset along `axis` (content_size - visible_size).
     pub max_scroll: f32,
+}
+
+/// Short-lived wheel routing capture so a nested scroller keeps ownership
+/// across a burst of wheel events.
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub struct ScrollWheelTarget {
+    pub node_id: UzNodeId,
+    pub axis: ScrollAxis,
+    pub started_at: std::time::Instant,
+}
+
+/// Current drag owned by the UI. Persistent scroll position stays on nodes;
+/// transient gesture ownership lives at the UI/document level.
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub enum DragMode {
+    None,
+    ScrollbarThumb(ScrollDragState),
+    InputSelection(UzNodeId),
+    ViewSelection(UzNodeId),
+    /// Reserved for future element drag / drag event work.
+    Node(UzNodeId),
+}
+
+impl DragMode {
+    pub fn node_id(&self) -> Option<UzNodeId> {
+        match self {
+            Self::None => None,
+            Self::ScrollbarThumb(state) => Some(state.node_id),
+            Self::InputSelection(node_id) | Self::ViewSelection(node_id) | Self::Node(node_id) => {
+                Some(*node_id)
+            }
+        }
+    }
+
+    pub fn as_scrollbar_thumb(&self) -> Option<&ScrollDragState> {
+        match self {
+            Self::ScrollbarThumb(state) => Some(state),
+            _ => None,
+        }
+    }
 }
 
 /// Rendered thumb rect, rebuilt each paint pass for hit testing.
@@ -517,7 +558,7 @@ pub struct Node {
     pub style_variants: StyleVariants,
     /// Hitbox assigned during the latest paint pass. None if not painted yet.
     pub hitbox_id: Option<HitboxId>,
-    /// Scroll state, present only when overflow_y == Scroll.
+    /// Per-node scroll offsets for content that can scroll on either axis.
     pub scroll_state: Option<ScrollState>,
     /// Cached parley layout for text-bearing nodes (text node or `<text>`
     /// element). Refreshed once per frame after taffy compute, then reused by

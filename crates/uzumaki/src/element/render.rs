@@ -573,8 +573,8 @@ impl<'a> Painter<'a> {
 
     fn is_active_drag(&self, node_id: UzNodeId) -> bool {
         self.dom
-            .scroll_drag
-            .as_ref()
+            .drag_mode
+            .as_scrollbar_thumb()
             .is_some_and(|d| d.node_id == node_id)
     }
 
