@@ -1638,14 +1638,14 @@ fn apply_wheel_axis(dom: &mut UIState, mx: f64, my: f64, axis: ScrollAxis, delta
     let mut capture_node = None;
 
     loop {
-        if let Some(next_remaining) = apply_wheel_delta_to_node(dom, nid, axis, remaining) {
-            if next_remaining != remaining {
-                needs_redraw = true;
-                capture_node = Some(nid);
-                remaining = next_remaining;
-                if remaining == 0.0 {
-                    break;
-                }
+        if let Some(next_remaining) = apply_wheel_delta_to_node(dom, nid, axis, remaining)
+            && next_remaining != remaining
+        {
+            needs_redraw = true;
+            capture_node = Some(nid);
+            remaining = next_remaining;
+            if remaining == 0.0 {
+                break;
             }
         }
 
