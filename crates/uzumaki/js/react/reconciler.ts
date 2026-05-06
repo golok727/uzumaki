@@ -6,7 +6,6 @@ import { INTRINSIC_ELEMENTS, __DEV__ } from '../constants';
 
 import type { JSX } from './jsx/runtime';
 
-import core from '../core';
 import { UzElement } from '../elements/base';
 import { UzNode, UzTextNode } from '../node';
 import { Window } from '../window';
@@ -197,7 +196,7 @@ function createReconciler() {
     },
 
     clearContainer(container) {
-      core.resetDom(container.window.id);
+      container.rootNode.removeChildren();
     },
 
     getRootHostContext: () => ({}),
@@ -209,7 +208,7 @@ function createReconciler() {
     },
 
     resetAfterCommit(container) {
-      core.requestRedraw(container.window.id);
+      container.window.requestRedraw();
     },
 
     preparePortalMount: () => {},

@@ -163,6 +163,10 @@ export class Window {
     this._native.focus();
   }
 
+  requestRedraw(): void {
+    core.requestRedraw(this._id);
+  }
+
   set contentProtected(contentProtected: boolean) {
     this._native.contentProtected = contentProtected;
   }

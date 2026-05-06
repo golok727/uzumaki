@@ -331,6 +331,19 @@ impl CoreNode {
 
     #[fast]
     #[allow(non_snake_case)]
+    pub fn removeChildren(&self, state: &mut OpState) -> Result<(), deno_error::JsErrorBox> {
+        let app_state = state.borrow::<SharedAppState>().clone();
+        with_state(&app_state, |s| {
+            let Some(entry) = s.windows.get_mut(&self.window_id) else {
+                return Err(window_not_found());
+            };
+            entry.dom.clear_children(self.node_id);
+            Ok(())
+        })
+    }
+
+    #[fast]
+    #[allow(non_snake_case)]
     pub fn setStrAttribute(
         &self,
         state: &mut OpState,
@@ -591,22 +604,6 @@ fn get_attribute(
             return Ok(Value::Null);
         };
         Ok(entry.get_attribute(nid, name))
-    })
-}
-
-#[op2(fast)]
-pub fn op_reset_dom(
-    state: &mut OpState,
-    #[smi] window_id: u32,
-) -> Result<(), deno_error::JsErrorBox> {
-    let app_state = state.borrow::<SharedAppState>().clone();
-    with_state(&app_state, |s| {
-        let Some(entry) = s.windows.get_mut(&window_id) else {
-            return Err(window_not_found());
-        };
-        let root = entry.dom.root.expect("no root node");
-        entry.dom.clear_children(root);
-        Ok(())
     })
 }
 

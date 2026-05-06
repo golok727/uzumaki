@@ -10,7 +10,6 @@ import {
   op_apply_cached_image,
   op_clear_image_data,
   /** end image */
-  op_reset_dom,
   op_focus_element,
   op_get_ancestor_path,
   op_read_clipboard_text,
@@ -42,7 +41,6 @@ Object.defineProperty(globalThis, '__uzumaki_ops_dont_touch_this__', {
     setEncodedImageData: op_set_encoded_image_data,
     applyCachedImage: op_apply_cached_image,
     clearImageData: op_clear_image_data,
-    resetDom: op_reset_dom,
     focusElement: op_focus_element,
     getAncestorPath: op_get_ancestor_path,
     readClipboardText: op_read_clipboard_text,

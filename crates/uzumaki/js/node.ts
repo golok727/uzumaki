@@ -101,6 +101,12 @@ export class UzNode {
     }
   }
 
+  removeChildren(): void {
+    if (!this.window.isDisposed) {
+      this._native.removeChildren();
+    }
+  }
+
   destroy(): void {
     this.remove();
     let child = this.firstChild;
