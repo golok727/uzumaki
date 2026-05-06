@@ -503,15 +503,15 @@ fn set_style_number(node: &mut Node, prop: StyleProp, variant: StyleVariant, val
 fn get_or_init_variant_style(node: &mut Node, variant: StyleVariant) -> &mut UzStyleRefinement {
     match variant {
         StyleVariant::Hover => node
-            .interactivity
+            .style_variants
             .hover_style
             .get_or_insert_with(|| Box::new(UzStyleRefinement::default())),
         StyleVariant::Active => node
-            .interactivity
+            .style_variants
             .active_style
             .get_or_insert_with(|| Box::new(UzStyleRefinement::default())),
         StyleVariant::Focus => node
-            .interactivity
+            .style_variants
             .focus_style
             .get_or_insert_with(|| Box::new(UzStyleRefinement::default())),
         StyleVariant::Base => unreachable!(),
@@ -832,9 +832,9 @@ fn set_variant_flex_string(node: &mut Node, variant: StyleVariant, value: &str) 
 
 fn clear_variant_prop(node: &mut Node, prop: StyleProp, variant: StyleVariant) {
     let style = match variant {
-        StyleVariant::Hover => node.interactivity.hover_style.as_mut(),
-        StyleVariant::Active => node.interactivity.active_style.as_mut(),
-        StyleVariant::Focus => node.interactivity.focus_style.as_mut(),
+        StyleVariant::Hover => node.style_variants.hover_style.as_mut(),
+        StyleVariant::Active => node.style_variants.active_style.as_mut(),
+        StyleVariant::Focus => node.style_variants.focus_style.as_mut(),
         StyleVariant::Base => unreachable!(),
     };
 
@@ -970,7 +970,7 @@ fn set_color_style_prop(node: &mut Node, prop: StyleProp, color: Color) {
         }
         StyleProp::Color => {
             node.style.text.color = color;
-            node.interactivity.base_style.text.color = Some(color);
+            node.style_variants.base_style.text.color = Some(color);
         }
         StyleProp::BorderColor => {
             node.style.border_color = Some(color);
@@ -993,12 +993,12 @@ fn set_color_style_prop(node: &mut Node, prop: StyleProp, color: Color) {
 
 fn set_font_weight(node: &mut Node, weight: FontWeight) {
     node.style.text.font_weight = weight;
-    node.interactivity.base_style.text.font_weight = Some(weight);
+    node.style_variants.base_style.text.font_weight = Some(weight);
 }
 
 fn set_font_family(node: &mut Node, font_family: impl Into<SharedString>) {
     let font_family: SharedString = font_family.into();
-    node.interactivity.base_style.text.font_family = Some(font_family);
+    node.style_variants.base_style.text.font_family = Some(font_family);
 }
 
 fn set_variant_font_family(
@@ -1098,7 +1098,7 @@ fn set_f32_style_prop(node: &mut Node, prop: StyleProp, v: f32) {
         StyleProp::TextSelect => {
             let text_selectable = (v > 0.5).into();
             node.set_text_selectable(text_selectable);
-            node.interactivity.base_style.text_selectable = Some(text_selectable);
+            node.style_variants.base_style.text_selectable = Some(text_selectable);
         }
         _ => {}
     }
@@ -1168,7 +1168,7 @@ fn set_f32_style_prop(node: &mut Node, prop: StyleProp, v: f32) {
         }
         StyleProp::FontSize => {
             style.text.font_size = v;
-            node.interactivity.base_style.text.font_size = Some(v);
+            node.style_variants.base_style.text.font_size = Some(v);
         }
         StyleProp::Rounded => style.corner_radii = Corners::uniform(v),
         StyleProp::RoundedTL => style.corner_radii.top_left = v,
@@ -1288,11 +1288,11 @@ fn set_enum_style_prop_from_str(style: &mut UzStyle, prop: StyleProp, value: &st
 fn remember_inherited_enum(node: &mut Node, prop: StyleProp) {
     match prop {
         StyleProp::TextWrap => {
-            node.interactivity.base_style.text.overflow_wrap = Some(node.style.text.overflow_wrap);
-            node.interactivity.base_style.text.word_break = Some(node.style.text.word_break);
+            node.style_variants.base_style.text.overflow_wrap = Some(node.style.text.overflow_wrap);
+            node.style_variants.base_style.text.word_break = Some(node.style.text.word_break);
         }
         StyleProp::WordBreak => {
-            node.interactivity.base_style.text.word_break = Some(node.style.text.word_break);
+            node.style_variants.base_style.text.word_break = Some(node.style.text.word_break);
         }
         _ => {}
     }
@@ -1349,11 +1349,11 @@ fn clear_style_prop(node: &mut Node, prop: StyleProp, variant: StyleVariant) {
         StyleProp::Bg => node.style.background = default.background,
         StyleProp::Color => {
             node.style.text.color = default.text.color;
-            node.interactivity.base_style.text.color = None;
+            node.style_variants.base_style.text.color = None;
         }
         StyleProp::FontSize => {
             node.style.text.font_size = default.text.font_size;
-            node.interactivity.base_style.text.font_size = None;
+            node.style_variants.base_style.text.font_size = None;
         }
         StyleProp::FontWeight => node.style.text.font_weight = default.text.font_weight,
         StyleProp::FontFamily => node.style.text.font_family = default.text.font_family,
@@ -1413,17 +1413,17 @@ fn clear_style_prop(node: &mut Node, prop: StyleProp, variant: StyleVariant) {
         StyleProp::ScrollbarRadius => node.style.scrollbar.radius = default.scrollbar.radius,
         StyleProp::TextSelect => {
             node.set_text_selectable(default.text_selectable);
-            node.interactivity.base_style.text_selectable = None;
+            node.style_variants.base_style.text_selectable = None;
         }
         StyleProp::TextWrap => {
             node.style.text.overflow_wrap = default.text.overflow_wrap;
             node.style.text.word_break = default.text.word_break;
-            node.interactivity.base_style.text.overflow_wrap = None;
-            node.interactivity.base_style.text.word_break = None;
+            node.style_variants.base_style.text.overflow_wrap = None;
+            node.style_variants.base_style.text.word_break = None;
         }
         StyleProp::WordBreak => {
             node.style.text.word_break = default.text.word_break;
-            node.interactivity.base_style.text.word_break = None;
+            node.style_variants.base_style.text.word_break = None;
         }
         StyleProp::Position => node.style.position = default.position,
         StyleProp::Top => node.style.inset.top = default.inset.top,
@@ -1592,7 +1592,7 @@ mod tests {
             "col"
         ));
 
-        let hover = node.interactivity.hover_style.as_ref().unwrap();
+        let hover = node.style_variants.hover_style.as_ref().unwrap();
         assert_eq!(hover.display, Some(Display::Flex));
         assert_eq!(hover.flex_direction, Some(FlexDirection::Column));
     }
@@ -1625,7 +1625,7 @@ mod tests {
             1.0,
         );
 
-        let hover = node.interactivity.hover_style.as_ref().unwrap();
+        let hover = node.style_variants.hover_style.as_ref().unwrap();
         assert_eq!(hover.overflow_x, Some(Overflow::Auto));
         assert_eq!(hover.overflow_y, Some(Overflow::Auto));
     }

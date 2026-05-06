@@ -112,7 +112,7 @@ impl UIState {
             return UzCursorIcon::Default;
         };
 
-        let style = node.interactivity.compute_style(
+        let style = node.style_variants.compute_style(
             &node.style,
             node_id,
             &self.hit_state,
@@ -137,7 +137,7 @@ impl UIState {
         let mut cur = node.parent;
         while let Some(id) = cur {
             let n = &self.nodes[id];
-            let style = n.interactivity.compute_style(
+            let style = n.style_variants.compute_style(
                 &n.style,
                 id,
                 &self.hit_state,
@@ -533,7 +533,7 @@ impl UIState {
     pub(crate) fn computed_style(&self, node_id: UzNodeId, parent: Option<&UzStyle>) -> UzStyle {
         let node = &self.nodes[node_id];
         let parent = parent.unwrap_or(&node.style);
-        node.interactivity.compute_style_inherited(
+        node.style_variants.compute_style_inherited(
             &node.style,
             parent,
             node_id,

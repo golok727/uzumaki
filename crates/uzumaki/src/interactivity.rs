@@ -159,7 +159,7 @@ fn transformed_axis_aligned_bounds(bounds: Bounds, transform: Affine) -> Bounds 
 /// Holds the style states for an interactive element.
 /// Elements embed this struct and delegate styling through it.
 #[derive(Default)]
-pub struct Interactivity {
+pub struct StyleVariants {
     /// Base style refinement (always applied).
     pub base_style: UzStyleRefinement,
     /// Applied when the element's hitbox is hovered.
@@ -168,12 +168,9 @@ pub struct Interactivity {
     pub active_style: Option<Box<UzStyleRefinement>>,
     /// Applied when the element has keyboard focus.
     pub focus_style: Option<Box<UzStyleRefinement>>,
-
-    /// The hitbox ID assigned to this element during paint. None if not painted yet.
-    pub hitbox_id: Option<HitboxId>,
 }
 
-impl Interactivity {
+impl StyleVariants {
     pub fn new() -> Self {
         Self::default()
     }

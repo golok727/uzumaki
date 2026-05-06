@@ -119,10 +119,7 @@ pub fn input_layout_meta(dom: &UIState, focused_id: UzNodeId) -> Option<FocusedI
     let top_pad = node.style.padding.top;
     let pad_h = node.style.padding.left + node.style.padding.right;
     let text_style = node.style.text.clone();
-    let hb = node
-        .interactivity
-        .hitbox_id
-        .and_then(|hid| dom.hitbox_store.get(hid))?;
+    let hb = node.hitbox_id.and_then(|hid| dom.hitbox_store.get(hid))?;
     let layout = &node.final_layout;
     Some(FocusedInputLayoutMeta {
         taffy_x: hb.bounds.x,
@@ -311,7 +308,6 @@ pub fn handle_cursor_moved(
                 let input_padding = node.style.padding.left as f64;
                 let top_pad = node.style.padding.top;
                 let hb = node
-                    .interactivity
                     .hitbox_id
                     .and_then(|hid| dom.hitbox_store.get(hid))?
                     .bounds;
@@ -417,7 +413,7 @@ fn hit_text_in_run(
     let mut best: Option<(crate::element::UzNodeId, f64, Bounds)> = None;
     for entry in &run.entries {
         let node = dom.nodes.get(entry.node_id)?;
-        let hid = node.interactivity.hitbox_id?;
+        let hid = node.hitbox_id?;
         let hb = dom.hitbox_store.get(hid)?;
         let dist = point_to_rect_dist(mx, my, &hb.bounds);
         if best.is_none() || dist < best.unwrap().1 {
@@ -484,7 +480,6 @@ fn text_range_at_point(
     let node = dom.nodes.get(node_id)?;
     let text = node.get_text_content()?;
     let bounds = node
-        .interactivity
         .hitbox_id
         .and_then(|hid| dom.hitbox_store.get(hid))
         .map(|hb| hb.bounds)?;
@@ -686,7 +681,6 @@ pub fn handle_mouse_input(
                         let input_padding = node.style.padding.left as f64;
                         let top_pad = node.style.padding.top;
                         let hb = node
-                            .interactivity
                             .hitbox_id
                             .and_then(|hid| dom.hitbox_store.get(hid))
                             .map(|hb| hb.bounds);
@@ -1128,7 +1122,6 @@ pub fn handle_key_for_button(
     // otherwise (0, 0). The JS handler usually doesn't depend on coords for
     // keyboard activations.
     let (x, y) = node
-        .interactivity
         .hitbox_id
         .and_then(|hid| dom.hitbox_store.get(hid))
         .map(|hb| {
