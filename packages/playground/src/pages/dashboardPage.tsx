@@ -154,6 +154,7 @@ export function DashboardPage() {
         <view display="flex" flexDir="row" gap={12}>
           <view
             flex={3}
+            minW={0}
             p={20}
             bg={C.surface2}
             rounded={8}
@@ -200,6 +201,7 @@ export function DashboardPage() {
 
           <view
             flex={2}
+            minW={0}
             p={20}
             bg={C.surface2}
             rounded={8}
@@ -212,7 +214,7 @@ export function DashboardPage() {
             <text fontSize={14} fontWeight={700} color={C.text}>
               CPU Bars (last 20 ticks)
             </text>
-            <view display="flex" flexDir="row" flex={1} gap={2} h={80}>
+            <view display="flex" flexDir="row" flex={1} gap={2} h={80} minW={0}>
               {Array.from({ length: 20 }, (_, i) => {
                 const age = 19 - i;
                 const h = 20 + Math.abs(Math.sin((tick - age) * 0.7 + i) * 60);
@@ -221,10 +223,11 @@ export function DashboardPage() {
                 return (
                   <view
                     key={i}
+                    flex={1}
+                    minW={0}
                     display="flex"
                     flexDir="col"
                     justify="end"
-                    w={20}
                     h="full"
                   >
                     <view
