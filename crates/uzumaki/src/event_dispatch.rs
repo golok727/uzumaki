@@ -1620,47 +1620,79 @@ fn apply_wheel_axis(dom: &mut UIState, mx: f64, my: f64, axis: ScrollAxis, delta
     });
 
     let target = if let Some(t) = locked {
-        Some((t.node_id, t.content_size, t.visible_size))
+        Some(t.node_id)
     } else {
         dom.scroll_thumbs
             .iter()
             .rev()
             .find(|t| t.axis == axis && t.view_bounds.contains(mx, my))
-            .map(|t| (t.node_id, t.content_size, t.visible_size))
+            .map(|t| t.node_id)
     };
 
-    let Some((nid, content, visible)) = target else {
+    let Some(mut nid) = target else {
         return false;
     };
 
-    let max_scroll = (content - visible).max(0.0);
-    let Some(node) = dom.nodes.get_mut(nid) else {
-        return false;
-    };
+    let mut remaining = delta;
+    let mut needs_redraw = false;
+    let mut capture_node = None;
+
+    loop {
+        if let Some(next_remaining) = apply_wheel_delta_to_node(dom, nid, axis, remaining) {
+            if next_remaining != remaining {
+                needs_redraw = true;
+                capture_node = Some(nid);
+                remaining = next_remaining;
+                if remaining == 0.0 {
+                    break;
+                }
+            }
+        }
+
+        let Some(parent) = dom.nodes.get(nid).and_then(|node| node.parent) else {
+            break;
+        };
+        nid = parent;
+    }
+
+    if let Some(node_id) = capture_node {
+        dom.wheel_capture = Some(ScrollWheelTarget {
+            node_id,
+            axis,
+            started_at: std::time::Instant::now(),
+        });
+    }
+
+    needs_redraw
+}
+
+fn apply_wheel_delta_to_node(
+    dom: &mut UIState,
+    node_id: UzNodeId,
+    axis: ScrollAxis,
+    delta: f64,
+) -> Option<f64> {
+    let thumb = dom
+        .scroll_thumbs
+        .iter()
+        .find(|t| t.node_id == node_id && t.axis == axis)?;
+    let max_scroll = (thumb.content_size - thumb.visible_size).max(0.0);
+    let node = dom.nodes.get_mut(node_id)?;
 
     if let Some(ss) = &mut node.scroll_state {
         let cur = ss.offset(axis);
         let next = (cur - delta as f32).clamp(0.0, max_scroll);
-        if next == cur {
-            return false;
-        }
+        let actual_change = next - cur;
         ss.set_offset(axis, next);
-    } else if axis == ScrollAxis::Y
-        && let Some(is) = node.as_text_input_mut()
-    {
-        let next = (is.scroll_offset_y - delta as f32).clamp(0.0, max_scroll);
-        if next == is.scroll_offset_y {
-            return false;
-        }
+        Some(delta + actual_change as f64)
+    } else if axis == ScrollAxis::Y {
+        let is = node.as_text_input_mut()?;
+        let cur = is.scroll_offset_y;
+        let next = (cur - delta as f32).clamp(0.0, max_scroll);
+        let actual_change = next - cur;
         is.scroll_offset_y = next;
+        Some(delta + actual_change as f64)
     } else {
-        return false;
+        None
     }
-
-    dom.wheel_capture = Some(ScrollWheelTarget {
-        node_id: nid,
-        axis,
-        started_at: std::time::Instant::now(),
-    });
-    true
 }
