@@ -54,7 +54,7 @@ export function EventsPage() {
       </view>
 
       <view display="flex" flexDir="col" gap={24} p={24}>
-        <view
+        <button
           onClick={() => {
             setClicks((c) => c + 1);
             push('onClick');
@@ -95,7 +95,7 @@ export function EventsPage() {
               hover, active, onClick, onMouseDown, onMouseUp
             </text>
           </view>
-        </view>
+        </button>
 
         <view display="flex" flexDir="row" gap={12}>
           {[
@@ -124,7 +124,7 @@ export function EventsPage() {
               bg: C.warningDim,
             },
           ].map(({ label, count, color, bg }) => (
-            <view
+            <button
               key={label}
               flex={1}
               p={16}
@@ -145,7 +145,7 @@ export function EventsPage() {
               <text fontSize={36} fontWeight={900} color={color}>
                 {count}
               </text>
-            </view>
+            </button>
           ))}
         </view>
 
@@ -185,7 +185,7 @@ export function EventsPage() {
               },
             ].map(({ label, props }) => {
               return (
-                <view
+                <button
                   key={label}
                   flex={1}
                   p={14}
@@ -197,7 +197,7 @@ export function EventsPage() {
                   {...props}
                 >
                   <text fontSize={12}>{label}</text>
-                </view>
+                </button>
               );
             })}
           </view>

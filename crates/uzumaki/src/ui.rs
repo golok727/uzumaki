@@ -3,7 +3,7 @@ use slab::Slab;
 use crate::{
     cursor::UzCursorIcon,
     element::{
-        DragMode, ElementData, ElementNode, ImageData, ImageNode, Node, ScrollAxis, ScrollState,
+        DragMode, ElementNode, ImageData, ImageNode, Node, ScrollAxis, ScrollState,
         ScrollThumbRect, ScrollWheelTarget, TextContent, TextNode, TextRunEntry, TextSelectRun,
         UzNodeId,
         scroll::{self, ScrollAlign, ScrollIntoViewOptions},
@@ -153,8 +153,12 @@ impl UIState {
 
     /// Create a View element with a style.
     pub fn create_view(&mut self, style: UzStyle) -> UzNodeId {
+        self.nodes.insert(Node::new(style, ElementNode::new_view()))
+    }
+
+    pub fn create_button(&mut self, style: UzStyle) -> UzNodeId {
         self.nodes
-            .insert(Node::new(style, ElementNode::new(ElementData::None)))
+            .insert(Node::new(style, ElementNode::new_button()))
     }
 
     // leaf text node
@@ -746,6 +750,26 @@ impl UIState {
         self.hit_state.active_node = node_id;
     }
 
+    pub fn nearest_button_ancestor(&self, node_id: UzNodeId) -> Option<UzNodeId> {
+        self.nearest_ancestor_matching(node_id, |node| node.is_button())
+    }
+
+    fn nearest_ancestor_matching(
+        &self,
+        node_id: UzNodeId,
+        mut matches: impl FnMut(&Node) -> bool,
+    ) -> Option<UzNodeId> {
+        let mut current = Some(node_id);
+        while let Some(id) = current {
+            let node = self.nodes.get(id)?;
+            if matches(node) {
+                return Some(id);
+            }
+            current = node.parent;
+        }
+        None
+    }
+
     /// Find the text run that contains a given text node.
     pub fn find_run_for_node(&self, node_id: UzNodeId) -> Option<&TextSelectRun> {
         self.selectable_text_runs
@@ -863,6 +887,60 @@ mod tests {
         dom.nodes[parent].style.cursor = Some(UzCursorIcon::Pointer);
 
         assert_eq!(dom.resolve_cursor(child), UzCursorIcon::Pointer);
+    }
+
+    #[test]
+    fn button_child_press_activates_button_ancestor() {
+        let mut dom = UIState::new();
+        let button = dom.create_button(Default::default());
+        let label = dom.create_text_element("Press".into(), Default::default());
+
+        dom.append_child(button, label);
+        dom.hitbox_store
+            .insert(button, Bounds::new(0.0, 0.0, 100.0, 40.0));
+        dom.hitbox_store
+            .insert(label, Bounds::new(20.0, 10.0, 60.0, 20.0));
+
+        dom.update_hit_test(30.0, 20.0);
+        assert_eq!(dom.hit_state.top_node, Some(label));
+        assert_eq!(dom.nearest_button_ancestor(label), Some(button));
+
+        dom.set_active(dom.nearest_button_ancestor(label).or(Some(label)));
+        assert!(dom.hit_state.is_active(button));
+    }
+
+    #[test]
+    fn non_button_press_keeps_hit_node_active() {
+        let mut dom = UIState::new();
+        let view = dom.create_view(Default::default());
+
+        dom.hitbox_store
+            .insert(view, Bounds::new(0.0, 0.0, 100.0, 40.0));
+        dom.update_hit_test(30.0, 20.0);
+
+        let active = dom
+            .hit_state
+            .top_node
+            .and_then(|nid| dom.nearest_button_ancestor(nid).or(Some(nid)));
+        dom.set_active(active);
+
+        assert!(dom.hit_state.is_active(view));
+    }
+
+    #[test]
+    fn keyboard_activation_is_limited_to_element_kind() {
+        let mut dom = UIState::new();
+        let focusable_view = dom.create_view(Default::default());
+        let button = dom.create_button(Default::default());
+
+        dom.nodes[focusable_view]
+            .as_element_mut()
+            .unwrap()
+            .set_focussable(true);
+
+        assert!(dom.nodes[focusable_view].is_focusable());
+        assert!(!dom.nodes[focusable_view].is_keyboard_activatable());
+        assert!(dom.nodes[button].is_keyboard_activatable());
     }
 
     #[test]

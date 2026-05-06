@@ -611,13 +611,16 @@ pub fn handle_mouse_input(
         dom.drag_mode = DragMode::None;
     }
 
-    // Resolve topmost hit → NodeId for JS event target
-    let js_target = dom.hit_state.top_node;
+    // Resolve topmost hit -> NodeId for JS event target. Active state normally
+    // belongs to the hit node; buttons are the special case where a child press
+    // should style the owning button.
+    let target_node = dom.hit_state.top_node;
+    let press_target = target_node.and_then(|nid| dom.nearest_button_ancestor(nid).or(Some(nid)));
 
     match btn_state {
         ElementState::Pressed => {
-            dom.set_active(js_target);
-            if let Some(target) = js_target {
+            dom.set_active(press_target);
+            if let Some(target) = target_node {
                 events.push(AppEvent::MouseDown(MouseEventData {
                     window_id: wid,
                     node_id: target,
@@ -632,20 +635,12 @@ pub fn handle_mouse_input(
 
             // Input focus handling (left button)
             if button == winit::event::MouseButton::Left {
-                let clicked_is_input = js_target
-                    .and_then(|nid| dom.nodes.get(nid))
-                    .map(|n| n.is_text_input())
-                    .unwrap_or(false);
-                let clicked_is_checkbox = js_target
-                    .and_then(|nid| dom.nodes.get(nid))
-                    .map(|n| n.is_checkbox_input())
-                    .unwrap_or(false);
+                let input_target = target_node
+                    .filter(|&nid| dom.nodes.get(nid).is_some_and(|n| n.is_text_input()));
 
                 let old_focus = dom.focused_node;
 
-                if clicked_is_input {
-                    let nid = js_target.unwrap();
-
+                if let Some(nid) = input_target {
                     // Multi-click detection (double=word, triple=line, quad=select all)
                     let now = std::time::Instant::now();
                     let is_consecutive = dom.last_click_node == Some(nid)
@@ -741,24 +736,6 @@ pub fn handle_mouse_input(
 
                     scroll_input_to_cursor(dom, handle);
                     dom.drag_mode = DragMode::InputSelection(nid);
-                } else if clicked_is_checkbox {
-                    let nid = js_target.unwrap();
-
-                    if old_focus != Some(nid) {
-                        if let Some(old_id) = old_focus {
-                            events.push(AppEvent::Blur(FocusEventData {
-                                window_id: wid,
-                                node_id: old_id,
-                            }));
-                        }
-                        events.push(AppEvent::Focus(FocusEventData {
-                            window_id: wid,
-                            node_id: nid,
-                        }));
-                    }
-
-                    dom.clear_selection();
-                    dom.focused_node = Some(nid);
                 } else {
                     // Clicked non-input: blur focused input
                     if let Some(old_id) = old_focus {
@@ -775,10 +752,10 @@ pub fn handle_mouse_input(
                     // matches browser behaviour where clicking padding/empty
                     // space inside a `<p>` begins selection.
                     let run_root_for_click =
-                        js_target.and_then(|nid| dom.containing_text_run_root(nid));
+                        target_node.and_then(|nid| dom.containing_text_run_root(nid));
 
                     if let Some(run_root) = run_root_for_click {
-                        let nid = js_target.unwrap();
+                        let nid = target_node.unwrap();
 
                         // Starting a view selection blurs any focused input
                         if let Some(old_id) = dom.focused_node.take() {
@@ -871,7 +848,7 @@ pub fn handle_mouse_input(
             needs_redraw = true;
         }
         ElementState::Released => {
-            if let Some(target) = js_target {
+            if let Some(target) = target_node {
                 events.push(AppEvent::MouseUp(MouseEventData {
                     window_id: wid,
                     node_id: target,
@@ -888,19 +865,18 @@ pub fn handle_mouse_input(
                 && dom.hit_state.is_hovered(active)
             {
                 if button == winit::event::MouseButton::Left
-                    && let Some(target) = js_target
-                    && let Some(node) = dom.nodes.get_mut(target)
+                    && let Some(node) = dom.nodes.get_mut(active)
                     && let Some(checked) = node.as_checkbox_input_mut()
                 {
                     *checked = !*checked;
                     events.push(AppEvent::Input(InputEventData {
                         window_id: wid,
-                        node_id: target,
+                        node_id: active,
                         input_type: "toggle".to_string(),
                         data: None,
                     }));
                 }
-                if let Some(target) = js_target {
+                if let Some(target) = target_node {
                     events.push(AppEvent::Click(MouseEventData {
                         window_id: wid,
                         node_id: target,
@@ -1092,9 +1068,8 @@ pub fn handle_key_for_checkbox(
     )
 }
 
-/// Handle Enter/Space on a focused button-like element (focusable view that's
-/// not a text input or checkbox). Fires a synthetic click, mirroring browser
-/// behavior on `<button>`.
+/// Handle Enter/Space on a focused button element. Fires a synthetic click,
+/// mirroring browser behavior on `<button>`.
 pub fn handle_key_for_button(
     dom: &mut UIState,
     wid: u32,
@@ -1118,7 +1093,7 @@ pub fn handle_key_for_button(
     let Some(node) = dom.nodes.get(focused_id) else {
         return (false, Vec::new());
     };
-    if node.is_text_input() || node.is_checkbox_input() || !node.is_focusable() {
+    if !node.is_button() {
         return (false, Vec::new());
     }
 

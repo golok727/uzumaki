@@ -222,17 +222,46 @@ pub struct TextSelectRun {
     pub total_graphemes: usize,
 }
 
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+pub enum ElementKind {
+    #[default]
+    View,
+    Text,
+    Button,
+    Input,
+    Checkbox,
+    Image,
+}
+
+impl ElementKind {
+    pub fn is_keyboard_activatable(self) -> bool {
+        matches!(self, Self::Button | Self::Checkbox)
+    }
+}
+
 pub struct ElementNode {
+    pub kind: ElementKind,
     pub is_focussable: bool,
     pub data: ElementData,
 }
 
 impl ElementNode {
-    pub fn new(data: ElementData) -> Self {
+    pub fn new(kind: ElementKind, data: ElementData) -> Self {
         Self {
+            kind,
             is_focussable: false,
             data,
         }
+    }
+
+    pub fn new_view() -> Self {
+        Self::new(ElementKind::View, ElementData::None)
+    }
+
+    pub fn new_button() -> Self {
+        let mut element = Self::new(ElementKind::Button, ElementData::None);
+        element.set_focussable(true);
+        element
     }
 
     /**
@@ -242,19 +271,19 @@ impl ElementNode {
      *NodeData::TextNode()   NodeData::ElementNode(ElementData::Text())
      */
     pub fn new_text(text: TextContent) -> Self {
-        Self::new(ElementData::Text(text))
+        Self::new(ElementKind::Text, ElementData::Text(text))
     }
 
     pub fn new_text_input(state: InputState) -> Self {
-        Self::new(ElementData::TextInput(Box::new(state)))
+        Self::new(ElementKind::Input, ElementData::TextInput(Box::new(state)))
     }
 
     pub fn new_checkbox_input(checked: bool) -> Self {
-        Self::new(ElementData::CheckboxInput(checked))
+        Self::new(ElementKind::Checkbox, ElementData::CheckboxInput(checked))
     }
 
     pub fn new_image(state: ImageNode) -> Self {
-        Self::new(ElementData::Image(Box::new(state)))
+        Self::new(ElementKind::Image, ElementData::Image(Box::new(state)))
     }
 
     pub fn is_text_input(&self) -> bool {
@@ -267,6 +296,14 @@ impl ElementNode {
 
     pub fn is_image(&self) -> bool {
         self.data.is_image()
+    }
+
+    pub fn is_button(&self) -> bool {
+        self.kind == ElementKind::Button
+    }
+
+    pub fn is_keyboard_activatable(&self) -> bool {
+        self.kind.is_keyboard_activatable()
     }
 
     pub fn is_focussable(&self) -> bool {
@@ -508,6 +545,20 @@ impl NodeData {
         }
     }
 
+    pub fn is_button(&self) -> bool {
+        match self {
+            Self::Element(element) => element.is_button(),
+            _ => false,
+        }
+    }
+
+    pub fn is_keyboard_activatable(&self) -> bool {
+        match self {
+            Self::Element(element) => element.is_keyboard_activatable(),
+            _ => false,
+        }
+    }
+
     pub fn is_element(&self) -> bool {
         matches!(self, Self::Element(_))
     }
@@ -651,6 +702,14 @@ impl Node {
 
     pub fn is_image(&self) -> bool {
         self.data.is_image()
+    }
+
+    pub fn is_button(&self) -> bool {
+        self.data.is_button()
+    }
+
+    pub fn is_keyboard_activatable(&self) -> bool {
+        self.data.is_keyboard_activatable()
     }
 
     pub fn is_text_node(&self) -> bool {

@@ -430,14 +430,10 @@ fn create_element(
             entry.dom.create_image(style)
         } else if element_type == "text" {
             entry.dom.create_text_element(String::new(), style)
+        } else if element_type == "button" {
+            entry.dom.create_button(style)
         } else {
-            let id = entry.dom.create_view(style);
-            if element_type == "button"
-                && let Some(el) = entry.dom.nodes[id].as_element_mut()
-            {
-                el.set_focussable(true);
-            }
-            id
+            entry.dom.create_view(style)
         };
         Ok(id as u32)
     })
