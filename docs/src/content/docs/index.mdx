@@ -20,13 +20,14 @@ import { Tabs, TabItem, Aside } from '@astrojs/starlight/components';
 
 <Tabs syncKey="platform">
   <TabItem label="Windows">
-    ```powershell irm https://uzumaki.run/install.ps1 | iex ```
+    ```powershell 
+      powershell -c "irm https://uzumaki.run/install.ps1 | iex" 
+    ```
   </TabItem>
-  <TabItem label="macOS">
-    ```sh curl -fsSL https://uzumaki.run/install.sh | sh ```
-  </TabItem>
-  <TabItem label="Linux">
-    ```sh curl -fsSL https://uzumaki.run/install.sh | sh ```
+  <TabItem label="Linux & macOS">
+    ```sh 
+      curl -fsSL https://uzumaki.run/install.sh | sh 
+    ```
   </TabItem>
 </Tabs>
 
@@ -36,8 +37,7 @@ import { Tabs, TabItem, Aside } from '@astrojs/starlight/components';
   function selectPlatformTab() {
     const ua = navigator.userAgent || navigator.platform || '';
     let label = 'Windows';
-    if (/Mac|iPhone|iPad/.test(ua)) label = 'macOS';
-    else if (/Linux/.test(ua)) label = 'Linux';
+    if (/Mac|iPhone|iPad|Linux/.test(ua)) label = 'Linux & macOS';
 
     document.querySelectorAll('starlight-tabs').forEach(function(tabGroup) {
       const tabs = tabGroup.querySelectorAll('[role="tab"]');
