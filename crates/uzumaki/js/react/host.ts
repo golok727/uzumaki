@@ -2,7 +2,6 @@ import { CHECKBOX_ATTR_NAMES, INPUT_ATTR_NAMES } from './constants';
 import { UzElement } from '../elements/base';
 import { UzImageElement } from '../elements/image';
 import { UzTextNode } from '../node';
-import type { ListenerEntry } from '../types';
 import {
   assignNativeStyle,
   isEventProp,
@@ -13,6 +12,12 @@ import type { Window } from '../window';
 
 const RESERVED_PROPS = new Set(['children', 'key', 'ref', 'id']);
 const IMAGE_RESERVED_PROPS = new Set([...RESERVED_PROPS, 'src']);
+
+interface ListenerEntry {
+  name: string;
+  handler: Function;
+  capture: boolean;
+}
 
 export function createElement(
   window: Window,
