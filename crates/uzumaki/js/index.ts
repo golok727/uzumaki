@@ -1,7 +1,13 @@
-import core from './core';
+import core, { type AppPath } from './core';
 import { dispatchDomEvent } from './dispatcher';
 import { EventType } from './events';
 import { disposeWindow, Window } from './window';
+
+declare global {
+  const Uz: {
+    path: AppPath;
+  };
+}
 
 export { __internalDebugNodeCount, getWindow, Window } from './window';
 export type {

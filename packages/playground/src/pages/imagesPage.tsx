@@ -2,7 +2,7 @@ import { useState } from 'react';
 import { C } from '../theme';
 import { Badge } from '../components';
 
-const localSvgUrl = new URL('../../assets/logo.svg', import.meta.url).href;
+const localSvgUrl = Uz.path.resource('assets/logo.svg');
 const remoteImageUrl = 'https://picsum.photos/id/237/800/400';
 
 type Status = 'idle' | 'loading' | 'loaded' | 'error';

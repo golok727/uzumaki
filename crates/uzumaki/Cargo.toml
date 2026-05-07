@@ -20,6 +20,7 @@ anyhow.workspace = true
 arboard = "3.6.1"
 tokio = { workspace = true, features = ["rt", "time"] }
 smol_str = "0.3.6"
+dirs.workspace = true
 
 # Deno deps
 deno_runtime = { workspace = true, features = ["include_js_files_for_snapshotting"] }

@@ -1,45 +1,31 @@
 use anyhow::{Context, Result};
 use std::fs;
 use std::path::{Path, PathBuf};
+use uzumaki_runtime::AppConfig;
 
 use super::embed::read_payload_from_current_exe;
 use super::format::{StandalonePayload, deserialize_payload_bytes, read_payload_from_exe};
 use super::vfs::extract;
 
+const DEFAULT_IDENTIFIER: &str = "com.uzumaki.app";
+
 #[derive(Debug, Clone)]
 pub enum LaunchMode {
     Dev {
-        app_root: PathBuf,
-        entry_path: PathBuf,
-        args: Vec<String>,
+        config: AppConfig,
     },
     Standalone {
-        app_root: PathBuf,
-        entry_path: PathBuf,
-        args: Vec<String>,
+        config: AppConfig,
         #[allow(dead_code)]
         extraction_dir: PathBuf,
     },
 }
 
 impl LaunchMode {
-    pub fn app_root(&self) -> &Path {
+    pub fn app_config(&self) -> &AppConfig {
         match self {
-            LaunchMode::Dev { app_root, .. } => app_root,
-            LaunchMode::Standalone { app_root, .. } => app_root,
-        }
-    }
-    pub fn entry_path(&self) -> &Path {
-        match self {
-            LaunchMode::Dev { entry_path, .. } => entry_path,
-            LaunchMode::Standalone { entry_path, .. } => entry_path,
-        }
-    }
-
-    pub fn args(&self) -> &[String] {
-        match self {
-            LaunchMode::Dev { args, .. } => args,
-            LaunchMode::Standalone { args, .. } => args,
+            LaunchMode::Dev { config, .. } => config,
+            LaunchMode::Standalone { config, .. } => config,
         }
     }
 }
@@ -67,10 +53,17 @@ pub fn detect_and_prepare() -> Result<Option<LaunchMode>> {
             .replace('/', std::path::MAIN_SEPARATOR_STR),
     );
 
+    let exe_dir = exe.parent().map(Path::to_path_buf).unwrap_or_default();
+    let resource_root = exe_dir.join("resources");
+
     Ok(Some(LaunchMode::Standalone {
-        app_root,
-        entry_path,
-        args,
+        config: AppConfig {
+            entry: entry_path,
+            app_root,
+            args,
+            identifier: DEFAULT_IDENTIFIER.to_string(),
+            resource_root,
+        },
         extraction_dir,
     }))
 }

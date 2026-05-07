@@ -22,6 +22,7 @@ pub use shared_string::*;
 
 use deno_core::*;
 
+pub use crate::app::AppConfig;
 pub use crate::app::Application;
 
 pub(crate) mod parse;
@@ -75,7 +76,7 @@ extension!(
     op_read_clipboard_text,
     op_write_clipboard_text,
   ],
-  objects = [ops::window::CoreWindow, ops::dom::CoreNode],
+  objects = [ops::window::CoreWindow, ops::dom::CoreNode, ops::path::AppPath],
   esm_entry_point = "ext:uzumaki/runtime.js",
   esm = [ dir "core", "runtime.js" ],
 );

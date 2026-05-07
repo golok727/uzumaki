@@ -1,3 +1,5 @@
+import { primordials } from 'ext:core/mod.js';
+
 import {
   op_create_window,
   op_request_quit,
@@ -15,7 +17,10 @@ import {
   op_read_clipboard_text,
   op_write_clipboard_text,
   op_get_uz_runtime_version,
+  AppPath,
 } from 'ext:core/ops';
+
+const { ObjectDefineProperty } = primordials;
 
 const appEventSubscribers = [];
 
@@ -30,7 +35,20 @@ function onAppEvent(handler) {
   };
 }
 
-Object.defineProperty(globalThis, '__uzumaki_ops_dont_touch_this__', {
+// todo find a better way to do this
+let appPath;
+ObjectDefineProperty(globalThis, 'Uz', {
+  value: {
+    get path() {
+      if (appPath === undefined) appPath = new AppPath();
+      return appPath;
+    },
+  },
+  writable: false,
+  configurable: false,
+});
+
+ObjectDefineProperty(globalThis, '__uzumaki_ops_dont_touch_this__', {
   value: Object.freeze({
     createWindow: op_create_window,
     requestQuit: op_request_quit,
@@ -41,6 +59,7 @@ Object.defineProperty(globalThis, '__uzumaki_ops_dont_touch_this__', {
     setEncodedImageData: op_set_encoded_image_data,
     applyCachedImage: op_apply_cached_image,
     clearImageData: op_clear_image_data,
+    // todo dispatch focus event
     focusElement: op_focus_element,
     getAncestorPath: op_get_ancestor_path,
     readClipboardText: op_read_clipboard_text,

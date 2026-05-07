@@ -36,6 +36,23 @@ use crate::runtime::sys::UzSys;
 use crate::ui::UIState;
 use crate::{runtime, window};
 
+#[derive(Clone, Debug)]
+pub struct AppConfig {
+    /// Entry module to execute (resolved absolute path).
+    pub entry: PathBuf,
+    /// Root directory used for module/node resolution.
+    pub app_root: PathBuf,
+    /// Extra runtime args exposed via `Deno.args`.
+    pub args: Vec<String>,
+    /// Root directory for `Uz.path.resource(rel)`.
+    /// In dev: project dir (where `uzumaki.config.json` sits, or the entry's parent).
+    /// In standalone: `<exe_dir>/resources` (or wherever the host stages bundled files).
+    pub resource_root: PathBuf,
+    /// App identifier (e.g. `com.uzumaki.playground`). Used as the per-app
+    /// folder name under the platform cache/data/config dirs.
+    pub identifier: String,
+}
+
 /// Estimated bytes a single retained Rust DOM node holds. Reported to V8 via
 /// `adjust_amount_of_external_allocated_memory` so cppgc schedules collections
 /// based on the real memory footprint, not just the size of the JS wrapper.
@@ -226,10 +243,8 @@ pub struct Application {
 
 impl Application {
     pub fn new_with_root(
-        main_file: impl Into<PathBuf>,
-        app_root: impl Into<PathBuf>,
-        args: Vec<String>,
         startup_snapshot: Option<&'static [u8]>,
+        config: AppConfig,
     ) -> Result<Self> {
         let tokio_runtime = tokio::runtime::Builder::new_multi_thread()
             .worker_threads(1)
@@ -238,8 +253,9 @@ impl Application {
             .build()
             .expect("failed to create tokio runtime");
 
-        let main_file: PathBuf = main_file.into();
-        let app_root: PathBuf = app_root.into();
+        let main_file: PathBuf = config.entry.clone();
+        let app_root: PathBuf = config.app_root.clone();
+        let args: Vec<String> = config.args.clone();
         let sys = sys_traits::impls::RealSys;
 
         // --- BYONM node resolution ---
@@ -396,6 +412,7 @@ impl Application {
             let mut borrow = op_state.borrow_mut();
             borrow.put(app_state.clone());
             borrow.put(event_loop_proxy);
+            borrow.put(config);
         }
 
         Ok(Self {

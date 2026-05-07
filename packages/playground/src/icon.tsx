@@ -7,6 +7,6 @@ export function Icon({
   color: string;
   size?: number;
 }) {
-  const src = new URL(`../assets/icons/${name}.svg`, import.meta.url).href;
+  const src = Uz.path.resource(`assets/icons/${name}.svg`);
   return <image src={src} w={size} h={size} color={color} />;
 }

@@ -26,6 +26,7 @@ zip = { version = "2", default-features = false, features = ["deflate"] }
 tempfile = "3"
 dirs = "6"
 tokio = "1"
+glob = "0.3"
 
 
 [profile.dist]

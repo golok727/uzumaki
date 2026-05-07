@@ -6,6 +6,7 @@ use std::path::{Path, PathBuf};
 use std::process::Command;
 
 use crate::standalone;
+use uzumaki_runtime::AppConfig;
 
 const VERSION: &str = env!("CARGO_PKG_VERSION");
 const GITHUB_REPO: &str = "golok727/uzumaki";
@@ -20,6 +21,16 @@ pub struct UzumakiConfig {
     pub build: BuildConfig,
     #[serde(default)]
     pub pack: PackConfig,
+    #[serde(default)]
+    pub bundle: BundleConfig,
+}
+
+#[derive(Debug, Default, serde::Deserialize)]
+pub struct BundleConfig {
+    /// Files / globs to copy next to the packed exe under `resources/`.
+    /// Resolved relative to the config file's directory.
+    #[serde(default)]
+    pub resources: Vec<String>,
 }
 
 #[derive(Debug, Default, serde::Deserialize)]
@@ -157,14 +168,56 @@ pub fn run_cli() -> Result<Option<standalone::LaunchMode>> {
 
 fn resolve_run(entry: &str, args: Vec<String>) -> Result<standalone::LaunchMode> {
     let cwd = std::env::current_dir()?;
-    let entry_path = fs::canonicalize(cwd.join(entry))
-        .with_context(|| format!("entry point not found: {entry}"))?;
-    let app_root = entry_path.parent().map(|p| p.to_path_buf()).unwrap_or(cwd);
+    let entry_path = strip_unc_prefix(
+        fs::canonicalize(cwd.join(entry))
+            .with_context(|| format!("entry point not found: {entry}"))?,
+    );
+    let app_root = entry_path
+        .parent()
+        .map(|p| p.to_path_buf())
+        .unwrap_or(cwd.clone());
+
+    // Locate the config to derive identifier and the resource root for dev
+    // mode. In dev, resources are read straight from the project tree, so the
+    // resource root is the config file's directory (or app_root as a fallback).
+    let (identifier, resource_root) = match find_config(&app_root) {
+        Some(config_path) => {
+            let config_dir = config_path
+                .parent()
+                .map(|p| p.to_path_buf())
+                .unwrap_or_else(|| app_root.clone());
+            let identifier = load_config(&config_path)
+                .map(|c| c.identifier)
+                .unwrap_or_else(|_| "com.uzumaki.app".to_string());
+            (identifier, config_dir)
+        }
+        None => ("com.uzumaki.app".to_string(), app_root.clone()),
+    };
+
     Ok(standalone::LaunchMode::Dev {
-        app_root,
-        entry_path,
-        args,
+        config: AppConfig {
+            entry: entry_path,
+            app_root,
+            args,
+            identifier,
+            resource_root,
+        },
     })
+}
+
+/// On Windows, `fs::canonicalize` returns a `\\?\C:\...` extended-length path.
+/// Strip the prefix when it's safe (regular drive paths) so user-visible strings
+/// and `Uz.path.resource(...)` outputs look like normal `C:\...` paths.
+fn strip_unc_prefix(path: PathBuf) -> PathBuf {
+    if cfg!(windows) {
+        let s = path.to_string_lossy();
+        if let Some(rest) = s.strip_prefix(r"\\?\")
+            && !rest.starts_with(r"UNC\")
+        {
+            return PathBuf::from(rest);
+        }
+    }
+    path
 }
 
 fn cmd_build(config_path: Option<&str>, no_build: bool) -> Result<()> {
@@ -235,13 +288,74 @@ fn cmd_build(config_path: Option<&str>, no_build: bool) -> Result<()> {
     standalone::pack::pack_app(&standalone::pack::PackOptions {
         dist_dir: dist_path,
         entry_rel: entry.to_string(),
-        output: output_path,
+        output: output_path.clone(),
         app_name,
         base_binary,
         identifier: config.identifier,
         version: config.version,
         product_name: config.product_name,
-    })
+    })?;
+
+    if !config.bundle.resources.is_empty() {
+        let resources_dir = output_path
+            .parent()
+            .map(|p| p.join("resources"))
+            .ok_or_else(|| anyhow::anyhow!("output path has no parent"))?;
+        copy_bundle_resources(&config_dir, &config.bundle.resources, &resources_dir)?;
+    }
+
+    Ok(())
+}
+
+fn copy_bundle_resources(base: &Path, patterns: &[String], resources_dir: &Path) -> Result<()> {
+    fs::create_dir_all(resources_dir)
+        .with_context(|| format!("creating {}", resources_dir.display()))?;
+
+    for pattern in patterns {
+        let mut matched = false;
+        let abs_pattern = if Path::new(pattern).is_absolute() {
+            pattern.clone()
+        } else {
+            base.join(pattern).to_string_lossy().into_owned()
+        };
+
+        for entry in
+            glob::glob(&abs_pattern).with_context(|| format!("invalid glob pattern: {pattern}"))?
+        {
+            let path = entry.with_context(|| format!("globbing {pattern}"))?;
+            matched = true;
+            let rel = path.strip_prefix(base).unwrap_or(&path);
+            let dest = resources_dir.join(rel);
+            copy_path(&path, &dest)?;
+        }
+
+        if !matched {
+            eprintln!(
+                "\x1b[1;33muzumaki\x1b[0m \x1b[2mbundle resource\x1b[0m {} \x1b[33mmatched nothing\x1b[0m",
+                pattern
+            );
+        }
+    }
+    Ok(())
+}
+
+fn copy_path(src: &Path, dest: &Path) -> Result<()> {
+    let meta = fs::metadata(src).with_context(|| format!("stat {}", src.display()))?;
+    if meta.is_dir() {
+        fs::create_dir_all(dest).with_context(|| format!("creating {}", dest.display()))?;
+        for entry in fs::read_dir(src).with_context(|| format!("reading {}", src.display()))? {
+            let entry = entry?;
+            let name = entry.file_name();
+            copy_path(&entry.path(), &dest.join(&name))?;
+        }
+    } else {
+        if let Some(parent) = dest.parent() {
+            fs::create_dir_all(parent).with_context(|| format!("creating {}", parent.display()))?;
+        }
+        fs::copy(src, dest)
+            .with_context(|| format!("copying {} -> {}", src.display(), dest.display()))?;
+    }
+    Ok(())
 }
 
 fn cmd_upgrade(target_version: Option<&str>) -> Result<()> {

@@ -72,7 +72,20 @@ export interface CoreNode {
   getAttribute(name: string): unknown;
 }
 
+export interface AppPath {
+  readonly resourceDir: string;
+  readonly identifier: string;
+  resource(rel: string): string;
+  cacheDir(): string | null;
+  dataDir(): string | null;
+  configDir(): string | null;
+  tempDir(): string;
+  exeDir(): string | null;
+  homeDir(): string | null;
+}
+
 interface Core {
+  readonly path: AppPath;
   createWindow(options: WindowOptions): CoreWindow;
   requestQuit(): void;
   requestRedraw(windowId: number): void;

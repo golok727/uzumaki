@@ -8,7 +8,10 @@
   "pack": {
     "dist": "./dist",
     "entry": "index.js",
-    "output": "./playground",
+    "output": "./target/playground",
     "name": "playground"
+  },
+  "bundle": {
+    "resources": ["assets/**/*"]
   }
 }
