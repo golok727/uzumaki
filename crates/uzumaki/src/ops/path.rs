@@ -80,10 +80,7 @@ impl AppPath {
 }
 
 fn normalize_rel(rel: &str) -> PathBuf {
-    PathBuf::from(
-        rel.replace('\\', std::path::MAIN_SEPARATOR_STR)
-            .replace('/', std::path::MAIN_SEPARATOR_STR),
-    )
+    PathBuf::from(rel.replace(['\\', '/'], std::path::MAIN_SEPARATOR_STR))
 }
 
 fn path_to_string(p: &Path) -> String {
