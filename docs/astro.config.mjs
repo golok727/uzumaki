@@ -43,6 +43,7 @@ export default defineConfig({
             { label: 'Elements', slug: 'reference/elements' },
             { label: 'Props', slug: 'reference/props' },
             { label: 'Window', slug: 'reference/window' },
+            { label: 'Paths & Resources', slug: 'reference/paths' },
           ],
         },
       ],
