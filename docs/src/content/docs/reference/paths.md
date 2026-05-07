@@ -7,11 +7,11 @@ description: The global Uz.path API for resolving bundled resources and platform
 Uzumaki is in alpha. This API is unstable and may change between releases.
 :::
 
-Uzumaki exposes a global `Uz` object inside your app's runtime. Today it carries a single namespace, `Uz.path`, which resolves paths to bundled resources and well-known platform directories.
+Use `Uz.path` to resolve paths to bundled resources and well-known platform directories.
 
 ## Bundled resources
 
-Files declared under `bundle.resources` in `uzumaki.config.json` are staged next to the packed executable at build time and resolvable at runtime via `Uz.path.resource(...)`.
+List the files you want shipped with your app under `bundle.resources` in `uzumaki.config.json`. Look them up at runtime with `Uz.path.resource(...)`.
 
 ### Declaring resources
 
@@ -23,9 +23,9 @@ Files declared under `bundle.resources` in `uzumaki.config.json` are staged next
 }
 ```
 
-Each entry is a path or glob, relative to the directory containing `uzumaki.config.json`. Matched files are copied to `<output_dir>/resources/<relative_path>`, preserving their layout under the project root.
+Each entry is a path or glob, relative to the directory containing `uzumaki.config.json`. Matched files are shipped with your app, preserving their layout under the project root.
 
-In dev (`uzumaki run ...`) no copy happens — `Uz.path.resource(...)` reads straight from the project tree, so edits are picked up without rebuilding.
+While developing (`uzumaki run ...`), `Uz.path.resource(...)` reads straight from your project tree, so edits show up without rebuilding.
 
 ### Resolving at runtime
 
@@ -43,25 +43,25 @@ const win = new Window({ title: 'Hello' });
 render(<App />, win);
 ```
 
-`Uz.path.resource(rel)` returns an absolute filesystem path — it does no I/O and performs no traversal sanitation. Use forward slashes in `rel`; they're normalized to the platform separator.
+`Uz.path.resource(rel)` returns an absolute filesystem path. Use forward slashes in `rel` — they're normalized to the platform separator.
 
-`<image src>` accepts the returned path directly (drive paths and `file:` URLs both work).
+`<image src>` accepts the returned path directly.
 
 ## API
 
 `Uz.path` provides:
 
-| Member          | Returns          | Description                                                                              |
-| --------------- | ---------------- | ---------------------------------------------------------------------------------------- |
-| `resource(rel)` | `string`         | Absolute path under the resource root for the given relative path.                       |
-| `resourceDir`   | `string`         | Absolute path of the resource root itself.                                               |
-| `identifier`    | `string`         | The app's `identifier` from `uzumaki.config.json` (e.g. `com.example.app`).              |
-| `cacheDir()`    | `string \| null` | Platform user cache dir (`%LOCALAPPDATA%`, `~/Library/Caches`, `$XDG_CACHE_HOME`).       |
-| `dataDir()`     | `string \| null` | Platform user data dir (`%APPDATA%`, `~/Library/Application Support`, `$XDG_DATA_HOME`). |
-| `configDir()`   | `string \| null` | Platform user config dir.                                                                |
-| `tempDir()`     | `string`         | OS temporary directory.                                                                  |
-| `exeDir()`      | `string \| null` | Directory containing the running executable.                                             |
-| `homeDir()`     | `string \| null` | Current user's home directory.                                                           |
+| Member          | Returns          | Description                                                                 |
+| --------------- | ---------------- | --------------------------------------------------------------------------- |
+| `resource(rel)` | `string`         | Absolute path to a bundled resource.                                        |
+| `resourceDir`   | `string`         | Root directory holding your bundled resources.                              |
+| `identifier`    | `string`         | The app's `identifier` from `uzumaki.config.json` (e.g. `com.example.app`). |
+| `cacheDir()`    | `string \| null` | Platform user cache directory.                                              |
+| `dataDir()`     | `string \| null` | Platform user data directory.                                               |
+| `configDir()`   | `string \| null` | Platform user config directory.                                             |
+| `tempDir()`     | `string`         | OS temporary directory.                                                     |
+| `exeDir()`      | `string \| null` | Directory containing the running executable.                                |
+| `homeDir()`     | `string \| null` | Current user's home directory.                                              |
 
 The platform directories are not namespaced by `identifier` — join it yourself if you want a per-app folder:
 
@@ -76,12 +76,18 @@ const appCache = join(
 
 ## Where resources live
 
-| Mode                    | Resource root                                              |
-| ----------------------- | ---------------------------------------------------------- |
-| `uzumaki run` (dev)     | The directory containing `uzumaki.config.json`.            |
-| Packed binary (Windows) | `<exe_dir>\resources\`                                     |
-| Packed binary (Linux)   | `<exe_dir>/resources/`                                     |
-| Packed binary (macOS)   | `<exe_dir>/resources/` (proper `.app` bundling is planned) |
+| Mode                 | Resource root                                   |
+| -------------------- | ----------------------------------------------- |
+| `uzumaki run` (dev)  | Your project directory.                         |
+| Packed app (Windows) | A `resources` folder next to the executable.    |
+| Packed app (Linux)   | A `resources` folder next to the executable.    |
+| Packed app (macOS)   | `Contents/Resources/` inside the `.app` bundle. |
+
+You don't need to think about this in app code — `Uz.path.resource(...)` resolves correctly in every mode.
+
+:::note
+Proper installer bundling for Windows (`.msi` / `.exe` installer) and Linux (`.deb` / `.rpm` / AppImage) is planned. Contributions welcome! :D
+:::
 
 ## Example: icons from a folder
 
@@ -92,4 +98,4 @@ export function Icon({ name, size = 16 }: { name: string; size?: number }) {
 }
 ```
 
-With `"resources": ["assets/**/*"]` in `uzumaki.config.json`, the entire `assets/` tree is staged next to the exe, and the same code works in dev and in production.
+With `"resources": ["assets/**/*"]` in `uzumaki.config.json`, the entire `assets/` tree ships with your app, and the same code works in dev and in production.

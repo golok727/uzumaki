@@ -54,7 +54,18 @@ pub fn detect_and_prepare() -> Result<Option<LaunchMode>> {
     );
 
     let exe_dir = exe.parent().map(Path::to_path_buf).unwrap_or_default();
-    let resource_root = exe_dir.join("resources");
+    // macOS: exe lives at `<App>.app/Contents/MacOS/<binary>`, resources at
+    // `<App>.app/Contents/Resources/`. Elsewhere: `<exe_dir>/resources/`.
+    let resource_root = if cfg!(target_os = "macos")
+        && exe_dir.file_name().and_then(|n| n.to_str()) == Some("MacOS")
+    {
+        exe_dir
+            .parent()
+            .map(|p| p.join("Resources"))
+            .unwrap_or_else(|| exe_dir.join("resources"))
+    } else {
+        exe_dir.join("resources")
+    };
 
     Ok(Some(LaunchMode::Standalone {
         config: AppConfig {

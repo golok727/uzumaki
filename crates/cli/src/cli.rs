@@ -285,7 +285,7 @@ fn cmd_build(config_path: Option<&str>, no_build: bool) -> Result<()> {
         output_path.display()
     );
 
-    standalone::pack::pack_app(&standalone::pack::PackOptions {
+    let final_output = standalone::pack::pack_app(&standalone::pack::PackOptions {
         dist_dir: dist_path,
         entry_rel: entry.to_string(),
         output: output_path.clone(),
@@ -297,14 +297,25 @@ fn cmd_build(config_path: Option<&str>, no_build: bool) -> Result<()> {
     })?;
 
     if !config.bundle.resources.is_empty() {
-        let resources_dir = output_path
-            .parent()
-            .map(|p| p.join("resources"))
-            .ok_or_else(|| anyhow::anyhow!("output path has no parent"))?;
+        let resources_dir = resources_dir_for(&final_output)?;
         copy_bundle_resources(&config_dir, &config.bundle.resources, &resources_dir)?;
     }
 
     Ok(())
+}
+
+/// Where bundle resources land relative to the packed artifact.
+/// - macOS: `<App>.app/Contents/Resources/` (already created by the bundler).
+/// - Windows / Linux: `<exe_dir>/resources/` (created on demand).
+fn resources_dir_for(final_output: &Path) -> Result<PathBuf> {
+    if cfg!(target_os = "macos") {
+        Ok(final_output.join("Contents").join("Resources"))
+    } else {
+        final_output
+            .parent()
+            .map(|p| p.join("resources"))
+            .ok_or_else(|| anyhow::anyhow!("output path has no parent"))
+    }
 }
 
 fn copy_bundle_resources(base: &Path, patterns: &[String], resources_dir: &Path) -> Result<()> {

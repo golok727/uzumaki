@@ -53,15 +53,19 @@ The build is configured through `uzumaki.config.json`:
 
 ## Bundling resources
 
-Files listed in `bundle.resources` are staged at build time into `<pack.output_dir>/resources/`, preserving their relative path under the project root. At runtime, look them up with [`Uz.path.resource(...)`](/reference/paths/):
+Files listed in `bundle.resources` ship with your app. Look them up at runtime with [`Uz.path.resource(...)`](/reference/paths/):
 
 ```ts
 const logo = Uz.path.resource('assets/logo.svg');
 ```
 
-In dev (`uzumaki run ...`) no copy happens — `Uz.path.resource(...)` reads straight from the project tree, so the same code works in both modes.
+The same code works while developing (`uzumaki run`) and in your packed app.
 
 See [Paths & Resources](/reference/paths/) for the full API.
+
+:::note
+Proper installer bundling for Windows (`.msi` / `.exe` installer) and Linux (`.deb` / `.rpm` / AppImage) is planned. Contributions welcome! :D
+:::
 
 ## Skip the build step
 

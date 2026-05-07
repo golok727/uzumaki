@@ -20,7 +20,7 @@ pub struct PackOptions {
     pub product_name: String,
 }
 
-pub fn pack_app(opts: &PackOptions) -> Result<()> {
+pub fn pack_app(opts: &PackOptions) -> Result<PathBuf> {
     if !opts.dist_dir.is_dir() {
         bail!("dist directory does not exist: {}", opts.dist_dir.display());
     }
@@ -108,7 +108,7 @@ pub fn pack_app(opts: &PackOptions) -> Result<()> {
         files.len(),
         final_output.display()
     );
-    Ok(())
+    Ok(final_output)
 }
 
 /// Returns `true` if `bytes` looks like a Windows PE executable (has a valid
