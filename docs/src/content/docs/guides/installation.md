@@ -3,36 +3,38 @@ title: Installation
 description: Install the Uzumaki CLI.
 ---
 
-## Requirements
+:::note
+Docs are a work in progress.
+:::
 
-- **macOS** (Intel or Apple Silicon) or **Windows** (x64 or ARM64)
-- [Bun](https://bun.sh) (for package management and bundling)
-- Linux support is coming soon
-
-## Install
-
-### macOS
-
-```sh
-curl -fsSL https://uzumaki.run/install.sh | sh
-```
-
-### Windows
+Windows:
 
 ```powershell
 irm https://uzumaki.run/install.ps1 | iex
 ```
 
-You may need to restart your terminal after installing.
+macOS / Linux:
 
-### Verify
+```sh
+curl -fsSL https://uzumaki.run/install.sh | sh
+```
+
+Verify:
 
 ```sh
 uzumaki --version
 ```
 
-## Upgrade
+Upgrade:
 
 ```sh
 uzumaki upgrade
 ```
+
+## Commands
+
+- `uzumaki init <name>` — scaffold a project
+- `uzumaki <entry>` — run an app
+- `uzumaki build` — package for distribution
+
+Next: [Quick Start](/guides/quick-start/).

@@ -5,8 +5,8 @@
 :root[data-theme='dark'] {
   --uz-accent: #e2a52e;
   --uz-accent-dim: #1a1508;
-  --sl-font: 'IBM Plex Mono', monospace;
-  --sl-font-mono: 'IBM Plex Mono', monospace;
+  --sl-font: 'Geist Mono', system-ui, -apple-system, sans-serif;
+  --sl-font-mono: 'Geist Mono', monospace;
   --sl-color-accent-low: var(--uz-accent-dim);
   --sl-color-accent: var(--uz-accent);
   --sl-color-accent-high: #ffd6b3;

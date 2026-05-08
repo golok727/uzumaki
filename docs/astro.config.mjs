@@ -2,7 +2,6 @@
 import { defineConfig } from 'astro/config';
 import starlight from '@astrojs/starlight';
 
-// https://astro.build/config
 export default defineConfig({
   site: 'https://uzumaki.run',
   integrations: [
@@ -34,16 +33,19 @@ export default defineConfig({
           items: [
             { label: 'Installation', slug: 'guides/installation' },
             { label: 'Quick Start', slug: 'guides/quick-start' },
+            { label: 'Configuration', slug: 'guides/configuration' },
             { label: 'Building Your App', slug: 'guides/building' },
           ],
         },
         {
-          label: 'API Reference',
+          label: 'Reference',
           items: [
             { label: 'Elements', slug: 'reference/elements' },
             { label: 'Props', slug: 'reference/props' },
+            { label: 'Events', slug: 'reference/events' },
             { label: 'Window', slug: 'reference/window' },
-            { label: 'Paths & Resources', slug: 'reference/paths' },
+            { label: 'Paths and Resources', slug: 'reference/paths' },
+            { label: 'Runtime API', slug: 'reference/runtime-api' },
           ],
         },
       ],
@@ -67,7 +69,7 @@ export default defineConfig({
           tag: 'link',
           attrs: {
             rel: 'stylesheet',
-            href: 'https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500;600;700&display=swap',
+            href: 'https://fonts.googleapis.com/css2?family=Geist:wght@400;500;600;700&family=Geist+Mono:wght@400;500;600;700&display=swap',
           },
         },
         {

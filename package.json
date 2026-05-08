@@ -5,8 +5,9 @@
   "private": true,
   "license": "MIT OR Apache-2.0",
   "scripts": {
-    "dev": "pnpm build:core && pnpm --filter playground dev",
+    "dev": "pnpm build && pnpm --filter playground dev",
     "build": "cargo build --release -p uzumaki",
+    "dev:docs": "pnpm --filter docs dev",
     "format": "prettier --write .",
     "lint": "oxlint --react-plugin --node-plugin .",
     "typecheck": "pnpm -r typecheck",

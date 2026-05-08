@@ -1,159 +1,68 @@
 ---
 title: Props
-description: Layout, styling, and event props for Uzumaki elements.
+description: Layout, style, and interaction props.
 ---
 
-:::caution
-Uzumaki is in alpha. This API is unstable and may change between releases.
-:::
-
-## Value formats
-
-Props accept numbers, strings, or specific keywords:
-
-- **Numbers** are treated as pixels: `w={100}`
-- **Strings**: `"100"` (px), `"2rem"`, `"50%"`, `"auto"`
-- **`"full"`** is shorthand for `100%`
-- **Colors**: hex strings like `"#FF5733"` or with alpha `"#FF573380"`, or `"transparent"`
+Numbers are logical pixels. Strings can be `"50%"`, `"2rem"`, `"auto"`, `"full"`. Colors are hex strings.
 
 ## Layout
 
-| Prop                   | Description                  |
-| ---------------------- | ---------------------------- |
-| `w`                    | Width                        |
-| `h`                    | Height                       |
-| `minH`                 | Minimum height               |
-| `p`                    | Padding (all sides)          |
-| `px`                   | Horizontal padding           |
-| `py`                   | Vertical padding             |
-| `pt`, `pb`, `pl`, `pr` | Padding per side             |
-| `m`                    | Margin (all sides)           |
-| `mx`, `my`             | Margin horizontal / vertical |
-| `mt`, `mb`, `ml`, `mr` | Margin per side              |
-| `gap`                  | Gap between flex children    |
+`w`, `h`, `minW`, `minH`, `maxW`, `maxH`. Padding: `p`, `px`, `py`, `pt`, `pr`, `pb`, `pl`. Margin: `m`, `mx`, `my`, `mt`, `mr`, `mb`, `ml`. `display`, `position` (`relative` / `absolute`), `top`, `right`, `bottom`, `left`.
 
-## Flexbox
+## Flex
 
-| Prop         | Values                                          | Description        |
-| ------------ | ----------------------------------------------- | ------------------ |
-| `display`    | `"flex"`, `"none"`, `"block"`                   | Display mode       |
-| `flex`       | number                                          | Flex shorthand     |
-| `flexDir`    | `"row"`, `"col"`                                | Flex direction     |
-| `flexGrow`   | number / string                                 | Flex grow factor   |
-| `flexShrink` | number / string                                 | Flex shrink factor |
-| `items`      | `"center"`, `"start"`, `"end"`, `"stretch"`     | Align items        |
-| `justify`    | `"center"`, `"between"`, `"around"`, `"evenly"` | Justify content    |
+- `display="flex"`
+- `flexDir` — `row` | `col` | `column`
+- `flexWrap` — `nowrap` | `wrap` | `wrap-reverse`
+- `flex`, `flexGrow`, `flexShrink`
+- `items` — `start` | `end` | `center` | `stretch` | `baseline`
+- `justify` — `start` | `end` | `center` | `between` | `around` | `evenly`
+- `gap`
 
-## Styling
+## Color & text
 
-| Prop                                                     | Description                 |
-| -------------------------------------------------------- | --------------------------- |
-| `bg`                                                     | Background color            |
-| `color`                                                  | Text color                  |
-| `fontSize`                                               | Font size                   |
-| `fontWeight`                                             | Font weight (numeric)       |
-| `rounded`                                                | Border radius (all corners) |
-| `roundedTL`, `roundedTR`, `roundedBR`, `roundedBL`       | Per-corner radius           |
-| `border`                                                 | Border width (all sides)    |
-| `borderTop`, `borderRight`, `borderBottom`, `borderLeft` | Per-side border             |
-| `borderColor`                                            | Border color                |
-| `opacity`                                                | Opacity (0-1)               |
-| `cursor`                                                 | Cursor style                |
-| `visible`                                                | Visibility                  |
+- `bg`, `color`, `opacity`, `visibility`
+- `fontSize`, `fontWeight`, `fontFamily`
+- `textWrap`, `wordBreak`
+
+## Borders & corners
+
+- `rounded`, `roundedTL`, `roundedTR`, `roundedBR`, `roundedBL`
+- `border`, `borderTop`, `borderRight`, `borderBottom`, `borderLeft`, `borderColor`
+- `outline`, `outlineColor`, `outlineOffset`
 
 ## Transforms
 
-| Prop         | Description                                            |
-| ------------ | ------------------------------------------------------ |
-| `translate`  | Move element (accepts number, `[x, y]`, or `{ x, y }`) |
-| `translateX` | Horizontal offset                                      |
-| `translateY` | Vertical offset                                        |
-| `rotate`     | Rotation angle in degrees                              |
-| `scale`      | Scale factor (accepts number, `[x, y]`, or `{ x, y }`) |
-| `scaleX`     | Horizontal scale                                       |
-| `scaleY`     | Vertical scale                                         |
-
-Transform props also support state variants with `hover:` and `active:` prefixes (e.g., `hover:translateX`, `active:scale`).
-
 ```tsx
-<view
-  translate={[10, 5]}
-  rotate={45}
-  scale={1.2}
-  hover:scale={1.3}
->
-  <text>Transformed</text>
-</view>
-
-<button
-  translateX={0}
-  active:translateX={2}
-  active:translateY={2}
->
-  Press me
-</button>
+<view translate={[8, 0]} rotate={-3} scale={1.05} hover:scale={1.08} />
 ```
+
+`translate`, `translateX`, `translateY`, `rotate` (deg), `scale`, `scaleX`, `scaleY`.
+
+## Interaction
+
+`cursor`, `focusable`, `selectable`.
+
+## Scrolling
+
+`scroll`, `scrollX`, `scrollY`, `scrollbarWidth`, `scrollbarRadius`, `scrollbarColor`, `scrollbarHoverColor`, `scrollbarActiveColor`.
 
 ## State variants
 
-Style props that apply on hover or active (press) states:
-
-| Prop                 | Description           |
-| -------------------- | --------------------- |
-| `hover:bg`           | Background on hover   |
-| `hover:color`        | Text color on hover   |
-| `hover:opacity`      | Opacity on hover      |
-| `hover:borderColor`  | Border color on hover |
-| `active:bg`          | Background on press   |
-| `active:color`       | Text color on press   |
-| `active:opacity`     | Opacity on press      |
-| `active:borderColor` | Border color on press |
+`hover:`, `active:`, `focus:` prefixes work on most visual props.
 
 ```tsx
-<view
-  bg="#2d2d30"
-  hover:bg="#3e3e42"
-  active:bg="#4e4e52"
-  rounded={6}
-  p={10}
-  cursor="pointer"
+<button
+  bg="#18181b"
+  hover:bg="#27272a"
+  active:bg="#3f3f46"
+  focus:outline={2}
+  focus:outlineColor="#60a5fa"
 >
-  <text color="#e4e4e7" hover:color="#ffffff">
-    Hover me
-  </text>
-</view>
-```
-
-## Scrollbar
-
-Overlay scrollbars appear when the mouse is inside a scrollable view. They have three visual states: default, hover (pointer is over the thumb), and active (thumb is being dragged).
-
-| Prop                   | Type            | Description                                             |
-| ---------------------- | --------------- | ------------------------------------------------------- |
-| `scrollbarWidth`       | number / string | Thumb thickness in pixels (default `8`)                 |
-| `scrollbarColor`       | color           | Thumb color in the default state (default `#ffffff5a`)  |
-| `scrollbarHoverColor`  | color           | Thumb color when the pointer is over the thumb          |
-| `scrollbarActiveColor` | color           | Thumb color while the thumb is being dragged            |
-| `scrollbarRadius`      | number / string | Corner radius; omit for a pill shape (radius = width/2) |
-
-```tsx
-<view
-  scroll
-  h={300}
-  scrollbarWidth={6}
-  scrollbarColor="#ffffff40"
-  scrollbarHoverColor="#ffffff90"
-  scrollbarActiveColor="#ffffffc0"
-  scrollbarRadius={3}
->
-  {items}
-</view>
+  <text>Open</text>
+</button>
 ```
 
 ## Events
 
-| Prop          | Type         | Description         |
-| ------------- | ------------ | ------------------- |
-| `onClick`     | `() => void` | Click / tap handler |
-| `onMouseDown` | `() => void` | Mouse down handler  |
-| `onMouseUp`   | `() => void` | Mouse up handler    |
+`onClick`, `onMouseDown`, `onMouseUp`, `onKeyDown`, `onKeyUp`, `onFocus`, `onBlur`, plus `Capture` variants. See [Events](/reference/events/).
