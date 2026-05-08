@@ -6,10 +6,10 @@
     "command": "bun build src/index.tsx --target node --outdir dist --minify --external uzumaki"
   },
   "pack": {
-    "dist": "./dist",
+    "jsDist": "./dist",
     "entry": "index.js",
-    "output": "./target/playground",
-    "name": "playground"
+    "outputDir": "./target",
+    "binName": "playground"
   },
   "bundle": {
     "resources": ["assets/**/*"]

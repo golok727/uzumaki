@@ -8,11 +8,11 @@
     "build": "uzumaki build"
   },
   "dependencies": {
-    "uzumaki-ui": "latest",
+    "uzumaki-react": "^0.0.1-alpha.3",
     "react": "^19.2.4"
   },
   "devDependencies": {
-    "uzumaki-types": "latest",
+    "uzumaki-types": "^0.0.1-alpha.3",
     "@types/react": "^19.2.14",
     "typescript": "^5.8.3"
   }

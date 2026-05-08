@@ -6,9 +6,12 @@
     "command": "bun build src/index.tsx --target node --outdir dist --minify --external uzumaki"
   },
   "pack": {
-    "dist": "./dist",
+    "jsDist": "./dist",
     "entry": "index.js",
-    "output": "./{{PROJECT_NAME}}",
-    "name": "{{PROJECT_NAME}}"
+    "outputDir": "./target",
+    "binName": "{{PROJECT_NAME}}"
+  },
+  "bundle": {
+    "resources": ["assets/**/*"]
   }
 }

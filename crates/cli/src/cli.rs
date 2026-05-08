@@ -40,10 +40,13 @@ pub struct BuildConfig {
 
 #[derive(Debug, Default, serde::Deserialize)]
 pub struct PackConfig {
-    pub dist: Option<String>,
+    #[serde(rename = "jsDist")]
+    pub js_dist: Option<String>,
     pub entry: Option<String>,
-    pub output: Option<String>,
-    pub name: Option<String>,
+    #[serde(rename = "outputDir")]
+    pub output_dir: Option<String>,
+    #[serde(rename = "binName")]
+    pub bin_name: Option<String>,
     #[serde(rename = "baseBinary")]
     pub base_binary: Option<String>,
 }
@@ -251,29 +254,30 @@ fn cmd_build(config_path: Option<&str>, no_build: bool) -> Result<()> {
     }
 
     // Pack
-    let dist = config
+    let js_dist = config
         .pack
-        .dist
+        .js_dist
         .as_deref()
-        .ok_or_else(|| anyhow::anyhow!("missing pack.dist in config"))?;
+        .ok_or_else(|| anyhow::anyhow!("missing pack.jsDist in config"))?;
     let entry = config
         .pack
         .entry
         .as_deref()
         .ok_or_else(|| anyhow::anyhow!("missing pack.entry in config"))?;
-    let output_raw = config
+    let output_dir_raw = config
         .pack
-        .output
+        .output_dir
         .as_deref()
-        .ok_or_else(|| anyhow::anyhow!("missing pack.output in config"))?;
+        .ok_or_else(|| anyhow::anyhow!("missing pack.outputDir in config"))?;
 
-    let dist_path = resolve_from(&config_dir, dist);
-    let output_path = normalize_output_extension(&resolve_from(&config_dir, output_raw));
-    let app_name = config
+    let js_dist_path = resolve_from(&config_dir, js_dist);
+    let output_dir = resolve_from(&config_dir, output_dir_raw);
+    let bin_name = config
         .pack
-        .name
+        .bin_name
         .clone()
         .unwrap_or_else(|| config.product_name.clone());
+    let output_path = normalize_output_extension(&output_dir.join(&bin_name));
     let base_binary = match &config.pack.base_binary {
         Some(b) => resolve_from(&config_dir, b),
         None => std::env::current_exe()?,
@@ -281,15 +285,15 @@ fn cmd_build(config_path: Option<&str>, no_build: bool) -> Result<()> {
 
     println!(
         "\x1b[1;38;5;75muzumaki\x1b[0m \x1b[2mpacking\x1b[0m {} → {}",
-        dist,
+        js_dist,
         output_path.display()
     );
 
     let final_output = standalone::pack::pack_app(&standalone::pack::PackOptions {
-        dist_dir: dist_path,
+        dist_dir: js_dist_path,
         entry_rel: entry.to_string(),
         output: output_path.clone(),
-        app_name,
+        app_name: bin_name,
         base_binary,
         identifier: config.identifier,
         version: config.version,

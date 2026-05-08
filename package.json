@@ -6,7 +6,7 @@
   "license": "MIT OR Apache-2.0",
   "scripts": {
     "dev": "pnpm build:core && pnpm --filter playground dev",
-    "build:core": "cargo build --release -p uzumaki",
+    "build": "cargo build --release -p uzumaki",
     "format": "prettier --write .",
     "lint": "oxlint --react-plugin --node-plugin .",
     "typecheck": "pnpm -r typecheck",

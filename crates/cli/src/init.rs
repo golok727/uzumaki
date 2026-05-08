@@ -6,7 +6,46 @@ use std::path::Path;
 const TMPL_PACKAGE_JSON: &str = include_str!("../template/package.json");
 const TMPL_TSCONFIG: &str = include_str!("../template/tsconfig.json");
 const TMPL_CONFIG: &str = include_str!("../template/uzumaki.config.json");
-const TMPL_INDEX_TSX: &str = include_str!("../template/index.tsx");
+const TMPL_INDEX_TSX: &str = include_str!("../template/src/index.tsx");
+const TMPL_LOGO_SVG: &[u8] = include_bytes!("../template/assets/logo.svg");
+const TMPL_REACT_SVG: &[u8] = include_bytes!("../template/assets/react.svg");
+
+struct TemplateEntry {
+    path: &'static str,
+    content: TemplateContent,
+}
+
+enum TemplateContent {
+    Text(&'static str),
+    Bytes(&'static [u8]),
+}
+
+const TEMPLATE_ENTRIES: &[TemplateEntry] = &[
+    TemplateEntry {
+        path: "package.json",
+        content: TemplateContent::Text(TMPL_PACKAGE_JSON),
+    },
+    TemplateEntry {
+        path: "tsconfig.json",
+        content: TemplateContent::Text(TMPL_TSCONFIG),
+    },
+    TemplateEntry {
+        path: "uzumaki.config.json",
+        content: TemplateContent::Text(TMPL_CONFIG),
+    },
+    TemplateEntry {
+        path: "src/index.tsx",
+        content: TemplateContent::Text(TMPL_INDEX_TSX),
+    },
+    TemplateEntry {
+        path: "assets/logo.svg",
+        content: TemplateContent::Bytes(TMPL_LOGO_SVG),
+    },
+    TemplateEntry {
+        path: "assets/react.svg",
+        content: TemplateContent::Bytes(TMPL_REACT_SVG),
+    },
+];
 
 const BOLD: &str = "\x1b[1m";
 const RESET: &str = "\x1b[0m";
@@ -58,17 +97,15 @@ fn apply_vars(template: &str, vars: &[(&str, &str)]) -> String {
     out
 }
 
-fn write_template_file(
-    base: &Path,
-    rel_path: &str,
-    template: &str,
-    vars: &[(&str, &str)],
-) -> Result<()> {
-    let dest = base.join(rel_path);
+fn write_template_entry(base: &Path, entry: &TemplateEntry, vars: &[(&str, &str)]) -> Result<()> {
+    let dest = base.join(entry.path);
     if let Some(parent) = dest.parent() {
         fs::create_dir_all(parent)?;
     }
-    fs::write(&dest, apply_vars(template, vars))?;
+    match entry.content {
+        TemplateContent::Text(template) => fs::write(&dest, apply_vars(template, vars))?,
+        TemplateContent::Bytes(bytes) => fs::write(&dest, bytes)?,
+    }
     Ok(())
 }
 
@@ -102,6 +139,13 @@ pub fn cmd_init(target_dir: Option<&str>) -> Result<()> {
 
     // Check if dir exists and is non-empty
     if project_dir.is_dir() {
+        if project_dir.join("package.json").is_file() {
+            bail!(
+                "{} already contains package.json; refusing to create a project inside an existing package",
+                project_dir.display()
+            );
+        }
+
         let has_entries = fs::read_dir(&project_dir)?.next().is_some();
         if has_entries {
             bail!("directory {} is not empty", project_dir.display());
@@ -112,27 +156,22 @@ pub fn cmd_init(target_dir: Option<&str>) -> Result<()> {
     let vars: Vec<(&str, &str)> =
         vec![("PROJECT_NAME", &project_name), ("IDENTIFIER", &identifier)];
 
-    write_template_file(&project_dir, "package.json", TMPL_PACKAGE_JSON, &vars)?;
-    write_template_file(&project_dir, "tsconfig.json", TMPL_TSCONFIG, &vars)?;
-    write_template_file(&project_dir, "uzumaki.config.json", TMPL_CONFIG, &vars)?;
-    write_template_file(&project_dir, "src/index.tsx", TMPL_INDEX_TSX, &vars)?;
+    for entry in TEMPLATE_ENTRIES {
+        write_template_entry(&project_dir, entry, &vars)?;
+    }
 
     // Summary
     let rel = project_dir.strip_prefix(&cwd).unwrap_or(&project_dir);
 
     println!();
-    println!("  {GREEN}created{RESET} {}/package.json", rel.display());
-    println!("  {GREEN}created{RESET} {}/tsconfig.json", rel.display());
-    println!(
-        "  {GREEN}created{RESET} {}/uzumaki.config.json",
-        rel.display()
-    );
-    println!("  {GREEN}created{RESET} {}/src/index.tsx", rel.display());
+    for entry in TEMPLATE_ENTRIES {
+        println!("  {GREEN}created{RESET} {}/{}", rel.display(), entry.path);
+    }
 
     println!("\n{BOLD}Next steps:{RESET}\n");
     println!("  cd {project_name}");
-    println!("  bun install");
-    println!("  bun dev");
+    println!("  pnpm install");
+    println!("  pnpm dev");
     println!();
 
     Ok(())
