@@ -41,6 +41,17 @@ declare module 'uzumaki' {
     maximizable?: boolean;
     rootStyles?: Record<string, unknown>;
   }
+  interface AppPath {
+    readonly resourceDir: string;
+    readonly identifier: string;
+    resource(rel: string): string;
+    cacheDir(): string | null;
+    dataDir(): string | null;
+    configDir(): string | null;
+    tempDir(): string;
+    exeDir(): string | null;
+    homeDir(): string | null;
+  }
   //#endregion
   //#region js/core.d.ts
   interface CoreNode {
@@ -58,11 +69,42 @@ declare module 'uzumaki' {
     insertBefore(child: CoreNode, before: CoreNode | null): void;
     removeChild(child: CoreNode): void;
     remove(): void;
+    removeChildren(): void;
     setStrAttribute(name: string, value: string): void;
     setNumberAttribute(name: string, value: number): void;
     setBoolAttribute(name: string, value: boolean): void;
     removeAttribute(name: string): void;
     getAttribute(name: string): unknown;
+  }
+  //#endregion
+  //#region js/node.d.ts
+  declare class UzNode {
+    protected readonly _native: CoreNode;
+    readonly window: Window;
+    constructor(window: Window, native: CoreNode);
+    static fromNodeId(window: Window, nodeId: NodeId | null): UzNode | null;
+    get nodeId(): NodeId;
+    get windowId(): number;
+    get nodeType(): number;
+    get parentNode(): UzNode | null;
+    get firstChild(): UzNode | null;
+    get lastChild(): UzNode | null;
+    get nextSibling(): UzNode | null;
+    get previousSibling(): UzNode | null;
+    get textContent(): string | null;
+    set textContent(text: string | null);
+    appendChild<T extends UzNode>(child: T): T;
+    insertBefore<T extends UzNode>(child: T, before: UzNode | null): T;
+    removeChild<T extends UzNode>(child: T): T;
+    /**
+     * Detach this node from its parent
+     */
+    remove(): void;
+    removeChildren(): void;
+    destroy(): void;
+  }
+  declare class UzTextNode extends UzNode {
+    constructor(window: Window, text: string);
   }
   //#endregion
   //#region js/event-target.d.ts
@@ -383,6 +425,7 @@ declare module 'uzumaki' {
     setPosition(x: number, y: number): void;
     set theme(theme: WindowTheme);
     focus(): void;
+    requestRedraw(): void;
     set contentProtected(contentProtected: boolean);
     set closable(closable: boolean);
     set minimizable(minimizable: boolean);
@@ -436,38 +479,7 @@ declare module 'uzumaki' {
     ): boolean;
   }
   declare function getWindow(label: string): Window | undefined;
-  //#endregion
-  //#region js/node.d.ts
-  declare class UzNode {
-    readonly _native: CoreNode;
-    readonly _window: Window;
-    constructor(window: Window, native: CoreNode);
-    static fromNodeId(window: Window, nodeId: NodeId | null): UzNode | null;
-    get nodeId(): NodeId;
-    get windowId(): number;
-    get nodeType(): number;
-    get parentNode(): UzNode | null;
-    get firstChild(): UzNode | null;
-    get lastChild(): UzNode | null;
-    get nextSibling(): UzNode | null;
-    get previousSibling(): UzNode | null;
-    get textContent(): string | null;
-    set textContent(text: string | null);
-    appendChild<T extends UzNode>(child: T): T;
-    insertBefore<T extends UzNode>(child: T, before: UzNode | null): T;
-    removeChild<T extends UzNode>(child: T): T;
-    /**
-     * Detach this node from its parent
-     */
-    remove(): void;
-    destroy(): void;
-  }
-  declare class UzTextNode extends UzNode {
-    constructor(window: Window, text: string);
-  }
-  //#endregion
-  //#region js/registry.d.ts
-  declare function __internalDebugNodeCount(windowID: number): number;
+  declare function __internalDebugNodeCount(windowId: number): number;
   //#endregion
   //#region js/clipboard.d.ts
   declare const Clipboard: {
@@ -475,7 +487,29 @@ declare module 'uzumaki' {
     writeText(text: string): boolean;
   };
   //#endregion
+  //#region js/runtime.d.ts
+  declare const createWindow: any;
+  declare const requestQuit: any;
+  declare const requestRedraw: any;
+  declare const getRootNode: any;
+  declare const createElementNode: any;
+  declare const createTextNode: any;
+  declare const setEncodedImageData: any;
+  declare const applyCachedImage: any;
+  declare const clearImageData: any;
+  declare const focusElement: any;
+  declare const getAncestorPath: any;
+  declare const readClipboardText: any;
+  declare const writeClipboardText: any;
+  declare global {
+    const Uz: {
+      path: AppPath;
+    };
+  }
+  declare const RUNTIME_VERSION: any;
+  //#endregion
   export {
+    type AppPath,
     Clipboard,
     Element,
     UzEventTarget as EventEmitter,
@@ -483,6 +517,7 @@ declare module 'uzumaki' {
     type EventName,
     EventPhase,
     EventType,
+    RUNTIME_VERSION,
     UzButtonElement,
     UzCheckboxElement,
     type UzClipboardEvent,
@@ -512,6 +547,19 @@ declare module 'uzumaki' {
     type WindowSize,
     type WindowTheme,
     __internalDebugNodeCount,
+    applyCachedImage,
+    clearImageData,
+    createElementNode,
+    createTextNode,
+    createWindow,
+    focusElement,
+    getAncestorPath,
+    getRootNode,
     getWindow,
+    readClipboardText,
+    requestQuit,
+    requestRedraw,
+    setEncodedImageData,
+    writeClipboardText,
   };
 }

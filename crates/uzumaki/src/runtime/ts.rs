@@ -1,6 +1,7 @@
 use std::borrow::Cow;
 use std::cell::RefCell;
 use std::collections::HashMap;
+use std::path::PathBuf;
 use std::rc::Rc;
 use std::sync::Arc;
 
@@ -50,6 +51,21 @@ fn try_resolve_ts(url: &ModuleSpecifier) -> Option<ModuleSpecifier> {
         }
     }
     None
+}
+
+fn uzumaki_ext_path(specifier: &ModuleSpecifier) -> Option<PathBuf> {
+    let name = specifier.as_str().strip_prefix("ext:uzumaki/")?;
+    if name
+        .split('/')
+        .any(|part| part.is_empty() || part == "." || part == "..")
+    {
+        return None;
+    }
+    Some(
+        PathBuf::from(env!("CARGO_MANIFEST_DIR"))
+            .join("js")
+            .join(name),
+    )
 }
 
 pub type SourceMapStore = Rc<RefCell<HashMap<String, Vec<u8>>>>;
@@ -116,13 +132,20 @@ impl ModuleLoader for TypescriptModuleLoader {
         let path = match module_specifier.to_file_path() {
             Ok(p) => p,
             Err(_) => {
-                return ModuleLoadResponse::Sync(Err(JsErrorBox::generic(
-                    "Only file:// URLs are supported.",
-                )));
+                let Some(path) = uzumaki_ext_path(module_specifier) else {
+                    return ModuleLoadResponse::Sync(Err(JsErrorBox::generic(
+                        "Only file:// and ext:uzumaki/ URLs are supported.",
+                    )));
+                };
+                path
             }
         };
 
-        let media_type = MediaType::from_path(&path);
+        let media_type = if module_specifier.scheme() == "ext" {
+            MediaType::from_specifier(module_specifier)
+        } else {
+            MediaType::from_path(&path)
+        };
 
         // Check if this is a CJS module that needs translation to ESM
         let is_maybe_cjs = self

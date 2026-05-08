@@ -1,5 +1,5 @@
-import core from './core';
-import { UzEventTarget } from './event-target';
+import core from 'ext:uzumaki/core.ts';
+import { UzEventTarget } from 'ext:uzumaki/event-target.ts';
 import {
   EventPhase,
   EventType,
@@ -9,10 +9,10 @@ import {
   buildDomEvent,
   type EventName,
   type UzumakiEvent,
-} from './events';
-import { getNode } from './registry';
-import type { NodeId } from './types';
-import type { Window } from './window';
+} from 'ext:uzumaki/events.ts';
+import { getNode } from 'ext:uzumaki/registry.ts';
+import type { NodeId } from 'ext:uzumaki/types.ts';
+import type { Window } from 'ext:uzumaki/window.ts';
 
 function nodeAt(window: Window, id: NodeId | null) {
   if (id == null) return null;
@@ -87,6 +87,7 @@ export function dispatchEvent(
   event: UzumakiEvent,
 ): boolean {
   const windowId = window.id;
+  // todo we dont need thos we can do node.parent
   const path: NodeId[] =
     targetNodeId == null ? [] : core.getAncestorPath(windowId, targetNodeId);
 

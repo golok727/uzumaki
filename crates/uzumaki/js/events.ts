@@ -1,4 +1,4 @@
-import type { UzNode } from './node';
+import type { UzNode } from 'ext:uzumaki/node.ts';
 
 export const enum EventType {
   MouseMove = 0,

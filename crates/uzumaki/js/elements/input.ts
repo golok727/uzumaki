@@ -1,6 +1,6 @@
-import type { UzEventMap, UzInputEvent } from '../events';
-import type { Window } from '../window';
-import { UzElement } from './base';
+import type { UzEventMap, UzInputEvent } from 'ext:uzumaki/events.ts';
+import type { Window } from 'ext:uzumaki/window.ts';
+import { UzElement } from 'ext:uzumaki/elements/base.ts';
 
 export interface InputChangeEvent {
   readonly value: string;

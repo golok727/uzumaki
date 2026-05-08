@@ -1,6 +1,6 @@
-import { UzEventMap } from '../events';
-import type { Window } from '../window';
-import { UzElement } from './base';
+import { UzEventMap } from 'ext:uzumaki/events.ts';
+import type { Window } from 'ext:uzumaki/window.ts';
+import { UzElement } from 'ext:uzumaki/elements/base.ts';
 
 export interface CheckboxEventHandlerMap extends UzEventMap {
   valuechange: boolean;

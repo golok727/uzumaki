@@ -1,4 +1,4 @@
-import core from './core';
+import core from 'ext:uzumaki/core.ts';
 
 export const Clipboard = {
   readText(): string | null {

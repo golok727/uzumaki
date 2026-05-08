@@ -1,29 +1,32 @@
-import core, { type CoreWindow } from './core';
+import core, { type CoreWindow } from 'ext:uzumaki/core.ts';
 import type {
   WindowOptions,
   WindowLevel,
   WindowPosition,
   WindowSize,
   WindowTheme,
-} from './types';
-import { UzTextNode } from './node';
-import { Element } from './elements/element';
-import { UzElement } from './elements/base';
-import { UzRootElement } from './elements/root';
-import { UzViewElement } from './elements/view';
-import { UzTextElement } from './elements/text';
-import { UzButtonElement } from './elements/button';
-import { UzImageElement } from './elements/image';
-import { UzInputElement } from './elements/input';
-import { UzCheckboxElement } from './elements/checkbox';
-import { UzEventTarget, type ListenerOptions } from './event-target';
+} from 'ext:uzumaki/types.ts';
+import { UzTextNode } from 'ext:uzumaki/node.ts';
+import { Element } from 'ext:uzumaki/elements/element.ts';
+import { UzElement } from 'ext:uzumaki/elements/base.ts';
+import { UzRootElement } from 'ext:uzumaki/elements/root.ts';
+import { UzViewElement } from 'ext:uzumaki/elements/view.ts';
+import { UzTextElement } from 'ext:uzumaki/elements/text.ts';
+import { UzButtonElement } from 'ext:uzumaki/elements/button.ts';
+import { UzImageElement } from 'ext:uzumaki/elements/image.ts';
+import { UzInputElement } from 'ext:uzumaki/elements/input.ts';
+import { UzCheckboxElement } from 'ext:uzumaki/elements/checkbox.ts';
+import {
+  UzEventTarget,
+  type ListenerOptions,
+} from 'ext:uzumaki/event-target.ts';
 import {
   buildLifecycleEvent,
   type WindowEventMap,
   type WindowEventName,
   type WindowEventHandler,
-} from './events';
-import { clearWindowNodes, nodeCount } from './registry';
+} from 'ext:uzumaki/events.ts';
+import { clearWindowNodes, nodeCount } from 'ext:uzumaki/registry.ts';
 
 const windowsByLabel = new Map<string, Window>();
 const windowsById = new Map<number, Window>();

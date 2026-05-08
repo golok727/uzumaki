@@ -1,15 +1,18 @@
-import core, { type CoreNode } from '../core';
-import { dispatchDomEvent, dispatchEvent } from '../dispatcher';
-import { UzEventTarget, type ListenerOptions } from '../event-target';
+import core, { type CoreNode } from 'ext:uzumaki/core.ts';
+import { dispatchDomEvent, dispatchEvent } from 'ext:uzumaki/dispatcher.ts';
+import {
+  UzEventTarget,
+  type ListenerOptions,
+} from 'ext:uzumaki/event-target.ts';
 import {
   EVENT_NAME_TO_TYPE,
   EventPhase,
   UzEvent,
   type EventName,
   type UzEventMap,
-} from '../events';
-import { UzNode } from '../node';
-import type { Window } from '../window';
+} from 'ext:uzumaki/events.ts';
+import { UzNode } from 'ext:uzumaki/node.ts';
+import type { Window } from 'ext:uzumaki/window.ts';
 
 export class Element<M extends UzEventMap = UzEventMap> extends UzNode {
   private _elementId: string | null = null;

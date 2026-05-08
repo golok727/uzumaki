@@ -1,6 +1,6 @@
-import type { UzNode } from './node';
-import type { Window } from './window';
-import type { NodeId } from './types';
+import type { UzNode } from 'ext:uzumaki/node.ts';
+import type { Window } from 'ext:uzumaki/window.ts';
+import type { NodeId } from 'ext:uzumaki/types.ts';
 
 const NODES = Symbol('uz.nodes');
 

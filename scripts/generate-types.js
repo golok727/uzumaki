@@ -1,14 +1,16 @@
 import { build } from 'tsdown';
+import { $ } from 'bun';
 import path from 'node:path';
 
 await build({
-  entry: ['js/index.ts'],
+  entry: ['js/runtime.ts'],
   dts: { emitDtsOnly: true },
   outDir: 'dist',
   cwd: path.resolve('crates/uzumaki'),
 });
 
-const builtFile = path.resolve('crates/uzumaki/dist/index.d.mts');
+const builtFile = path.resolve('crates/uzumaki/dist/runtime.d.mts');
+const distDir = path.dirname(builtFile);
 
 const file = Bun.file(builtFile);
 const content = await file.text();
@@ -26,3 +28,5 @@ declare module 'uzumaki' {
 const outFile = path.resolve('packages/uzumaki-types/uzumaki.d.ts');
 
 await Bun.write(outFile, final);
+
+await $`rm -rf ${distDir}`;

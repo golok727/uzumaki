@@ -1,7 +1,7 @@
-import core, { type CoreNode } from './core';
-import { getNode, registerNode, unregisterNode } from './registry';
-import type { NodeId } from './types';
-import type { Window } from './window';
+import core, { type CoreNode } from 'ext:uzumaki/core.ts';
+import { getNode, registerNode, unregisterNode } from 'ext:uzumaki/registry.ts';
+import type { NodeId } from 'ext:uzumaki/types.ts';
+import type { Window } from 'ext:uzumaki/window.ts';
 
 export const NodeType = {
   Root: 1,

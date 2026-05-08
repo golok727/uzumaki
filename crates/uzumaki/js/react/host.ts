@@ -1,14 +1,14 @@
 import { CHECKBOX_ATTR_NAMES, INPUT_ATTR_NAMES } from './constants';
-import { UzElement } from '../elements/base';
-import { UzImageElement } from '../elements/image';
-import { UzTextNode } from '../node';
+import { UzElement } from 'uzumaki';
+import { UzImageElement } from 'uzumaki';
+import { UzTextNode } from 'uzumaki';
 import {
   assignNativeStyle,
   isEventProp,
   listenerKey,
   parseEventProp,
 } from './utils';
-import type { Window } from '../window';
+import type { Window } from 'uzumaki';
 
 const RESERVED_PROPS = new Set(['children', 'key', 'ref', 'id']);
 const IMAGE_RESERVED_PROPS = new Set([...RESERVED_PROPS, 'src']);

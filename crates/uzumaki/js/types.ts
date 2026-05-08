@@ -44,3 +44,15 @@ export interface ListenerEntry {
   handler: Function;
   capture: boolean;
 }
+
+export interface AppPath {
+  readonly resourceDir: string;
+  readonly identifier: string;
+  resource(rel: string): string;
+  cacheDir(): string | null;
+  dataDir(): string | null;
+  configDir(): string | null;
+  tempDir(): string;
+  exeDir(): string | null;
+  homeDir(): string | null;
+}

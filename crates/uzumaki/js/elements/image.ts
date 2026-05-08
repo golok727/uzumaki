@@ -1,7 +1,7 @@
-import core from '../core';
-import type { UzEventMap } from '../events';
-import type { Window } from '../window';
-import { UzElement } from './base';
+import core from 'ext:uzumaki/core.ts';
+import type { UzEventMap } from 'ext:uzumaki/events.ts';
+import type { Window } from 'ext:uzumaki/window.ts';
+import { UzElement } from 'ext:uzumaki/elements/base.ts';
 
 const WINDOWS_DRIVE_PATH = /^[A-Za-z]:[\\/]/;
 const URL_SCHEME = /^[A-Za-z][A-Za-z\d+\-.]*:/;

@@ -1,6 +1,6 @@
-import type { UzEventMap } from '../events';
-import type { Window } from '../window';
-import { Element, createNativeElement } from './element';
+import type { UzEventMap } from 'ext:uzumaki/events.ts';
+import type { Window } from 'ext:uzumaki/window.ts';
+import { Element, createNativeElement } from 'ext:uzumaki/elements/element.ts';
 
 export class UzElement<M extends UzEventMap = UzEventMap> extends Element<M> {
   readonly type: string;

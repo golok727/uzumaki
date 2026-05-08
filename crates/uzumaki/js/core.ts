@@ -7,6 +7,24 @@ import type {
   WindowTheme,
 } from './types';
 
+// @ts-expect-error
+import {
+  op_create_window,
+  op_request_quit,
+  op_request_redraw,
+  op_get_root_node,
+  op_create_element_node,
+  op_create_text_node,
+  op_set_encoded_image_data,
+  op_apply_cached_image,
+  op_clear_image_data,
+  op_focus_element,
+  op_get_ancestor_path,
+  op_read_clipboard_text,
+  op_write_clipboard_text,
+  // @ts-expect-error
+} from 'ext:core/ops';
+
 export interface CoreWindow {
   readonly id: number;
 
@@ -72,20 +90,7 @@ export interface CoreNode {
   getAttribute(name: string): unknown;
 }
 
-export interface AppPath {
-  readonly resourceDir: string;
-  readonly identifier: string;
-  resource(rel: string): string;
-  cacheDir(): string | null;
-  dataDir(): string | null;
-  configDir(): string | null;
-  tempDir(): string;
-  exeDir(): string | null;
-  homeDir(): string | null;
-}
-
 interface Core {
-  readonly path: AppPath;
   createWindow(options: WindowOptions): CoreWindow;
   requestQuit(): void;
   requestRedraw(windowId: number): void;
@@ -102,11 +107,8 @@ interface Core {
   clearImageData(windowId: number, nodeId: NodeId): void;
   focusElement(windowId: number, nodeId: NodeId): void;
   getAncestorPath(windowId: number, nodeId: NodeId): NodeId[];
-  getSelection(windowId: number): SelectionState | null;
-  getSelectedText(windowId: number): string;
   readClipboardText(): string | null;
   writeClipboardText(text: string): boolean;
-  decodeImageSource(source: string): Promise<Uint8Array>;
   onAppEvent(
     handler: (
       event: any,
@@ -115,26 +117,57 @@ interface Core {
   ): () => void;
 }
 
-export interface SelectionState {
-  /** The textSelect root node that owns this selection. */
-  rootNodeId: NodeId;
-  /** Flat grapheme offset where selection started (drag origin). */
-  anchorOffset: number;
-  /** Flat grapheme offset where selection currently ends (cursor). */
-  activeOffset: number;
-  /** Start offset (min of anchor and active). */
-  start: number;
-  /** End offset (max of anchor and active). */
-  end: number;
-  /** Total grapheme count in the selectable run. */
-  runLength: number;
-  /** Whether the selection is collapsed (anchor == active). */
-  isCollapsed: boolean;
-  /** The selected text content. */
-  text: string;
+const appEventSubscribers: Array<(...args: any[]) => void> = [];
+
+export function onAppEvent(handler: (...args: any[]) => void) {
+  if (typeof handler !== 'function') {
+    throw new TypeError('onAppEvent expects a function');
+  }
+  appEventSubscribers.push(handler);
+  return function dispose() {
+    const idx = appEventSubscribers.indexOf(handler);
+    if (idx !== -1) appEventSubscribers.splice(idx, 1);
+  };
 }
 
-const core: Core = (globalThis as unknown as any)
-  .__uzumaki_ops_dont_touch_this__;
+export function dispatchAppEvent(event: any) {
+  let prevented = false;
+  const ctx = {
+    preventDefault() {
+      prevented = true;
+    },
+    get defaultPrevented() {
+      return prevented;
+    },
+  };
+  const subs = [...appEventSubscribers];
+  for (let i = 0; i < subs.length; i++) {
+    try {
+      subs[i]?.(event, ctx);
+    } catch (error) {
+      console.error('[uzumaki] app event subscriber threw:', error);
+    }
+  }
+  return prevented;
+}
+
+const core: Core = {
+  createWindow: op_create_window,
+  requestQuit: op_request_quit,
+  requestRedraw: op_request_redraw,
+  getRootNode: op_get_root_node,
+  createElementNode: op_create_element_node,
+  createTextNode: op_create_text_node,
+  setEncodedImageData: op_set_encoded_image_data,
+  applyCachedImage: op_apply_cached_image,
+  clearImageData: op_clear_image_data,
+  focusElement: op_focus_element,
+  getAncestorPath: op_get_ancestor_path,
+  readClipboardText: op_read_clipboard_text,
+  writeClipboardText: op_write_clipboard_text,
+  onAppEvent,
+};
+// const core: Core = (globalThis as unknown as any)
+//   .__uzumaki_ops_dont_touch_this__;
 
 export default core;

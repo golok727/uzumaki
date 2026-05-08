@@ -2,7 +2,7 @@
   "extends": "../../tsconfig.json",
   "compilerOptions": {
     "composite": true,
-    "types": ["uzumaki-types"],
+    "types": ["deno", "node"],
     "paths": {
       "ext:uzumaki/*": ["./js/*"]
     }

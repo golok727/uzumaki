@@ -1,5 +1,5 @@
-import type { Window } from '../window';
-import { UzElement } from './base';
+import type { Window } from 'ext:uzumaki/window.ts';
+import { UzElement } from 'ext:uzumaki/elements/base.ts';
 
 export class UzButtonElement extends UzElement {
   constructor(window: Window) {

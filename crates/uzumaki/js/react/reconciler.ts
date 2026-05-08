@@ -6,9 +6,9 @@ import { INTRINSIC_ELEMENTS, __DEV__ } from './constants';
 
 import type { JSX } from './jsx/runtime';
 
-import { UzElement } from '../elements/base';
-import { UzNode, UzTextNode } from '../node';
-import { Window } from '../window';
+import { UzElement } from 'uzumaki';
+import { UzNode, UzTextNode } from 'uzumaki';
+import { Window } from 'uzumaki';
 import {
   applyProps,
   commitText,
