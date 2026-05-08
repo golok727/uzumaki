@@ -6,14 +6,15 @@ use std::rc::Rc;
 use std::sync::Arc;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::task::{Context, Poll};
-use std::time::{Duration, Instant};
+use std::time::Duration;
 
 use anyhow::Result;
 use deno_core::futures::task::{ArcWake, waker};
 use deno_core::{PollEventLoopOptions, v8};
 use deno_runtime::worker::MainWorker;
+use winit::platform::pump_events::{EventLoopExtPumpEvents, PumpStatus};
 use winit::window::{WindowAttributes, WindowButtons, WindowId, WindowLevel};
-use winit::{application::ApplicationHandler, event::WindowEvent, event_loop::ControlFlow};
+use winit::{application::ApplicationHandler, event::WindowEvent};
 
 use crate::clipboard;
 use crate::cursor;
@@ -331,11 +332,19 @@ impl Application {
     }
 
     pub fn run(&mut self) -> Result<()> {
-        let Some(event_loop) = self.event_loop.take() else {
+        let Some(mut event_loop) = self.event_loop.take() else {
             return Ok(());
         };
-        // event_loop.set_control_flow(ControlFlow::Poll);
-        event_loop.run_app(self)?;
+
+        loop {
+            self.pump_js();
+
+            let status = event_loop.pump_app_events(Some(Duration::from_millis(16)), self);
+            if let PumpStatus::Exit(_) = status {
+                break;
+            }
+        }
+
         Ok(())
     }
 
@@ -502,12 +511,7 @@ impl ApplicationHandler<UserEvent> for Application {
         }
     }
 
-    fn about_to_wait(&mut self, event_loop: &winit::event_loop::ActiveEventLoop) {
-        self.pump_js();
-        event_loop.set_control_flow(ControlFlow::WaitUntil(
-            Instant::now() + Duration::from_millis(16),
-        ));
-    }
+    fn about_to_wait(&mut self, _event_loop: &winit::event_loop::ActiveEventLoop) {}
 
     fn user_event(&mut self, event_loop: &winit::event_loop::ActiveEventLoop, event: UserEvent) {
         match event {
