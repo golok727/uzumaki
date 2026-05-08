@@ -22,9 +22,9 @@ import {
 
 const { ObjectDefineProperty } = primordials;
 
-const appEventSubscribers = [];
+const appEventSubscribers: Array<(...args: any[]) => void> = [];
 
-function onAppEvent(handler) {
+function onAppEvent(handler: (...args: any[]) => void) {
   if (typeof handler !== 'function') {
     throw new TypeError('onAppEvent expects a function');
   }
@@ -36,7 +36,7 @@ function onAppEvent(handler) {
 }
 
 // todo find a better way to do this
-let appPath;
+let appPath: AppPath;
 ObjectDefineProperty(globalThis, 'Uz', {
   value: {
     get path() {
@@ -72,7 +72,7 @@ ObjectDefineProperty(globalThis, '__uzumaki_ops_dont_touch_this__', {
 
 // Native side looks up this exact name. Runtime owns it; user code should
 // register through `__uzumaki.onAppEvent` instead of overwriting it.
-globalThis.__uzumaki_on_app_event__ = function (event) {
+globalThis.__uzumaki_on_app_event__ = function (event: any /** Todo type */) {
   let prevented = false;
   const ctx = {
     preventDefault() {
@@ -83,12 +83,12 @@ globalThis.__uzumaki_on_app_event__ = function (event) {
     },
   };
   // copy so a subscriber unsubscribing during dispatch doesn't shift iteration
-  const subs = appEventSubscribers.slice();
+  const subs = [...appEventSubscribers];
   for (let i = 0; i < subs.length; i++) {
     try {
       subs[i](event, ctx);
-    } catch (err) {
-      console.error('[uzumaki] app event subscriber threw:', err);
+    } catch (error) {
+      console.error('[uzumaki] app event subscriber threw:', error);
     }
   }
   return prevented;

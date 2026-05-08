@@ -69,7 +69,7 @@ impl ModuleLoader for TypescriptModuleLoader {
         _kind: ResolutionKind,
     ) -> Result<ModuleSpecifier, ModuleLoaderError> {
         if specifier == "uzumaki" {
-            return ModuleSpecifier::parse("ext:uzumaki/runtime.js").map_err(JsErrorBox::from_err);
+            return ModuleSpecifier::parse("ext:uzumaki/runtime.ts").map_err(JsErrorBox::from_err);
         }
 
         let referrer_url = ModuleSpecifier::parse(referrer).unwrap_or_else(|_| {
