@@ -75,6 +75,12 @@ pub struct TypescriptModuleLoader {
     pub node_resolver: Arc<UzNodeResolver>,
     pub cjs_tracker: Arc<UzCjsTracker>,
     pub node_code_translator: Arc<UzNodeCodeTranslator>,
+    /// When true, the builtin `uzumaki` module is hidden — it belongs to the
+    /// windowed runtime, not the headless `uzumaki run` mode.
+    pub headless: bool,
+    /// `import_source` for the automatic JSX transform. `None` falls back to
+    /// `uzumaki-react`.
+    pub jsx_import_source: Option<String>,
 }
 
 impl ModuleLoader for TypescriptModuleLoader {
@@ -85,6 +91,11 @@ impl ModuleLoader for TypescriptModuleLoader {
         _kind: ResolutionKind,
     ) -> Result<ModuleSpecifier, ModuleLoaderError> {
         if specifier == "uzumaki" {
+            if self.headless {
+                return Err(JsErrorBox::generic(
+                    "the `uzumaki` module is not available in headless mode (`uzumaki run`)",
+                ));
+            }
             return ModuleSpecifier::parse("ext:uzumaki/runtime.ts").map_err(JsErrorBox::from_err);
         }
 
@@ -176,11 +187,16 @@ impl ModuleLoader for TypescriptModuleLoader {
 
         // ESM path — existing sync logic
         let source_maps = self.source_maps.clone();
+        let jsx_import_source = self
+            .jsx_import_source
+            .clone()
+            .unwrap_or_else(|| "uzumaki-react".to_string());
         fn load_esm(
             source_maps: SourceMapStore,
             module_specifier: &ModuleSpecifier,
             path: std::path::PathBuf,
             media_type: MediaType,
+            jsx_import_source: String,
         ) -> Result<ModuleSource, ModuleLoaderError> {
             let (module_type, should_transpile) = match media_type {
                 MediaType::JavaScript | MediaType::Mjs | MediaType::Cjs => {
@@ -224,8 +240,7 @@ impl ModuleLoader for TypescriptModuleLoader {
                                     development: std::env::var("NODE_ENV")
                                         .map(|v| v != "production")
                                         .unwrap_or(true),
-                                    // todo make it configurable
-                                    import_source: Some("uzumaki-react".to_string()),
+                                    import_source: Some(jsx_import_source.clone()),
                                 },
                             )),
                             ..Default::default()
@@ -255,7 +270,13 @@ impl ModuleLoader for TypescriptModuleLoader {
             ))
         }
 
-        ModuleLoadResponse::Sync(load_esm(source_maps, module_specifier, path, media_type))
+        ModuleLoadResponse::Sync(load_esm(
+            source_maps,
+            module_specifier,
+            path,
+            media_type,
+            jsx_import_source,
+        ))
     }
 
     fn get_source_map(&self, specifier: &str) -> Option<Cow<'_, [u8]>> {

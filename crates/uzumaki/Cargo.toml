@@ -25,17 +25,17 @@ dirs.workspace = true
 # Deno deps
 deno_runtime = { workspace = true, features = ["include_js_files_for_snapshotting"] }
 deno_core = { workspace = true, features = ["include_js_files_for_snapshotting"] }
-
 deno_error = "=0.7.1"
 deno_ast = { version = "0.53.1", features = ["transpiling", "typescript", "react", "cjs"] }
+deno_resolver = "0.72.0"
+node_resolver = "0.79.0"
+
 async-trait = "0.1"
 rustls = { version = "=0.23.28", default-features = false, features = ["std", "aws_lc_rs"] }
 
 # https://github.com/denoland/deno/discussions/32444#discussioncomment-15993969
 winapi = { version = "=0.3.9", features = ["std"]}
-sys_traits = { version = "=0.1.25", features = ["real"] }
-node_resolver = "0.79.0"
-deno_resolver = "0.72.0"
+sys_traits = { workspace = true, features = ["real"] }
 
 # Rendering
 parley = "0.8.0"

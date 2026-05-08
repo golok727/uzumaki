@@ -2,7 +2,7 @@ pub mod cli;
 pub mod init;
 pub mod standalone;
 
-use uzumaki_runtime::{AppConfig, Application};
+use uzumaki_runtime::{AppConfig, Application, HeadlessApp};
 
 use crate::standalone::LaunchMode;
 
@@ -43,8 +43,8 @@ fn main() {
             LaunchMode::Dev { config } | LaunchMode::Standalone { config, .. } => {
                 run_app(config);
             }
-            LaunchMode::Headless => {
-                panic!("headless mode is not supported");
+            LaunchMode::Headless { config } => {
+                run_headless(config);
             }
         },
         Ok(None) => {} // Command handled (build/pack/update) or help printed
@@ -53,6 +53,12 @@ fn main() {
             std::process::exit(1);
         }
     }
+}
+
+fn run_headless(config: AppConfig) {
+    let mut app = HeadlessApp::new(UZUMAKI_SNAPSHOT, config).expect("error creating headless app");
+
+    app.run().expect("error running headless app");
 }
 
 fn run_app(config: AppConfig) {

@@ -5,6 +5,7 @@
   "build": {
     "command": "bun build src/index.tsx --target node --outdir dist --minify --external uzumaki"
   },
+  "jsxImportSource": "uzumaki-react",
   "pack": {
     "jsDist": "./dist",
     "entry": "index.js",

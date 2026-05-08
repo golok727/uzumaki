@@ -1,40 +1,28 @@
 use std::cell::RefCell;
 use std::collections::{HashMap, VecDeque};
+use std::future::poll_fn;
 use std::path::PathBuf;
 use std::rc::Rc;
 use std::sync::Arc;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::task::{Context, Poll};
-use std::time::Duration;
+use std::time::{Duration, Instant};
 
 use anyhow::Result;
 use deno_core::futures::task::{ArcWake, waker};
 use deno_core::{PollEventLoopOptions, v8};
-use deno_resolver::npm::{
-    ByonmNpmResolverCreateOptions, CreateInNpmPkgCheckerOptions, DenoInNpmPackageChecker,
-    NpmResolver, NpmResolverCreateOptions,
-};
-use deno_runtime::BootstrapOptions;
-use deno_runtime::deno_fs::FileSystem;
-use deno_runtime::deno_node::NodeExtInitServices;
-use deno_runtime::deno_permissions::PermissionsContainer;
-use deno_runtime::deno_web::{BlobStore, InMemoryBroadcastChannel};
-use deno_runtime::worker::{MainWorker, WorkerOptions, WorkerServiceOptions};
-use node_resolver::analyze::{CjsModuleExportAnalyzer, NodeCodeTranslator, NodeCodeTranslatorMode};
-use node_resolver::cache::NodeResolutionSys;
+use deno_runtime::worker::MainWorker;
 use winit::window::{WindowAttributes, WindowButtons, WindowId, WindowLevel};
-use winit::{application::ApplicationHandler, event::WindowEvent};
+use winit::{application::ApplicationHandler, event::WindowEvent, event_loop::ControlFlow};
 
 use crate::clipboard;
 use crate::cursor;
 use crate::element::UzNodeId;
 use crate::event_dispatch;
 use crate::gpu::GpuContext;
-use crate::runtime::module_loader::{UzCjsCodeAnalyzer, UzRequireLoader};
-use crate::runtime::resolver::UzCjsTracker;
-use crate::runtime::sys::UzSys;
+use crate::runtime::worker::{WorkerBuildOptions, create_worker};
 use crate::ui::UIState;
-use crate::{runtime, window};
+use crate::window;
 
 #[derive(Clone, Debug)]
 pub struct AppConfig {
@@ -51,6 +39,13 @@ pub struct AppConfig {
     /// App identifier (e.g. `com.uzumaki.playground`). Used as the per-app
     /// folder name under the platform cache/data/config dirs.
     pub identifier: String,
+    /// When true, run as a plain JS runtime: no winit/GPU/window machinery,
+    /// no `uzumaki` builtin module, no JSX transform. Used by `uzumaki run`.
+    pub headless: bool,
+    /// `import_source` injected by the automatic JSX transform. Defaults to
+    /// `uzumaki-react`; configurable via `jsxImportSource` in
+    /// `uzumaki.config.json` for users running their own renderer.
+    pub jsx_import_source: Option<String>,
 }
 
 /// Estimated bytes a single retained Rust DOM node holds. Reported to V8 via
@@ -246,8 +241,7 @@ impl Application {
         startup_snapshot: Option<&'static [u8]>,
         config: AppConfig,
     ) -> Result<Self> {
-        let tokio_runtime = tokio::runtime::Builder::new_multi_thread()
-            .worker_threads(1)
+        let tokio_runtime = tokio::runtime::Builder::new_current_thread()
             .enable_io()
             .enable_time()
             .build()
@@ -255,110 +249,18 @@ impl Application {
 
         let main_file: PathBuf = config.entry.clone();
         let app_root: PathBuf = config.app_root.clone();
-        let args: Vec<String> = config.args.clone();
-        let sys = sys_traits::impls::RealSys;
-
-        // --- BYONM node resolution ---
-        let root_node_modules = app_root.join("node_modules");
-        let pkg_json_resolver: node_resolver::PackageJsonResolverRc<UzSys> =
-            Arc::new(node_resolver::PackageJsonResolver::new(sys.clone(), None));
-
-        let in_npm_pkg_checker = DenoInNpmPackageChecker::new(CreateInNpmPkgCheckerOptions::Byonm);
-
-        let npm_resolver = NpmResolver::<UzSys>::new(NpmResolverCreateOptions::Byonm(
-            ByonmNpmResolverCreateOptions {
-                root_node_modules_dir: Some(root_node_modules),
-                search_stop_dir: None,
-                sys: NodeResolutionSys::new(sys.clone(), None),
-                pkg_json_resolver: pkg_json_resolver.clone(),
-            },
-        ));
-
-        let cjs_tracker = Arc::new(UzCjsTracker::new(
-            in_npm_pkg_checker.clone(),
-            pkg_json_resolver.clone(),
-            deno_resolver::cjs::IsCjsResolutionMode::ImplicitTypeCommonJs,
-            vec![],
-        ));
-
-        let node_resolver = Arc::new(node_resolver::NodeResolver::new(
-            in_npm_pkg_checker.clone(),
-            node_resolver::DenoIsBuiltInNodeModuleChecker,
-            npm_resolver.clone(),
-            pkg_json_resolver.clone(),
-            NodeResolutionSys::new(sys.clone(), None),
-            node_resolver::NodeResolverOptions::default(),
-        ));
-
-        let cjs_code_analyzer = UzCjsCodeAnalyzer {
-            cjs_tracker: cjs_tracker.clone(),
-        };
-        let cjs_module_export_analyzer = Arc::new(CjsModuleExportAnalyzer::new(
-            cjs_code_analyzer,
-            in_npm_pkg_checker.clone(),
-            node_resolver.clone(),
-            npm_resolver.clone(),
-            pkg_json_resolver.clone(),
-            sys.clone(),
-        ));
-        let node_code_translator = Arc::new(NodeCodeTranslator::new(
-            cjs_module_export_analyzer,
-            NodeCodeTranslatorMode::ModuleLoader,
-        ));
-
-        let fs: Arc<dyn FileSystem> = Arc::new(deno_runtime::deno_fs::RealFs);
-
-        let descriptor_parser = Arc::new(
-            deno_runtime::permissions::RuntimePermissionDescriptorParser::new(sys.clone()),
-        );
-
-        let main_module = deno_core::resolve_path(main_file.to_str().unwrap(), &app_root)?;
-
-        let services = WorkerServiceOptions {
-            blob_store: Arc::new(BlobStore::default()),
-            broadcast_channel: InMemoryBroadcastChannel::default(),
-            deno_rt_native_addon_loader: None,
-            feature_checker: Arc::new(deno_runtime::FeatureChecker::default()),
-            fs: fs.clone(),
-            module_loader: Rc::new(runtime::ts::TypescriptModuleLoader {
-                source_maps: runtime::ts::SourceMapStore::default(),
-                node_resolver: node_resolver.clone(),
-                cjs_tracker: cjs_tracker.clone(),
-                node_code_translator,
-            }),
-            node_services: Some(NodeExtInitServices {
-                node_require_loader: Rc::new(UzRequireLoader {
-                    cjs_tracker: cjs_tracker.clone(),
-                }),
-                node_resolver,
-                pkg_json_resolver,
-                sys: sys.clone(),
-            }),
-            npm_process_state_provider: None,
-            permissions: PermissionsContainer::allow_all(descriptor_parser),
-            root_cert_store_provider: None,
-            fetch_dns_resolver: Default::default(),
-            shared_array_buffer_store: None,
-            compiled_wasm_module_store: None,
-            v8_code_cache: None,
-            bundle_provider: None,
-        };
-
-        let options = WorkerOptions {
-            extensions: vec![crate::uzumaki::init()],
-            startup_snapshot,
-            skip_op_registration: false,
-            bootstrap: BootstrapOptions {
-                args: args.clone(),
-                mode: deno_runtime::WorkerExecutionMode::None,
-                ..Default::default()
-            },
-            ..Default::default()
-        };
 
         let mut worker = {
             let _guard = tokio_runtime.enter();
-            MainWorker::bootstrap_from_options(&main_module, services, options)
+            create_worker(WorkerBuildOptions {
+                entry: &main_file,
+                app_root: &app_root,
+                args: config.args.clone(),
+                headless: false,
+                jsx_import_source: config.jsx_import_source.clone(),
+                extensions: vec![crate::uzumaki::init()],
+                startup_snapshot,
+            })?
         };
 
         let global_app_event_dispatch_fn = {
@@ -458,18 +360,23 @@ impl Application {
         }
 
         let rt = &self.tokio_runtime;
-        let _guard = rt.enter();
-        let waker = waker(wake_handle);
-        let mut cx = Context::from_waker(&waker);
-
-        match self
-            .worker
-            .js_runtime
-            .poll_event_loop(&mut cx, PollEventLoopOptions::default())
-        {
-            Poll::Ready(Ok(())) | Poll::Pending => {}
-            Poll::Ready(Err(e)) => eprintln!("JS error: {e}"),
-        }
+        let worker = &mut self.worker;
+        rt.block_on(async {
+            tokio::task::yield_now().await;
+            poll_fn(|_| {
+                let waker = waker(wake_handle.clone());
+                let mut cx = Context::from_waker(&waker);
+                match worker
+                    .js_runtime
+                    .poll_event_loop(&mut cx, PollEventLoopOptions::default())
+                {
+                    Poll::Ready(Ok(())) | Poll::Pending => {}
+                    Poll::Ready(Err(e)) => eprintln!("JS error: {e}"),
+                }
+                Poll::Ready(())
+            })
+            .await;
+        });
 
         if !self.app_state.borrow().pending_destroy.is_empty() {
             JsWakeHandle::wake(&self.js_wake_handle);
@@ -595,8 +502,11 @@ impl ApplicationHandler<UserEvent> for Application {
         }
     }
 
-    fn about_to_wait(&mut self, _event_loop: &winit::event_loop::ActiveEventLoop) {
+    fn about_to_wait(&mut self, event_loop: &winit::event_loop::ActiveEventLoop) {
         self.pump_js();
+        event_loop.set_control_flow(ControlFlow::WaitUntil(
+            Instant::now() + Duration::from_millis(16),
+        ));
     }
 
     fn user_event(&mut self, event_loop: &winit::event_loop::ActiveEventLoop, event: UserEvent) {

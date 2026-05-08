@@ -20,6 +20,7 @@
   "files": [
     "index.d.ts",
     "globals.d.ts",
+    "uzumaki.d.ts",
     "README.md"
   ],
   "dependencies": {

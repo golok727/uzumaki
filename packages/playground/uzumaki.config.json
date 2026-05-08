@@ -2,8 +2,9 @@
   "productName": "playground",
   "version": "0.1.0",
   "identifier": "com.uzumaki.playground",
+  "jsxImportSource": "uzumaki-react",
   "build": {
-    "command": "bun build src/index.tsx --target node --outdir dist --minify --external uzumaki"
+    "command": "bun build src/index.tsx --target node --outdir dist --external uzumaki"
   },
   "pack": {
     "jsDist": "./dist",

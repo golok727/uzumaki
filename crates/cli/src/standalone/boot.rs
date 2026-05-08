@@ -14,7 +14,9 @@ pub enum LaunchMode {
     Dev {
         config: AppConfig,
     },
-    Headless,
+    Headless {
+        config: AppConfig,
+    },
     Standalone {
         config: AppConfig,
         #[allow(dead_code)]
@@ -26,8 +28,8 @@ impl LaunchMode {
     pub fn app_config(&self) -> &AppConfig {
         match self {
             LaunchMode::Dev { config, .. } => config,
+            LaunchMode::Headless { config, .. } => config,
             LaunchMode::Standalone { config, .. } => config,
-            Self::Headless => unreachable!(),
         }
     }
 }
@@ -75,6 +77,8 @@ pub fn detect_and_prepare() -> Result<Option<AppConfig>> {
         args,
         identifier: DEFAULT_IDENTIFIER.to_string(),
         resource_root,
+        headless: false,
+        jsx_import_source: None,
     }))
 }
 

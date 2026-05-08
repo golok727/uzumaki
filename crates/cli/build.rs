@@ -1,5 +1,6 @@
 fn main() {
     println!("cargo:rerun-if-changed=build.rs");
+    uzumaki_runtime::deno_runtime::deno_napi::print_linker_flags("uzumaki");
 
     let o = std::path::PathBuf::from(std::env::var_os("OUT_DIR").unwrap());
     let cli_snapshot_path = o.join("UZUMAKI_SNAPSHOT.bin");

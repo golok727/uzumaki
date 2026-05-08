@@ -5,7 +5,7 @@ use std::io::Read as _;
 use std::path::{Path, PathBuf};
 use std::process::Command;
 
-use crate::standalone::{self, LaunchMode};
+use crate::standalone;
 use uzumaki_runtime::AppConfig;
 
 const VERSION: &str = env!("CARGO_PKG_VERSION");
@@ -17,6 +17,8 @@ pub struct UzumakiConfig {
     pub product_name: String,
     pub version: String,
     pub identifier: String,
+    #[serde(default, rename = "jsxImportSource")]
+    pub jsx_import_source: Option<String>,
     #[serde(default)]
     pub build: BuildConfig,
     #[serde(default)]
@@ -160,8 +162,8 @@ pub fn run_cli() -> Result<Option<standalone::LaunchMode>> {
     };
 
     match cli.command {
-        Commands::Dev { entry, args } => Ok(Some(resolve_run(&entry, args)?)),
-        Commands::Run { .. } => Ok(Some(LaunchMode::Headless)),
+        Commands::Dev { entry, args } => Ok(Some(resolve_run(&entry, args, false)?)),
+        Commands::Run { entry, args } => Ok(Some(resolve_run(&entry, args, true)?)),
         Commands::Build { config, no_build } => {
             cmd_build(config.as_deref(), no_build)?;
             Ok(None)
@@ -177,7 +179,7 @@ pub fn run_cli() -> Result<Option<standalone::LaunchMode>> {
     }
 }
 
-fn resolve_run(entry: &str, args: Vec<String>) -> Result<standalone::LaunchMode> {
+fn resolve_run(entry: &str, args: Vec<String>, headless: bool) -> Result<standalone::LaunchMode> {
     let cwd = std::env::current_dir()?;
     let entry_path = strip_unc_prefix(
         fs::canonicalize(cwd.join(entry))
@@ -191,28 +193,34 @@ fn resolve_run(entry: &str, args: Vec<String>) -> Result<standalone::LaunchMode>
     // Locate the config to derive identifier and the resource root for dev
     // mode. In dev, resources are read straight from the project tree, so the
     // resource root is the config file's directory (or app_root as a fallback).
-    let (identifier, resource_root) = match find_config(&app_root) {
+    let (identifier, resource_root, jsx_import_source) = match find_config(&app_root) {
         Some(config_path) => {
             let config_dir = config_path
                 .parent()
                 .map(|p| p.to_path_buf())
                 .unwrap_or_else(|| app_root.clone());
-            let identifier = load_config(&config_path)
-                .map(|c| c.identifier)
-                .unwrap_or_else(|_| "com.uzumaki.app".to_string());
-            (identifier, config_dir)
+            let (identifier, jsx_import_source) = load_config(&config_path)
+                .map(|c| (c.identifier, c.jsx_import_source))
+                .unwrap_or_else(|_| ("com.uzumaki.app".to_string(), None));
+            (identifier, config_dir, jsx_import_source)
         }
-        None => ("com.uzumaki.app".to_string(), app_root.clone()),
+        None => ("com.uzumaki.app".to_string(), app_root.clone(), None),
     };
 
-    Ok(standalone::LaunchMode::Dev {
-        config: AppConfig {
-            entry: entry_path,
-            app_root,
-            args,
-            identifier,
-            resource_root,
-        },
+    let config = AppConfig {
+        entry: entry_path,
+        app_root,
+        args,
+        identifier,
+        resource_root,
+        headless,
+        jsx_import_source,
+    };
+
+    Ok(if headless {
+        standalone::LaunchMode::Headless { config }
+    } else {
+        standalone::LaunchMode::Dev { config }
     })
 }
 

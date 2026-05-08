@@ -7,6 +7,7 @@ pub mod element;
 pub mod event_dispatch;
 pub mod geometry;
 pub mod gpu;
+pub mod headless;
 pub mod input;
 pub mod interactivity;
 mod layout;
@@ -24,6 +25,7 @@ use deno_core::*;
 
 pub use crate::app::AppConfig;
 pub use crate::app::Application;
+pub use crate::headless::HeadlessApp;
 
 pub(crate) mod parse;
 pub(crate) mod prop_keys;
