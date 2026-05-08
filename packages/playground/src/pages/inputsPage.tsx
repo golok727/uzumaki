@@ -1,5 +1,5 @@
 import { useRef, useState } from 'react';
-import { UzInputElement } from 'uzumaki-ui';
+import { UzInputElement } from 'uzumaki';
 import { C } from '../theme';
 import { Divider, Badge } from '../components';
 

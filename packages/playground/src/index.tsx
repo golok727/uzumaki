@@ -1,7 +1,7 @@
 import { render } from 'uzumaki-ui/react';
 import { App } from './app';
 // import { RUNTIME_VERSION } from 'uzumaki';
-import { Window } from 'uzumaki-ui';
+import { Window } from 'uzumaki';
 import { C } from './theme';
 
 // console.log('Uzumaki Version:', RUNTIME_VERSION);

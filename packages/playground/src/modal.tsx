@@ -1,5 +1,5 @@
 import { useId, useState } from 'react';
-import { UzElement } from 'uzumaki-ui';
+import { UzElement } from 'uzumaki';
 import { C } from './theme';
 
 function ModalCounter() {
