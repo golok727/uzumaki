@@ -5,7 +5,7 @@ use std::io::Read as _;
 use std::path::{Path, PathBuf};
 use std::process::Command;
 
-use crate::standalone;
+use crate::standalone::{self, LaunchMode};
 use uzumaki_runtime::AppConfig;
 
 const VERSION: &str = env!("CARGO_PKG_VERSION");
@@ -84,8 +84,15 @@ pub struct Cli {
 #[derive(Subcommand)]
 pub enum Commands {
     /// Run a JS/TS file in the uzumaki runtime
-    Run {
+    Dev {
         /// Entry point file
+        entry: String,
+        /// Extra arguments passed to the runtime
+        #[arg(trailing_var_arg = true, allow_hyphen_values = true)]
+        args: Vec<String>,
+    },
+    // Run as JS/TS file in headless mode
+    Run {
         entry: String,
         /// Extra arguments passed to the runtime
         #[arg(trailing_var_arg = true, allow_hyphen_values = true)]
@@ -130,7 +137,7 @@ fn clap_styles() -> clap::builder::Styles {
 }
 
 /// Known subcommand names so we can distinguish `uzumaki build` from `uzumaki app.tsx`.
-const KNOWN_SUBCOMMANDS: &[&str] = &["run", "build", "init", "upgrade", "help"];
+const KNOWN_SUBCOMMANDS: &[&str] = &["run", "dev", "build", "init", "upgrade", "help"];
 
 pub fn run_cli() -> Result<Option<standalone::LaunchMode>> {
     let raw_args: Vec<String> = std::env::args().collect();
@@ -145,7 +152,7 @@ pub fn run_cli() -> Result<Option<standalone::LaunchMode>> {
     // treat it as `uzumaki run <file> ...`
     let cli = if !KNOWN_SUBCOMMANDS.contains(&raw_args[1].as_str()) && !raw_args[1].starts_with('-')
     {
-        let mut patched = vec![raw_args[0].clone(), "run".to_string()];
+        let mut patched = vec![raw_args[0].clone(), "dev".to_string()];
         patched.extend_from_slice(&raw_args[1..]);
         Cli::parse_from(patched)
     } else {
@@ -153,7 +160,8 @@ pub fn run_cli() -> Result<Option<standalone::LaunchMode>> {
     };
 
     match cli.command {
-        Commands::Run { entry, args } => Ok(Some(resolve_run(&entry, args)?)),
+        Commands::Dev { entry, args } => Ok(Some(resolve_run(&entry, args)?)),
+        Commands::Run { .. } => Ok(Some(LaunchMode::Headless)),
         Commands::Build { config, no_build } => {
             cmd_build(config.as_deref(), no_build)?;
             Ok(None)

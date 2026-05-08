@@ -2,7 +2,9 @@ pub mod cli;
 pub mod init;
 pub mod standalone;
 
-use uzumaki_runtime::Application;
+use uzumaki_runtime::{AppConfig, Application};
+
+use crate::standalone::LaunchMode;
 
 pub static UZUMAKI_SNAPSHOT: Option<&[u8]> = Some(include_bytes!(concat!(
     env!("OUT_DIR"),
@@ -22,11 +24,13 @@ fn main() {
     // Standalone-first: if the current executable carries an embedded payload,
     // always run it, ignoring any CLI args.
     match standalone::detect_and_prepare() {
-        Ok(Some(mode)) => {
-            run_launch_mode(mode);
+        Ok(Some(config)) => {
+            run_app(config);
             return;
         }
-        Ok(None) => {}
+        Ok(None) => {
+            // not standalone exe, fall back to cli
+        }
         Err(err) => {
             eprintln!("uzumaki: failed to read embedded standalone payload: {err}");
             std::process::exit(1);
@@ -35,7 +39,14 @@ fn main() {
 
     // Not a standalone executable
     match cli::run_cli() {
-        Ok(Some(mode)) => run_launch_mode(mode),
+        Ok(Some(mode)) => match mode {
+            LaunchMode::Dev { config } | LaunchMode::Standalone { config, .. } => {
+                run_app(config);
+            }
+            LaunchMode::Headless => {
+                panic!("headless mode is not supported");
+            }
+        },
         Ok(None) => {} // Command handled (build/pack/update) or help printed
         Err(err) => {
             eprintln!("\x1b[1;31merror:\x1b[0m {err:#}");
@@ -44,8 +55,7 @@ fn main() {
     }
 }
 
-fn run_launch_mode(mode: standalone::LaunchMode) {
-    let config = mode.app_config().clone();
+fn run_app(config: AppConfig) {
     let mut app =
         Application::new_with_root(UZUMAKI_SNAPSHOT, config).expect("error creating application");
 

@@ -14,6 +14,7 @@ pub enum LaunchMode {
     Dev {
         config: AppConfig,
     },
+    Headless,
     Standalone {
         config: AppConfig,
         #[allow(dead_code)]
@@ -26,6 +27,7 @@ impl LaunchMode {
         match self {
             LaunchMode::Dev { config, .. } => config,
             LaunchMode::Standalone { config, .. } => config,
+            Self::Headless => unreachable!(),
         }
     }
 }
@@ -33,7 +35,7 @@ impl LaunchMode {
 /// Detect whether the current executable contains an embedded standalone
 /// payload. If yes, extract it (idempotently) and return a Standalone launch
 /// mode. Otherwise return `Ok(None)` so the caller can fall back to dev mode.
-pub fn detect_and_prepare() -> Result<Option<LaunchMode>> {
+pub fn detect_and_prepare() -> Result<Option<AppConfig>> {
     let exe = std::env::current_exe().context("resolving current_exe")?;
     let args = std::env::args().skip(1).collect::<Vec<_>>();
     let Some(payload) = load_payload(&exe)? else {
@@ -67,15 +69,12 @@ pub fn detect_and_prepare() -> Result<Option<LaunchMode>> {
         exe_dir.join("resources")
     };
 
-    Ok(Some(LaunchMode::Standalone {
-        config: AppConfig {
-            entry: entry_path,
-            app_root,
-            args,
-            identifier: DEFAULT_IDENTIFIER.to_string(),
-            resource_root,
-        },
-        extraction_dir,
+    Ok(Some(AppConfig {
+        entry: entry_path,
+        app_root,
+        args,
+        identifier: DEFAULT_IDENTIFIER.to_string(),
+        resource_root,
     }))
 }
 
