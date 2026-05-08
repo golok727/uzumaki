@@ -1,4 +1,4 @@
-import { render } from 'uzumaki-ui/react';
+import { render } from 'uzumaki-react';
 import { App } from './app';
 // import { RUNTIME_VERSION } from 'uzumaki';
 import { Window } from 'uzumaki';

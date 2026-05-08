@@ -286,7 +286,7 @@
       }
     },
     {
-      "files": ["crates/uzumaki/js/react/jsx/types.ts"],
+      "files": ["packages/uzumaki-react/src/jsx/types.ts"],
       "rules": {
         "typescript/no-namespace": "off"
       }

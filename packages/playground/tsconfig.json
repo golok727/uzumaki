@@ -3,7 +3,7 @@
   "compilerOptions": {
     "composite": false,
     "types": ["uzumaki-types"],
-    "jsxImportSource": "uzumaki-ui/react"
+    "jsxImportSource": "uzumaki-react"
   },
   "include": ["src/**/*.ts", "src/**/*.tsx"]
 }

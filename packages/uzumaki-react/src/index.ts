@@ -1,3 +1,1 @@
-export function render() {
-  throw new Error('Todo');
-}
+export { render } from './reconciler';

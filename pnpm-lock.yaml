@@ -30,13 +30,6 @@ importers:
         version: 6.0.2
 
   crates/uzumaki:
-    dependencies:
-      react:
-        specifier: ^19.2.4
-        version: 19.2.4
-      react-reconciler:
-        specifier: ^0.33.0
-        version: 0.33.0(react@19.2.4)
     devDependencies:
       '@types/deno':
         specifier: ^2.5.0
@@ -44,12 +37,6 @@ importers:
       '@types/node':
         specifier: ^25.6.0
         version: 25.6.0
-      '@types/react':
-        specifier: ^19.2.14
-        version: 19.2.14
-      '@types/react-reconciler':
-        specifier: ^0.33.0
-        version: 0.33.0(@types/react@19.2.14)
 
   docs:
     dependencies:
@@ -78,9 +65,9 @@ importers:
       shiki:
         specifier: ^4.0.2
         version: 4.0.2
-      uzumaki-ui:
+      uzumaki-react:
         specifier: workspace:*
-        version: link:../../crates/uzumaki
+        version: link:../uzumaki-react
     devDependencies:
       '@types/react':
         specifier: ^19.2.14
@@ -92,7 +79,24 @@ importers:
         specifier: workspace:*
         version: link:../uzumaki-types
 
-  packages/uzumaki-react: {}
+  packages/uzumaki-react:
+    dependencies:
+      react:
+        specifier: ^19.2.4
+        version: 19.2.4
+      react-reconciler:
+        specifier: ^0.33.0
+        version: 0.33.0(react@19.2.4)
+    devDependencies:
+      '@types/react':
+        specifier: ^19.2.14
+        version: 19.2.14
+      '@types/react-reconciler':
+        specifier: ^0.33.0
+        version: 0.33.0(@types/react@19.2.14)
+      uzumaki-types:
+        specifier: workspace:*
+        version: link:../uzumaki-types
 
   packages/uzumaki-types:
     dependencies:

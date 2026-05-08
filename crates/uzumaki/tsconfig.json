@@ -7,5 +7,5 @@
       "ext:uzumaki/*": ["./js/*"]
     }
   },
-  "include": ["js/**/*.ts", "js/react/**/*.ts"]
+  "include": ["js/**/*.ts"]
 }

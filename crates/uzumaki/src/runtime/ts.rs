@@ -224,7 +224,8 @@ impl ModuleLoader for TypescriptModuleLoader {
                                     development: std::env::var("NODE_ENV")
                                         .map(|v| v != "production")
                                         .unwrap_or(true),
-                                    import_source: Some("uzumaki-ui/react".to_string()),
+                                    // todo make it configurable
+                                    import_source: Some("uzumaki-react".to_string()),
                                 },
                             )),
                             ..Default::default()

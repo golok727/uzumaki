@@ -139,6 +139,7 @@ interface EventProps<T extends UzNode> {
   onKeyUpCapture?: (ev: UzKeyboardEvent<T>) => void;
 }
 
+// @oxlint-ignore
 export namespace JSX {
   export type Element = ReactNode;
 
