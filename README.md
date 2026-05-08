@@ -3,8 +3,7 @@
 
   <h1>Uzumaki</h1>
 
-  <p>Native desktop UI framework for JavaScript and TypeScript.<br/>
-  React-friendly, GPU-rendered, and powered by the built-in Uzumaki runtime.</p>
+  <p>Native desktop UI framework for JavaScript and TypeScript</p>
 
 [![CI](https://github.com/golok727/uzumaki/actions/workflows/ci.yml/badge.svg)](https://github.com/golok727/uzumaki/actions/workflows/ci.yml)
 [![License: MIT](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE-MIT)
@@ -77,29 +76,7 @@ render(window, <App />);
 - `uzumaki-react` provides the React renderer
 - `uzumaki-types` provides TypeScript declarations for the built-in runtime
 
-Most apps install `react`, `uzumaki-react`, and `uzumaki-types`, then import `Window` and other runtime APIs from `uzumaki`.
 
-## Images and Resources
-
-Declare bundled files in `uzumaki.config.json`:
-
-```json
-{
-  "bundle": {
-    "resources": ["assets/**/*"]
-  }
-}
-```
-
-Resolve them at runtime:
-
-```tsx
-const logo = Uz.path.resource('assets/logo.svg');
-```
-
-```tsx
-<image src={logo} w={96} h={96} />
-```
 
 ## Install
 
