@@ -1,26 +1,10 @@
-// @ts-expect-error
+// @ts-expect-error hope its there :3
 import { primordials } from 'ext:core/mod.js';
 
-// @ts-expect-error
 import {
-  op_create_window,
-  op_request_quit,
-  op_request_redraw,
-  op_get_root_node,
-  op_create_element_node,
-  op_create_text_node,
-  /** begin image */
-  op_set_encoded_image_data,
-  op_apply_cached_image,
-  op_clear_image_data,
-  /** end image */
-  op_focus_element,
-  op_get_ancestor_path,
-  op_read_clipboard_text,
-  op_write_clipboard_text,
   op_get_uz_runtime_version,
   AppPath as CoreAppPath,
-  // @ts-expect-error
+  // @ts-expect-error it is what it is
 } from 'ext:core/ops';
 import { dispatchAppEvent, onAppEvent } from 'ext:uzumaki/core.ts';
 
@@ -48,20 +32,6 @@ ObjectDefineProperty(globalThis, 'Uz', {
   writable: false,
   configurable: false,
 });
-
-export const createWindow = op_create_window;
-export const requestQuit = op_request_quit;
-export const requestRedraw = op_request_redraw;
-export const getRootNode = op_get_root_node;
-export const createElementNode = op_create_element_node;
-export const createTextNode = op_create_text_node;
-export const setEncodedImageData = op_set_encoded_image_data;
-export const applyCachedImage = op_apply_cached_image;
-export const clearImageData = op_clear_image_data;
-export const focusElement = op_focus_element;
-export const getAncestorPath = op_get_ancestor_path;
-export const readClipboardText = op_read_clipboard_text;
-export const writeClipboardText = op_write_clipboard_text;
 
 export type { AppPath };
 
@@ -180,7 +150,7 @@ onAppEvent((event: AppEvent, ctx) => {
   if (prevented) ctx.preventDefault();
 });
 
-export const RUNTIME_VERSION = op_get_uz_runtime_version();
+export const RUNTIME_VERSION: number = op_get_uz_runtime_version();
 
 interface AppEvent {
   type: string;

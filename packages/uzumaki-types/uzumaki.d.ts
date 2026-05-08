@@ -488,25 +488,12 @@ declare module 'uzumaki' {
   };
   //#endregion
   //#region js/runtime.d.ts
-  declare const createWindow: any;
-  declare const requestQuit: any;
-  declare const requestRedraw: any;
-  declare const getRootNode: any;
-  declare const createElementNode: any;
-  declare const createTextNode: any;
-  declare const setEncodedImageData: any;
-  declare const applyCachedImage: any;
-  declare const clearImageData: any;
-  declare const focusElement: any;
-  declare const getAncestorPath: any;
-  declare const readClipboardText: any;
-  declare const writeClipboardText: any;
   declare global {
     const Uz: {
       path: AppPath;
     };
   }
-  declare const RUNTIME_VERSION: any;
+  declare const RUNTIME_VERSION: number;
   //#endregion
   export {
     type AppPath,
@@ -547,19 +534,6 @@ declare module 'uzumaki' {
     type WindowSize,
     type WindowTheme,
     __internalDebugNodeCount,
-    applyCachedImage,
-    clearImageData,
-    createElementNode,
-    createTextNode,
-    createWindow,
-    focusElement,
-    getAncestorPath,
-    getRootNode,
     getWindow,
-    readClipboardText,
-    requestQuit,
-    requestRedraw,
-    setEncodedImageData,
-    writeClipboardText,
   };
 }

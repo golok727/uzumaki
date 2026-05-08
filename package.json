@@ -9,6 +9,8 @@
     "build:core": "cargo build --release -p uzumaki",
     "format": "prettier --write .",
     "lint": "oxlint --react-plugin --node-plugin .",
+    "typecheck": "pnpm -r typecheck",
+    "gen:types": "bun scripts/generate-types",
     "lint:fix": "oxlint --react-plugin --node-plugin --fix .",
     "prepare": "husky"
   },

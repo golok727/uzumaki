@@ -7,7 +7,6 @@ import type {
   WindowTheme,
 } from './types';
 
-// @ts-expect-error
 import {
   op_create_window,
   op_request_quit,
@@ -22,7 +21,7 @@ import {
   op_get_ancestor_path,
   op_read_clipboard_text,
   op_write_clipboard_text,
-  // @ts-expect-error
+  // @ts-expect-error it is what it is
 } from 'ext:core/ops';
 
 export interface CoreWindow {
