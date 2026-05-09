@@ -52,7 +52,15 @@ function fireEmitter(
       event.eventPhase === EventPhase.Target ||
       entry.capture === capturePhase
     ) {
-      entry.handler(event);
+      try {
+        entry.handler(event);
+      } catch (error) {
+        if (error instanceof Error) {
+          console.error(error);
+        } else {
+          console.error('Error', error);
+        }
+      }
       if (flags._stoppedImmediate) return;
     }
   }

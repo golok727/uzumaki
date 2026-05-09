@@ -118,7 +118,7 @@ export class UzImageElement extends UzElement<ImageEventMap> {
       if (errorEntries && errorEntries.length > 0) {
         this._safeEmit('error', { src, message });
       } else {
-        console.error(`[uzumaki] Failed to load image "${src}": ${message}`);
+        console.error(new Error(`Failed to load image "${src}": ${message}`));
       }
     }
   }
@@ -127,11 +127,7 @@ export class UzImageElement extends UzElement<ImageEventMap> {
     name: K,
     event: ImageEventMap[K],
   ): void {
-    try {
-      this._emitter.emit(name, event);
-    } catch (error) {
-      console.error(`[uzumaki] image '${name}' handler threw:`, error);
-    }
+    this._emitter.emit(name, event);
   }
 
   private _isCurrent(generation: number): boolean {

@@ -435,7 +435,10 @@ impl Application {
         let event_val = match deno_core::serde_v8::to_v8(scope, event) {
             Ok(val) => val,
             Err(e) => {
-                eprintln!("[uzumaki] failed to serialize event: {e}");
+                eprintln!(
+                    "{} failed to serialize event: {e}",
+                    terminal_colors::red_bold("Error")
+                );
                 return false;
             }
         };
@@ -444,7 +447,7 @@ impl Application {
 
         if let Some(exception) = scope.exception() {
             let error = deno_core::error::JsError::from_v8_exception(scope, exception);
-            eprintln!("[uzumaki] event handler error: {error}");
+            eprintln!("{} {error}", terminal_colors::red_bold("Error"));
             return false;
         }
 

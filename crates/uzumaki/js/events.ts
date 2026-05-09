@@ -345,7 +345,7 @@ export function _eventFlags(event: UzumakiEvent): InternalFlags {
   if (event instanceof UzEvent) return event._getFlags();
   const flags = (event as any)._flags as InternalFlags | undefined;
   if (flags) return flags;
-  throw new Error('[uzumaki] Cannot dispatch an event without internal state');
+  throw new Error('Cannot dispatch an event without internal state');
 }
 
 /** @internal Set the current phase on an event built by buildDomEvent. */

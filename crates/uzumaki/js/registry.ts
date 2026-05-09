@@ -4,7 +4,8 @@ import type { NodeId } from 'ext:uzumaki/types.ts';
 
 const NODES = Symbol('uz.nodes');
 
-type NodeMap = Map<NodeId, WeakRef<UzNode>>;
+// todo find a better way to gc nodes Weak<UzNode> with FinalizationRegistry doesnt work well
+type NodeMap = Map<NodeId, UzNode>;
 
 interface NodeHost {
   [NODES]?: NodeMap;
@@ -18,25 +19,8 @@ function nodes(window: Window, create = false): NodeMap | undefined {
   return host[NODES];
 }
 
-const finalizer = new FinalizationRegistry<{
-  window: WeakRef<Window>;
-  nodeId: NodeId;
-}>(({ window, nodeId }) => {
-  const w = window.deref();
-  if (!w) return;
-  const map = nodes(w);
-  if (!map) return;
-  const ref = map.get(nodeId);
-  if (!ref || ref.deref() === undefined) map.delete(nodeId);
-});
-
 export function registerNode(node: UzNode): void {
-  const window = node.window;
-  nodes(window, true).set(node.nodeId, new WeakRef(node));
-  finalizer.register(node, {
-    window: new WeakRef(window),
-    nodeId: node.nodeId,
-  });
+  nodes(node.window, true).set(node.nodeId, node);
 }
 
 export function unregisterNode(window: Window, nodeId: NodeId): void {
@@ -44,11 +28,7 @@ export function unregisterNode(window: Window, nodeId: NodeId): void {
 }
 
 export function getNode(window: Window, nodeId: NodeId): UzNode | undefined {
-  const map = nodes(window);
-  const ref = map?.get(nodeId);
-  const node = ref?.deref();
-  if (!node && map) map.delete(nodeId);
-  return node;
+  return nodes(window)?.get(nodeId);
 }
 
 export function clearWindowNodes(window: Window): void {

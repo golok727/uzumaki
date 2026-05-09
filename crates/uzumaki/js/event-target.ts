@@ -64,7 +64,15 @@ export class UzEventTarget<M extends Record<string, any>> {
     // snapshot: a handler may call off() during dispatch
     // eslint-disable-next-line unicorn/no-useless-spread
     for (const entry of [...list]) {
-      entry.handler(event);
+      try {
+        entry.handler(event);
+      } catch (error) {
+        if (error instanceof Error) {
+          console.error(error);
+        } else {
+          console.error('Error', error);
+        }
+      }
     }
     return !!(event && typeof event === 'object' && event.defaultPrevented);
   }
