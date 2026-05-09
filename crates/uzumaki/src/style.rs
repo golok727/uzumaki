@@ -1,4 +1,4 @@
-use parley::{Alignment as ParleyAlignment, FontFamily, LineHeight, StyleProperty};
+use parley::{FontFamily, LineHeight, StyleProperty};
 use refineable::Refineable;
 use vello::Scene;
 use vello::kurbo::{Affine, Rect, RoundedRect, RoundedRectRadii, Stroke};
@@ -351,65 +351,9 @@ impl FontWeight {
     }
 }
 
-#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
-pub enum OverflowWrap {
-    #[default]
-    Normal,
-    Anywhere,
-    BreakWord,
-}
+pub use parley::{OverflowWrap, WordBreak};
 
-impl OverflowWrap {
-    pub fn to_parley(self) -> parley::OverflowWrap {
-        match self {
-            Self::Normal => parley::OverflowWrap::Normal,
-            Self::Anywhere => parley::OverflowWrap::Anywhere,
-            Self::BreakWord => parley::OverflowWrap::BreakWord,
-        }
-    }
-}
-
-#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
-pub enum WordBreak {
-    #[default]
-    Normal,
-    BreakAll,
-    KeepAll,
-}
-
-impl WordBreak {
-    pub fn to_parley(self) -> parley::WordBreak {
-        match self {
-            Self::Normal => parley::WordBreak::Normal,
-            Self::BreakAll => parley::WordBreak::BreakAll,
-            Self::KeepAll => parley::WordBreak::KeepAll,
-        }
-    }
-}
-
-#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
-pub enum TextAlign {
-    #[default]
-    Start,
-    End,
-    Left,
-    Center,
-    Right,
-    Justify,
-}
-
-impl TextAlign {
-    pub fn to_parley(self) -> ParleyAlignment {
-        match self {
-            Self::Start => ParleyAlignment::Start,
-            Self::End => ParleyAlignment::End,
-            Self::Left => ParleyAlignment::Left,
-            Self::Center => ParleyAlignment::Center,
-            Self::Right => ParleyAlignment::Right,
-            Self::Justify => ParleyAlignment::Justify,
-        }
-    }
-}
+pub use parley::layout::Alignment as TextAlign;
 
 #[derive(Clone, Debug, PartialEq, Refineable)]
 #[refineable(Debug)]
@@ -549,8 +493,8 @@ impl TextStyle {
             StyleProperty::FontSize(self.font_size),
             StyleProperty::LineHeight(LineHeight::FontSizeRelative(self.line_height)),
             StyleProperty::FontWeight(self.font_weight.to_parley()),
-            StyleProperty::OverflowWrap(self.overflow_wrap.to_parley()),
-            StyleProperty::WordBreak(self.word_break.to_parley()),
+            StyleProperty::OverflowWrap(self.overflow_wrap),
+            StyleProperty::WordBreak(self.word_break),
         ]
         .into_iter()
         .chain(letter_spacing)
@@ -715,15 +659,9 @@ impl UzStyle {
                 ..Default::default()
             },
             "input" => Self {
-                // Multiline inputs wrap aggressively, char-by-char, so a
-                // long line never overflows the box horizontally — the
-                // editor only ever scrolls vertically. `BreakAll` makes
-                // every character a break opportunity (instead of only
-                // word boundaries); `Anywhere` keeps min-content small so
-                // the input can shrink inside flex containers.
                 text: TextStyle {
                     overflow_wrap: OverflowWrap::Anywhere,
-                    word_break: WordBreak::BreakAll,
+                    word_break: WordBreak::default(),
                     ..Default::default()
                 },
                 ..Default::default()

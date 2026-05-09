@@ -66,7 +66,7 @@ impl TextRenderer {
         }
         let mut layout = builder.build(text);
         layout.break_all_lines(max_width);
-        let alignment = style.text_align.to_parley();
+        let alignment = style.text_align;
         // Only apply alignment when a frame is provided. Without one, callers
         // (cursor x-positions, hit testing, single-line input drawing) want
         // natural unaligned coordinates and apply alignment themselves.
@@ -477,7 +477,7 @@ pub fn apply_text_style_to_editor(editor: &mut parley::PlainEditor<TextBrush>, s
     for prop in style.to_parley_styles() {
         styles.insert(prop);
     }
-    editor.set_alignment(style.text_align.to_parley());
+    editor.set_alignment(style.text_align);
 }
 
 pub fn secure_cursor_geometry(
