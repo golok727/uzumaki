@@ -15,6 +15,7 @@ pub mod ops;
 pub mod selection;
 pub mod shared_string;
 pub mod style;
+pub mod terminal_colors;
 pub mod text;
 pub mod ui;
 pub mod window;

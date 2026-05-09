@@ -144,7 +144,11 @@ export function dispatchAppEvent(event: any) {
     try {
       subs[i]?.(event, ctx);
     } catch (error) {
-      console.error('[uzumaki] app event subscriber threw:', error);
+      if (error instanceof Error) {
+        console.error(error);
+      } else {
+        console.error('Error', error);
+      }
     }
   }
   return prevented;

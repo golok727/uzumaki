@@ -1,4 +1,4 @@
-use anyhow::Result;
+use anyhow::{Context, Result};
 
 use crate::AppConfig;
 use crate::runtime::worker::{WorkerBuildOptions, create_worker};
@@ -7,7 +7,13 @@ pub fn run_headless(startup_snapshot: Option<&'static [u8]>, app_config: AppConf
     let main_file = &app_config.entry;
     let app_root = &app_config.app_root;
     let tokio_runtime = deno_runtime::tokio_util::create_basic_runtime();
-    let main_module = deno_core::resolve_path(main_file.to_str().unwrap(), app_root)?;
+    let main_module = deno_core::resolve_path(
+        main_file
+            .to_str()
+            .ok_or_else(|| anyhow::anyhow!("entry path is not valid utf-8"))?,
+        app_root,
+    )
+    .context("failed to resolve main module path")?;
 
     let config = app_config.clone();
 
@@ -34,8 +40,14 @@ pub fn run_headless(startup_snapshot: Option<&'static [u8]>, app_config: AppConf
     }
 
     tokio_runtime.block_on(async {
-        worker.execute_main_module(&main_module).await?;
-        worker.run_event_loop(false).await?;
+        worker
+            .execute_main_module(&main_module)
+            .await
+            .with_context(|| format!("failed to execute main module {main_module}"))?;
+        worker
+            .run_event_loop(false)
+            .await
+            .context("error while running the JS event loop")?;
         Ok::<_, anyhow::Error>(())
     })?;
 

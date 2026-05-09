@@ -8,7 +8,7 @@ use std::sync::atomic::{AtomicBool, Ordering};
 use std::task::{Context, Poll};
 use std::time::Duration;
 
-use anyhow::Result;
+use anyhow::{Context as _, Result};
 use deno_core::futures::task::{ArcWake, waker};
 use deno_core::{PollEventLoopOptions, v8};
 use deno_runtime::worker::MainWorker;
@@ -22,6 +22,7 @@ use crate::element::UzNodeId;
 use crate::event_dispatch;
 use crate::gpu::GpuContext;
 use crate::runtime::worker::{WorkerBuildOptions, create_worker};
+use crate::terminal_colors;
 use crate::ui::UIState;
 use crate::window;
 
@@ -40,9 +41,6 @@ pub struct AppConfig {
     /// App identifier (e.g. `com.uzumaki.playground`). Used as the per-app
     /// folder name under the platform cache/data/config dirs.
     pub identifier: String,
-    /// When true, run as a plain JS runtime: no winit/GPU/window machinery,
-    /// no `uzumaki` builtin module, no JSX transform. Used by `uzumaki run`.
-    pub headless: bool,
     /// `import_source` injected by the automatic JSX transform. Defaults to
     /// `uzumaki-react`; configurable via `jsxImportSource` in
     /// `uzumaki.config.json` for users running their own renderer.
@@ -337,7 +335,9 @@ impl Application {
         };
 
         loop {
-            self.pump_js();
+            if let Err(err) = self.pump_js() {
+                print_runtime_error(&err);
+            }
 
             let status = event_loop.pump_app_events(Some(Duration::from_millis(16)), self);
             if let PumpStatus::Exit(_) = status {
@@ -348,7 +348,7 @@ impl Application {
         Ok(())
     }
 
-    fn pump_js(&mut self) {
+    fn pump_js(&mut self) -> Result<()> {
         let wake_handle = self.js_wake_handle.clone();
         wake_handle.clear();
 
@@ -380,27 +380,35 @@ impl Application {
                     .poll_event_loop(&mut cx, PollEventLoopOptions::default())
                 {
                     Poll::Ready(Ok(())) | Poll::Pending => {}
-                    Poll::Ready(Err(e)) => eprintln!("JS error: {e}"),
+                    Poll::Ready(Err(e)) => return Poll::Ready(Err(anyhow::Error::new(e))),
                 }
-                Poll::Ready(())
+                Poll::Ready(Ok(()))
             })
-            .await;
-        });
+            .await?;
+            Ok::<_, anyhow::Error>(())
+        })?;
 
         if !self.app_state.borrow().pending_destroy.is_empty() {
             JsWakeHandle::wake(&self.js_wake_handle);
         }
+
+        Ok(())
     }
 
-    fn load_main_module(&mut self) {
-        let specifier =
-            deno_core::resolve_path(self.main_file.to_str().unwrap(), &self.app_root).unwrap();
+    fn load_main_module(&mut self) -> Result<()> {
+        let specifier = deno_core::resolve_path(
+            self.main_file
+                .to_str()
+                .ok_or_else(|| anyhow::anyhow!("entry path is not valid utf-8"))?,
+            &self.app_root,
+        )
+        .context("failed to resolve main module path")?;
 
         let rt = &self.tokio_runtime;
-        rt.block_on(async {
-            self.worker.execute_main_module(&specifier).await.unwrap();
-        });
-        self.pump_js();
+        rt.block_on(async { self.worker.execute_main_module(&specifier).await })
+            .with_context(|| format!("failed to execute main module {specifier}"))?;
+        self.pump_js()?;
+        Ok(())
     }
 
     /// Dispatch an event to JS. Returns true if `preventDefault()` was called.
@@ -507,7 +515,10 @@ impl ApplicationHandler<UserEvent> for Application {
     fn resumed(&mut self, _event_loop: &winit::event_loop::ActiveEventLoop) {
         if !self.module_loaded {
             self.module_loaded = true;
-            self.load_main_module();
+            if let Err(err) = self.load_main_module() {
+                print_runtime_error(&err);
+                std::process::exit(1);
+            }
         }
     }
 
@@ -610,7 +621,9 @@ impl ApplicationHandler<UserEvent> for Application {
             }
             UserEvent::WakeJs => {
                 self.js_wake_handle.clear();
-                self.pump_js();
+                if let Err(err) = self.pump_js() {
+                    print_runtime_error(&err);
+                }
             }
             UserEvent::Quit => {
                 let mut state = self.app_state.borrow_mut();
@@ -1085,4 +1098,8 @@ impl ApplicationHandler<UserEvent> for Application {
             self.refresh_cursor_blink_timer(wid);
         }
     }
+}
+
+fn print_runtime_error(err: &anyhow::Error) {
+    eprintln!("{} {:#}", terminal_colors::red_bold("Error"), err);
 }

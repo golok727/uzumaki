@@ -68,6 +68,8 @@ export class UzNode {
   }
 
   set textContent(text: string | null) {
+    // Fixme this should behave different for elements vs text nodes
+    // text nodes should set node.textContent, for elements - clear the children and append the new text node
     this._native.textContent = text ?? '';
   }
 

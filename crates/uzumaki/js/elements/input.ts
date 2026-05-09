@@ -31,4 +31,8 @@ export class UzInputElement extends UzElement<InputEventMap> {
   get value(): string {
     return String(this.getAttribute('value') ?? '');
   }
+
+  set value(value: string) {
+    this.setAttribute('value', value);
+  }
 }

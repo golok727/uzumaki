@@ -77,7 +77,6 @@ pub fn detect_and_prepare() -> Result<Option<AppConfig>> {
         args,
         identifier: DEFAULT_IDENTIFIER.to_string(),
         resource_root,
-        headless: false,
         jsx_import_source: None,
     }))
 }

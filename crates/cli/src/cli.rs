@@ -1,16 +1,17 @@
 use anyhow::{Context, Result, bail};
-use clap::{CommandFactory, Parser, Subcommand};
+use clap::builder::styling::AnsiColor;
+use clap::{ColorChoice, Command, CommandFactory, FromArgMatches, Parser, Subcommand};
 use std::fs;
 use std::io::Read as _;
 use std::path::{Path, PathBuf};
-use std::process::Command;
+use std::process::Command as ProcessCommand;
 
 use crate::standalone;
+use crate::ui;
 use uzumaki_runtime::AppConfig;
 
 const VERSION: &str = env!("CARGO_PKG_VERSION");
 const GITHUB_REPO: &str = "golok727/uzumaki";
-
 #[derive(Debug, serde::Deserialize)]
 pub struct UzumakiConfig {
     #[serde(rename = "productName")]
@@ -74,13 +75,21 @@ fn load_config(path: &Path) -> Result<UzumakiConfig> {
 #[derive(Parser)]
 #[command(
     name = "uzumaki",
-    about = "\x1b[1;38;5;75mUzumaki\x1b[0m — Desktop UI Framework",
+    about = "Desktop UI runtime",
     version = VERSION,
-    styles = clap_styles(),
 )]
 pub struct Cli {
+    /// Entry point file to run in dev mode
+    pub entry: Option<String>,
+    /// Extra arguments passed to the runtime when using the bare entry form
+    #[arg(
+        trailing_var_arg = true,
+        allow_hyphen_values = true,
+        requires = "entry"
+    )]
+    pub args: Vec<String>,
     #[command(subcommand)]
-    pub command: Commands,
+    pub command: Option<Commands>,
 }
 
 #[derive(Subcommand)]
@@ -111,10 +120,16 @@ pub enum Commands {
     },
     /// Initialize a new Uzumaki project
     Init {
-        /// Directory to create the project in (defaults to project name)
-        directory: Option<String>,
+        /// Initialize the current directory as a new Uzumaki project.
+        #[arg(hide = true)]
+        name: Option<String>,
     },
-    /// Upgrade uzumaki to the latest version
+    /// Create a new Uzumaki project in a new directory
+    Create {
+        /// Project name / directory to create
+        name: Option<String>,
+    },
+    /// Upgrade to the latest version
     Upgrade {
         /// Specific version to install (e.g. 0.2.0)
         #[arg(long)]
@@ -124,59 +139,170 @@ pub enum Commands {
 
 fn clap_styles() -> clap::builder::Styles {
     clap::builder::Styles::styled()
-        .header(
-            clap::builder::styling::AnsiColor::BrightCyan
-                .on_default()
-                .bold(),
-        )
-        .usage(
-            clap::builder::styling::AnsiColor::BrightCyan
-                .on_default()
-                .bold(),
-        )
-        .literal(clap::builder::styling::AnsiColor::BrightBlue.on_default())
-        .placeholder(clap::builder::styling::AnsiColor::White.on_default())
+        .header(AnsiColor::BrightCyan.on_default().bold())
+        .usage(AnsiColor::White.on_default().bold())
+        .literal(AnsiColor::Green.on_default())
+        .placeholder(AnsiColor::Green.on_default())
 }
 
-/// Known subcommand names so we can distinguish `uzumaki build` from `uzumaki app.tsx`.
-const KNOWN_SUBCOMMANDS: &[&str] = &["run", "dev", "build", "init", "upgrade", "help"];
+fn long_version() -> String {
+    let profile = std::env::var("PROFILE").unwrap_or_else(|_| "release".to_string());
+    let target = std::env::var("TARGET")
+        .unwrap_or_else(|_| format!("{}-{}", std::env::consts::ARCH, std::env::consts::OS));
+
+    format!(
+        "{} ({}, {})\nv8 {}\ntypescript {}",
+        VERSION,
+        profile,
+        target,
+        uzumaki_runtime::deno_core::v8::VERSION_STRING,
+        uzumaki_runtime::TS_VERSION,
+    )
+}
+
+pub fn clap_root() -> Command {
+    let long_version: &'static str = Box::leak(long_version().into_boxed_str());
+
+    Cli::command()
+        .bin_name("uzumaki")
+        .styles(clap_styles())
+        .color(ColorChoice::Auto)
+        .term_width(100)
+        .next_line_help(false)
+        .disable_help_subcommand(true)
+        .long_version(long_version)
+}
 
 pub fn run_cli() -> Result<Option<standalone::LaunchMode>> {
-    let raw_args: Vec<String> = std::env::args().collect();
-
-    if raw_args.len() <= 1 {
-        Cli::command().print_help().ok();
+    if should_print_root_help() {
+        print_root_help();
         println!();
         return Ok(None);
     }
 
-    // If the first arg after the binary name looks like a file (not a known subcommand),
-    // treat it as `uzumaki run <file> ...`
-    let cli = if !KNOWN_SUBCOMMANDS.contains(&raw_args[1].as_str()) && !raw_args[1].starts_with('-')
-    {
+    let matches = if should_parse_subcommand_first() {
+        clap_root().get_matches()
+    } else {
+        let raw_args: Vec<String> = std::env::args().collect();
         let mut patched = vec![raw_args[0].clone(), "dev".to_string()];
         patched.extend_from_slice(&raw_args[1..]);
-        Cli::parse_from(patched)
-    } else {
-        Cli::parse()
+        clap_root().get_matches_from(patched)
     };
+    let cli = Cli::from_arg_matches(&matches)?;
 
-    match cli.command {
-        Commands::Dev { entry, args } => Ok(Some(resolve_run(&entry, args, false)?)),
-        Commands::Run { entry, args } => Ok(Some(resolve_run(&entry, args, true)?)),
-        Commands::Build { config, no_build } => {
+    match (cli.command, cli.entry) {
+        (Some(Commands::Dev { entry, args }), None) => Ok(Some(resolve_run(&entry, args, false)?)),
+        (Some(Commands::Run { entry, args }), None) => Ok(Some(resolve_run(&entry, args, true)?)),
+        (Some(Commands::Build { config, no_build }), None) => {
             cmd_build(config.as_deref(), no_build)?;
             Ok(None)
         }
-        Commands::Init { directory } => {
-            crate::init::cmd_init(directory.as_deref())?;
+        (Some(Commands::Init { name }), None) => {
+            crate::init::cmd_init(name.as_deref())?;
             Ok(None)
         }
-        Commands::Upgrade { version } => {
+        (Some(Commands::Create { name }), None) => {
+            match name {
+                Some(name) => crate::init::cmd_create(&name)?,
+                None => crate::init::cmd_create_interactive()?,
+            }
+            Ok(None)
+        }
+        (Some(Commands::Upgrade { version }), None) => {
             cmd_upgrade(version.as_deref())?;
             Ok(None)
         }
+        (None, Some(entry)) => Ok(Some(resolve_run(&entry, cli.args, false)?)),
+        (None, None) => {
+            print_root_help();
+            println!();
+            Ok(None)
+        }
+        (Some(_), Some(_)) => {
+            unreachable!("clap should not parse a subcommand and bare entry together")
+        }
     }
+}
+
+fn should_parse_subcommand_first() -> bool {
+    matches!(
+        std::env::args().nth(1).as_deref(),
+        Some("dev" | "run" | "build" | "init" | "create" | "upgrade")
+    )
+}
+
+fn should_print_root_help() -> bool {
+    let args: Vec<String> = std::env::args().skip(1).collect();
+    args.is_empty()
+        || matches!(args.as_slice(), [flag] if flag == "--help" || flag == "-h" || flag == "help")
+}
+
+fn print_root_help() {
+    println!(
+        "{} is a desktop UI runtime for Javascript / TypeScript. (v{})",
+        ui::brand("Uzumaki"),
+        VERSION
+    );
+    println!();
+    println!("Usage: uzumaki [ENTRY] [ARGS]... [COMMAND]");
+    println!();
+    println!("{}", ui::bold("Commands:"));
+
+    ui::print_help_command(
+        ui::purple("dev"),
+        Some("./app.tsx"),
+        "Run a file in the interactive runtime",
+    );
+    ui::print_help_command(
+        ui::purple("run"),
+        Some("./script.ts"),
+        "Run a file in headless mode",
+    );
+
+    println!();
+
+    ui::print_help_command(
+        ui::yellow("build"),
+        Some(""),
+        "Build and package an app using uzumaki.config.json",
+    );
+
+    println!();
+
+    ui::print_help_command(
+        ui::teal("init"),
+        Some(""),
+        "Initialize the current directory as a new project",
+    );
+    ui::print_help_command(
+        ui::teal("create"),
+        Some("[name]"),
+        "Create a new project, prompting when the name is omitted",
+    );
+
+    println!();
+
+    ui::print_help_command(
+        ui::cyan("upgrade"),
+        Some(""),
+        "Upgrade to the latest version",
+    );
+
+    println!();
+    println!("{}", ui::bold("Options:"));
+    println!("  {:<10} Print help text", ui::muted("-h, --help"));
+    println!("  {:<10} Print version", ui::muted("-V, --version"));
+    println!();
+    println!("  uzumaki --help           Print help text for the root command.");
+    println!(
+        "  uzumaki {} --help Print help text for a command.",
+        ui::muted("<command>")
+    );
+    println!();
+    println!(
+        "{} https://github.com/golok727/uzumaki",
+        ui::muted("GitHub:")
+    );
 }
 
 fn resolve_run(entry: &str, args: Vec<String>, headless: bool) -> Result<standalone::LaunchMode> {
@@ -213,7 +339,6 @@ fn resolve_run(entry: &str, args: Vec<String>, headless: bool) -> Result<standal
         args,
         identifier,
         resource_root,
-        headless,
         jsx_import_source,
     };
 
@@ -259,10 +384,7 @@ fn cmd_build(config_path: Option<&str>, no_build: bool) -> Result<()> {
     let config = load_config(&config_file)?;
 
     if !no_build && let Some(ref cmd) = config.build.command {
-        println!(
-            "\x1b[1;38;5;75muzumaki\x1b[0m \x1b[2mrunning build:\x1b[0m {}",
-            cmd
-        );
+        ui::print_status("build", cmd);
         let status = run_shell_command(cmd, &config_dir)?;
         if !status.success() {
             bail!("build command failed with exit code {}", status);
@@ -299,11 +421,7 @@ fn cmd_build(config_path: Option<&str>, no_build: bool) -> Result<()> {
         None => std::env::current_exe()?,
     };
 
-    println!(
-        "\x1b[1;38;5;75muzumaki\x1b[0m \x1b[2mpacking\x1b[0m {} → {}",
-        js_dist,
-        output_path.display()
-    );
+    ui::print_status("pack", format!("{js_dist} -> {}", output_path.display()));
 
     let final_output = standalone::pack::pack_app(&standalone::pack::PackOptions {
         dist_dir: js_dist_path,
@@ -361,10 +479,7 @@ fn copy_bundle_resources(base: &Path, patterns: &[String], resources_dir: &Path)
         }
 
         if !matched {
-            eprintln!(
-                "\x1b[1;33muzumaki\x1b[0m \x1b[2mbundle resource\x1b[0m {} \x1b[33mmatched nothing\x1b[0m",
-                pattern
-            );
+            ui::print_warning("bundle resource", format!("{pattern} matched nothing"));
         }
     }
     Ok(())
@@ -390,7 +505,7 @@ fn copy_path(src: &Path, dest: &Path) -> Result<()> {
 }
 
 fn cmd_upgrade(target_version: Option<&str>) -> Result<()> {
-    println!("\x1b[1;38;5;75muzumaki\x1b[0m \x1b[2mchecking for updates...\x1b[0m");
+    ui::print_status("upgrade", "checking for updates...");
 
     let version_tag = match target_version {
         Some(v) => {
@@ -423,7 +538,10 @@ fn cmd_upgrade(target_version: Option<&str>) -> Result<()> {
     let version_num = version_tag.strip_prefix('v').unwrap_or(&version_tag);
 
     if version_num == VERSION {
-        println!("\x1b[1;38;5;75muzumaki\x1b[0m \x1b[32malready up to date\x1b[0m (v{VERSION})");
+        ui::print_status(
+            "upgrade",
+            format!("{} (v{VERSION})", ui::success("already up to date")),
+        );
         return Ok(());
     }
 
@@ -431,7 +549,10 @@ fn cmd_upgrade(target_version: Option<&str>) -> Result<()> {
     let download_url =
         format!("https://github.com/{GITHUB_REPO}/releases/download/{version_tag}/{asset_name}");
 
-    println!("\x1b[1;38;5;75muzumaki\x1b[0m \x1b[2mdownloading\x1b[0m v{VERSION} → v{version_num}");
+    ui::print_status(
+        "upgrade",
+        format!("downloading v{VERSION} -> v{version_num}"),
+    );
 
     let mut response = ureq::get(&download_url)
         .header("User-Agent", "uzumaki-updater")
@@ -462,7 +583,9 @@ fn cmd_upgrade(target_version: Option<&str>) -> Result<()> {
             let pct = (downloaded as f64 / total as f64 * 100.0) as u8;
             let filled = (pct as usize) / 2;
             eprint!(
-                "\r\x1b[1;38;5;75muzumaki\x1b[0m \x1b[2m[{:█<filled$}{:·<empty$}] {pct}%\x1b[0m",
+                "\r{} {} [{:█<filled$}{:·<empty$}] {pct}%",
+                ui::brand("uzumaki"),
+                ui::muted("upgrade"),
                 "",
                 "",
                 filled = filled,
@@ -479,7 +602,10 @@ fn cmd_upgrade(target_version: Option<&str>) -> Result<()> {
     let current_exe = std::env::current_exe()?;
     replace_exe(&current_exe, &binary_bytes)?;
 
-    println!("\x1b[1;38;5;75muzumaki\x1b[0m \x1b[32mupdated to v{version_num}\x1b[0m");
+    ui::print_status(
+        "upgrade",
+        format!("{} v{version_num}", ui::success("updated to")),
+    );
 
     Ok(())
 }
@@ -577,12 +703,12 @@ fn normalize_output_extension(path: &Path) -> PathBuf {
 
 fn run_shell_command(command: &str, cwd: &Path) -> Result<std::process::ExitStatus> {
     let status = if cfg!(target_os = "windows") {
-        Command::new("cmd.exe")
+        ProcessCommand::new("cmd.exe")
             .args(["/d", "/s", "/c", command])
             .current_dir(cwd)
             .status()
     } else {
-        Command::new("sh")
+        ProcessCommand::new("sh")
             .args(["-lc", command])
             .current_dir(cwd)
             .status()

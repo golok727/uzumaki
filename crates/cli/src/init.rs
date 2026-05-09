@@ -1,7 +1,9 @@
 use anyhow::{Result, bail};
 use std::fs;
-use std::io::{self, BufRead, Write};
-use std::path::Path;
+use std::io::{self, Write};
+use std::path::{Path, PathBuf};
+
+use crate::ui;
 
 const TMPL_PACKAGE_JSON: &str = include_str!("../template/package.json");
 const TMPL_TSCONFIG: &str = include_str!("../template/tsconfig.json");
@@ -47,34 +49,6 @@ const TEMPLATE_ENTRIES: &[TemplateEntry] = &[
     },
 ];
 
-const BOLD: &str = "\x1b[1m";
-const RESET: &str = "\x1b[0m";
-const BLUE: &str = "\x1b[38;5;75m";
-const GREEN: &str = "\x1b[32m";
-const DIM: &str = "\x1b[2m";
-
-fn prompt(label: &str, default: &str) -> Result<String> {
-    if default.is_empty() {
-        eprint!("{BLUE}?{RESET} {BOLD}{label}{RESET}: ");
-    } else {
-        eprint!("{BLUE}?{RESET} {BOLD}{label}{RESET} {DIM}({default}){RESET}: ");
-    }
-    io::stderr().flush()?;
-
-    let mut line = String::new();
-    io::stdin().lock().read_line(&mut line)?;
-    let trimmed = line.trim().to_string();
-
-    if trimmed.is_empty() {
-        if default.is_empty() {
-            bail!("{label} is required");
-        }
-        Ok(default.to_string())
-    } else {
-        Ok(trimmed)
-    }
-}
-
 fn sanitize_name(name: &str) -> String {
     name.chars()
         .map(|c| {
@@ -110,69 +84,247 @@ fn write_template_entry(base: &Path, entry: &TemplateEntry, vars: &[(&str, &str)
 }
 
 pub fn cmd_init(target_dir: Option<&str>) -> Result<()> {
-    println!("\n{BOLD}{BLUE}Uzumaki{RESET} — Project Setup\n");
-
     let cwd = std::env::current_dir()?;
 
-    // Project name
-    let dir_hint = target_dir.map(String::from).unwrap_or_else(|| {
-        cwd.file_name()
-            .map(|n| n.to_string_lossy().to_string())
-            .unwrap_or_else(|| "my-app".to_string())
-    });
-    let project_name = prompt("Project name", &sanitize_name(&dir_hint))?;
-    let project_name = sanitize_name(&project_name);
+    if cwd.join("package.json").is_file() {
+        bail!(
+            "a project already exists in this folder: found package.json in {}",
+            cwd.display()
+        );
+    }
 
+    let default_name = cwd
+        .file_name()
+        .map(|name| sanitize_name(&name.to_string_lossy()))
+        .filter(|name| !name.is_empty())
+        .unwrap_or_else(|| "my-app".to_string());
+
+    let project_name = match target_dir {
+        Some(name) => {
+            let name = sanitize_name(name);
+            if name.is_empty() {
+                bail!("project name cannot be empty");
+            }
+            name
+        }
+        None => {
+            let name = prompt_with_default("Project name", &default_name)?;
+            let name = sanitize_name(&name);
+            if name.is_empty() {
+                bail!("project name cannot be empty");
+            }
+            name
+        }
+    };
+
+    let identifier = prompt_with_default("Bundle identifier", &default_identifier(&project_name))?;
+
+    scaffold_project_here(&cwd, &project_name, &identifier, "init")
+}
+
+pub fn cmd_create(name: &str) -> Result<()> {
+    let project_name = sanitize_name(name);
     if project_name.is_empty() {
         bail!("project name cannot be empty");
     }
+    let identifier = prompt_with_default("Bundle identifier", &default_identifier(&project_name))?;
+    scaffold_project(Some(name), false, &identifier, "create")
+}
 
-    // Identifier
-    let default_id = format!("com.example.{}", project_name.replace('-', "_"));
-    let identifier = prompt("Bundle identifier", &default_id)?;
+pub fn cmd_create_interactive() -> Result<()> {
+    let cwd = std::env::current_dir()?;
+    let default_name = cwd
+        .file_name()
+        .map(|name| sanitize_name(&name.to_string_lossy()))
+        .filter(|name| !name.is_empty())
+        .unwrap_or_else(|| "my-app".to_string());
 
-    // Resolve output directory
-    let project_dir = match target_dir {
-        Some(d) => cwd.join(d),
-        None => cwd.join(&project_name),
-    };
+    println!("{}", ui::brand("Create a new Uzumaki project"));
+    println!();
+    println!(
+        "{}",
+        ui::muted("Press enter to initialize the current directory.")
+    );
+    println!();
 
-    // Check if dir exists and is non-empty
+    let name = prompt_with_default("Project name", &default_name)?;
+    let name = sanitize_name(&name);
+
+    if name.is_empty() || name == default_name {
+        let identifier = prompt_with_default("Bundle identifier", &default_identifier(&name))?;
+        return scaffold_project_here(&cwd, &name, &identifier, "create");
+    }
+
+    let identifier = prompt_with_default("Bundle identifier", &default_identifier(&name))?;
+    scaffold_project(Some(&name), false, &identifier, "create")
+}
+
+fn scaffold_project(
+    target_dir: Option<&str>,
+    allow_current_dir: bool,
+    identifier: &str,
+    action: &str,
+) -> Result<()> {
+    let cwd = std::env::current_dir()?;
+    if !allow_current_dir && target_dir.is_none() {
+        bail!("project name is required");
+    }
+    let (project_dir, dir_display) = resolve_project_dir(&cwd, target_dir);
+    let project_name = derive_project_name(&project_dir)?;
+
     if project_dir.is_dir() {
         if project_dir.join("package.json").is_file() {
+            if allow_current_dir && target_dir.is_none() {
+                bail!(
+                    "a project already exists in this folder: found package.json in {}",
+                    project_dir.display()
+                );
+            }
             bail!(
-                "{} already contains package.json; refusing to create a project inside an existing package",
+                "target folder already contains package.json: {}",
                 project_dir.display()
             );
         }
 
         let has_entries = fs::read_dir(&project_dir)?.next().is_some();
-        if has_entries {
+        if (!allow_current_dir || target_dir.is_some()) && has_entries {
             bail!("directory {} is not empty", project_dir.display());
         }
     }
 
-    // Write files
-    let vars: Vec<(&str, &str)> =
-        vec![("PROJECT_NAME", &project_name), ("IDENTIFIER", &identifier)];
+    let vars: Vec<(&str, &str)> = vec![("PROJECT_NAME", &project_name), ("IDENTIFIER", identifier)];
+
+    ui::print_status(
+        action,
+        format!("creating project {}", dir_display.display()),
+    );
 
     for entry in TEMPLATE_ENTRIES {
+        if allow_current_dir && target_dir.is_none() && project_dir.join(entry.path).exists() {
+            bail!(
+                "cannot initialize here because {} already exists",
+                project_dir.join(entry.path).display()
+            );
+        }
         write_template_entry(&project_dir, entry, &vars)?;
     }
 
-    // Summary
     let rel = project_dir.strip_prefix(&cwd).unwrap_or(&project_dir);
 
-    println!();
     for entry in TEMPLATE_ENTRIES {
-        println!("  {GREEN}created{RESET} {}/{}", rel.display(), entry.path);
+        println!(
+            "  {} {}/{}",
+            ui::success("created"),
+            rel.display(),
+            entry.path
+        );
     }
 
-    println!("\n{BOLD}Next steps:{RESET}\n");
-    println!("  cd {project_name}");
+    println!();
+    println!("{}", ui::brand("Next steps"));
+    if target_dir.is_some() {
+        println!("  cd {}", rel.display());
+    }
     println!("  pnpm install");
     println!("  pnpm dev");
     println!();
 
     Ok(())
+}
+
+fn scaffold_project_here(
+    project_dir: &Path,
+    project_name: &str,
+    identifier: &str,
+    action: &str,
+) -> Result<()> {
+    if project_dir.join("package.json").is_file() {
+        bail!(
+            "a project already exists in this folder: found package.json in {}",
+            project_dir.display()
+        );
+    }
+
+    ui::print_status(
+        action,
+        format!("creating project {}", project_dir.display()),
+    );
+
+    let vars: Vec<(&str, &str)> = vec![("PROJECT_NAME", project_name), ("IDENTIFIER", identifier)];
+
+    for entry in TEMPLATE_ENTRIES {
+        let dest = project_dir.join(entry.path);
+        if dest.exists() {
+            bail!(
+                "cannot initialize here because {} already exists",
+                dest.display()
+            );
+        }
+        write_template_entry(project_dir, entry, &vars)?;
+    }
+
+    for entry in TEMPLATE_ENTRIES {
+        println!(
+            "  {} ./{}",
+            ui::success("created"),
+            entry.path.replace('\\', "/")
+        );
+    }
+
+    println!();
+    println!("{}", ui::brand("Next steps"));
+    println!("  pnpm install");
+    println!("  pnpm dev");
+    println!();
+
+    Ok(())
+}
+
+fn derive_project_name(project_dir: &Path) -> Result<String> {
+    let raw_name = project_dir
+        .file_name()
+        .map(|name| name.to_string_lossy().to_string())
+        .unwrap_or_else(|| "my-app".to_string());
+    let project_name = sanitize_name(&raw_name);
+
+    if project_name.is_empty() {
+        bail!("could not derive a valid project name from '{}'", raw_name);
+    }
+
+    Ok(project_name)
+}
+
+fn default_identifier(project_name: &str) -> String {
+    format!("com.example.{}", project_name.replace('-', "_"))
+}
+
+fn resolve_project_dir(cwd: &Path, target_dir: Option<&str>) -> (PathBuf, PathBuf) {
+    match target_dir {
+        Some(target) => {
+            let path = cwd.join(target);
+            let display = path.strip_prefix(cwd).unwrap_or(&path).to_path_buf();
+            (path, display)
+        }
+        None => (cwd.to_path_buf(), PathBuf::from(".")),
+    }
+}
+
+fn prompt_with_default(label: &str, default: &str) -> Result<String> {
+    print!(
+        "{} {} {} ",
+        ui::teal("?"),
+        label,
+        ui::muted(format!("({default})"))
+    );
+    io::stdout().flush()?;
+
+    let mut input = String::new();
+    io::stdin().read_line(&mut input)?;
+    let trimmed = input.trim();
+
+    if trimmed.is_empty() {
+        Ok(default.to_string())
+    } else {
+        Ok(trimmed.to_string())
+    }
 }
