@@ -4,7 +4,7 @@ use std::cell::RefCell;
 use std::rc::{Rc, Weak};
 
 use crate::app::{AppState, NODE_EXTERNAL_BYTES, SharedAppState, with_state};
-use crate::paint::{NodeData, UzNodeId};
+use crate::node::{Node, NodeData, UzNodeId};
 use crate::style::UzStyle;
 
 fn window_not_found() -> deno_error::JsErrorBox {
@@ -41,11 +41,7 @@ impl CoreNode {
         }
     }
 
-    fn read_node<R>(
-        &self,
-        state: &OpState,
-        read: impl FnOnce(&crate::paint::Node) -> R,
-    ) -> Option<R> {
+    fn read_node<R>(&self, state: &OpState, read: impl FnOnce(&Node) -> R) -> Option<R> {
         let app_state = state.borrow::<SharedAppState>().clone();
         with_state(&app_state, |s| {
             let entry = s.windows.get(&self.window_id)?;
@@ -57,7 +53,7 @@ impl CoreNode {
     fn related_node_id(
         &self,
         state: &mut OpState,
-        read: impl FnOnce(&crate::paint::Node) -> Option<UzNodeId>,
+        read: impl FnOnce(&Node) -> Option<UzNodeId>,
     ) -> Result<Option<u32>, deno_error::JsErrorBox> {
         let app_state = state.borrow::<SharedAppState>().clone();
         with_state(&app_state, |s| {

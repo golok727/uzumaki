@@ -1,4 +1,4 @@
-use crate::paint::UzNodeId;
+use crate::node::UzNodeId;
 
 #[derive(Clone, Copy, Debug, Default, serde::Serialize, serde::Deserialize)]
 pub struct SelectionRange {

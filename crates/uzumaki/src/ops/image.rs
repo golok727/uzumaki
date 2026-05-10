@@ -4,8 +4,11 @@ use deno_core::{JsBuffer, OpState, op2};
 use deno_error::JsErrorBox;
 use image::GenericImageView;
 
-use crate::app::{SharedAppState, with_state};
-use crate::paint::{ImageData, RasterImageData, UzNodeId};
+use crate::{
+    app::{SharedAppState, with_state},
+    element::{ImageData, RasterImageData},
+    node::UzNodeId,
+};
 
 fn window_not_found() -> JsErrorBox {
     JsErrorBox::new("WindowNotFound", "window not found")

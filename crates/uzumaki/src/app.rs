@@ -18,9 +18,10 @@ use winit::{application::ApplicationHandler, event::WindowEvent};
 
 use crate::clipboard;
 use crate::cursor;
+use crate::element::ImageData;
 use crate::event_dispatch;
 use crate::gpu::GpuContext;
-use crate::paint::UzNodeId;
+use crate::node::UzNodeId;
 use crate::runtime::worker::{WorkerBuildOptions, create_worker};
 use crate::terminal_colors;
 use crate::ui::UIState;
@@ -101,7 +102,7 @@ pub struct AppState {
     pub modifiers: u32,    // same
     pub clipboard: RefCell<clipboard::SystemClipboard>,
     pub gpu: GpuContext,
-    pub image_cache: HashMap<String, crate::paint::ImageData>,
+    pub image_cache: HashMap<String, ImageData>,
     /// Slab cleanup deferred from cppgc finalizers. Drained incrementally on
     /// each event-loop tick so a GC pause that frees thousands of CoreNodes
     /// never has to walk the slab synchronously.

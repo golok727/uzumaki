@@ -1,8 +1,8 @@
+use crate::node::UzNodeId;
+
+use crate::style::{Bounds, UzStyle, UzStyleRefinement};
 use refineable::Refineable;
 use vello::kurbo::{Affine, Point};
-
-use crate::paint::UzNodeId;
-use crate::style::{Bounds, UzStyle, UzStyleRefinement};
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
 pub struct HitboxId(pub u64);

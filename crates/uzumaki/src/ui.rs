@@ -2,18 +2,74 @@ use slab::Slab;
 
 use crate::{
     cursor::UzCursorIcon,
+    element::{ElementNode, ImageData, ImageNode, TextContent, TextRunEntry, TextSelectRun},
     input::InputState,
     interactivity::{HitTestState, HitboxStore},
     layout::LayoutEngine,
+    node::{Node, ScrollAxis, TextNode, UzNodeId},
     paint::{
-        DragMode, ElementNode, ImageData, ImageNode, Node, ScrollAxis, ScrollThumbRect,
-        ScrollWheelTarget, TextContent, TextNode, TextRunEntry, TextSelectRun, UzNodeId,
+        ScrollThumbRect,
         scroll::{self, ScrollAlign, ScrollIntoViewOptions},
     },
     selection::TextSelection,
     style::{Length, UzStyle},
     text::TextRenderer,
 };
+
+/// Active scroll-thumb drag. Stored on the dom (only one drag at a time).
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub struct ScrollDragState {
+    pub node_id: UzNodeId,
+    pub axis: ScrollAxis,
+    /// Mouse coordinate on `axis` at drag start (logical px).
+    pub start_mouse_pos: f64,
+    pub start_scroll_offset: f32,
+    /// Distance the thumb can travel along `axis` (track length minus thumb
+    /// length).
+    pub track_range: f64,
+    /// Maximum scroll offset along `axis` (content_size - visible_size).
+    pub max_scroll: f32,
+}
+
+/// Short-lived wheel routing capture so a nested scroller keeps ownership
+/// across a burst of wheel events.
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub struct ScrollWheelTarget {
+    pub node_id: UzNodeId,
+    pub axis: ScrollAxis,
+    pub started_at: std::time::Instant,
+}
+
+/// Current drag owned by the UI. Persistent scroll position stays on nodes;
+/// transient gesture ownership lives at the UI/document level.
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub enum DragMode {
+    None,
+    ScrollbarThumb(ScrollDragState),
+    InputSelection(UzNodeId),
+    ViewSelection(UzNodeId),
+    /// Reserved for future element drag / drag event work.
+    Node(UzNodeId),
+}
+
+impl DragMode {
+    pub fn node_id(&self) -> Option<UzNodeId> {
+        match self {
+            Self::None => None,
+            Self::ScrollbarThumb(state) => Some(state.node_id),
+            Self::InputSelection(node_id) | Self::ViewSelection(node_id) | Self::Node(node_id) => {
+                Some(*node_id)
+            }
+        }
+    }
+
+    pub fn as_scrollbar_thumb(&self) -> Option<&ScrollDragState> {
+        match self {
+            Self::ScrollbarThumb(state) => Some(state),
+            _ => None,
+        }
+    }
+}
 
 pub struct UIState {
     pub nodes: Slab<Node>,

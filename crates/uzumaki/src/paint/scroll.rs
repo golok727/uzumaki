@@ -9,7 +9,7 @@ use vello::Scene;
 use vello::kurbo::{Affine, Rect, RoundedRect, RoundedRectRadii};
 use vello::peniko::Fill;
 
-use crate::paint::ScrollAxis;
+use crate::node::{ScrollAxis, UzNodeId};
 use crate::style::{Bounds, ScrollbarStyle};
 
 pub const SCROLLBAR_SIDE_MARGIN: f64 = 4.0; // gap between thumb and container edge (perpendicular axis)
@@ -232,6 +232,16 @@ pub fn paint_thumb(
     );
     let rounded = RoundedRect::from_rect(rect, RoundedRectRadii::from_single_radius(radius));
     scene.fill(Fill::NonZero, transform, color.to_vello(), None, &rounded);
+}
+
+/// Rendered thumb rect, rebuilt each paint pass for hit testing.
+pub struct ScrollThumbRect {
+    pub node_id: UzNodeId,
+    pub axis: ScrollAxis,
+    pub thumb_bounds: Bounds,
+    pub view_bounds: Bounds,
+    pub content_size: f32,
+    pub visible_size: f32,
 }
 
 #[cfg(test)]

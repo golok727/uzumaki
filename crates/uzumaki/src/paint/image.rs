@@ -5,8 +5,7 @@ use vello::Scene;
 use vello::kurbo::Affine;
 use vello::peniko::{ImageAlphaType, ImageData as VelloImageData, ImageFormat};
 
-use crate::paint::ImageData;
-use crate::paint::RasterImageData;
+use crate::element::{ImageData, RasterImageData};
 use crate::paint::svg::render_svg_tree;
 use crate::style::{Bounds, Color, UzStyle};
 

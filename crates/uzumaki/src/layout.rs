@@ -1,8 +1,10 @@
 use slab::Slab;
 
 use crate::{
+    element::{ImageMeasureInfo, TextContent},
     interactivity::HitTestState,
-    paint::{ImageMeasureInfo, Node, TextContent, UzNodeId, render},
+    node::{Node, UzNodeId},
+    paint::render,
     style::{TextStyle, UzStyle},
     text::TextRenderer,
 };

@@ -1,10 +1,10 @@
 use parley::Cluster;
 
+use crate::element::{TextRunEntry, TextSelectRun};
+use crate::node::{Node, UzNodeId};
 use crate::selection::{Affinity, SelectionEndpoint, TextSelection};
 use crate::text::{cluster_count, layout_byte_to_grapheme, layout_grapheme_to_byte};
 use crate::ui::UIState;
-
-use super::{TextRunEntry, TextSelectRun, UzNodeId};
 
 impl UIState {
     /// Build text runs for all textSelect subtrees. Called each frame before render.
@@ -367,7 +367,7 @@ impl UIState {
     pub fn next_node(
         &self,
         start_id: UzNodeId,
-        mut filter: impl FnMut(&super::Node) -> bool,
+        mut filter: impl FnMut(&Node) -> bool,
     ) -> Option<UzNodeId> {
         let mut node_id = start_id;
         let mut look_in_children = true;
@@ -406,7 +406,7 @@ impl UIState {
     pub fn prev_node(
         &self,
         start_id: UzNodeId,
-        mut filter: impl FnMut(&super::Node) -> bool,
+        mut filter: impl FnMut(&Node) -> bool,
     ) -> Option<UzNodeId> {
         let mut node_id = start_id;
         loop {

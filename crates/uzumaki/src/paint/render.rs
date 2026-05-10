@@ -4,9 +4,11 @@ use vello::Scene;
 use vello::kurbo::{Affine, Rect};
 use vello::peniko::{Color as VelloColor, Fill};
 
+use crate::element::ImageMeasureInfo;
 use crate::layout::NodeContext;
+use crate::node::{ScrollAxis, UzNodeId};
 use crate::paint::{
-    ImageMeasureInfo, ScrollAxis, ScrollThumbRect, UzNodeId,
+    ScrollThumbRect,
     checkbox::CheckboxRenderInfo,
     image::ImageRenderInfo,
     input::InputRenderInfo,
@@ -768,8 +770,8 @@ fn available_as_option(space: taffy::AvailableSpace) -> Option<f32> {
 #[cfg(test)]
 mod tests {
     use super::measure;
+    use crate::element::ImageMeasureInfo;
     use crate::layout::NodeContext;
-    use crate::paint::ImageMeasureInfo;
     use crate::style::TextStyle;
     use crate::text::TextRenderer;
 
