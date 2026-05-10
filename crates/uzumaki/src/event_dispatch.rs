@@ -272,12 +272,19 @@ pub fn scroll_input_to_cursor(dom: &mut UIState, handle: &mut Window) {
                     meta.input_height - meta.top_pad * 2.0,
                 );
             } else {
-                let natural_w = is
-                    .editor
-                    .try_layout()
-                    .map(|l| l.full_width())
-                    .unwrap_or(0.0);
-                is.update_scroll(rect.x0 as f32, natural_w, meta.input_width);
+                let natural_w = if is.secure {
+                    let display_text = is.display_text();
+                    handle
+                        .text_renderer
+                        .measure_text(&display_text, &meta.text_style, None, None)
+                        .0
+                } else {
+                    is.editor
+                        .try_layout()
+                        .map(|l| l.full_width())
+                        .unwrap_or(0.0)
+                };
+                is.update_scroll(rect.x0 as f32, rect.x1 as f32, natural_w, meta.input_width);
             }
         }
     }
