@@ -362,7 +362,7 @@ impl<'a> Painter<'a> {
             focused,
             cursor_rect,
             selection_rects,
-            scroll_offset: is.scroll_offset,
+            scroll_offset: is.scroll_offset_x,
             scroll_offset_y: is.scroll_offset_y,
             blink_visible,
             multiline,

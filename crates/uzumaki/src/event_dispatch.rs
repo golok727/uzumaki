@@ -156,7 +156,7 @@ fn sync_focused_input_cursor(
     } else {
         is.editor.cursor_geometry(1.5)
     }?;
-    Some((cursor_rect, is.scroll_offset, is.scroll_offset_y))
+    Some((cursor_rect, is.scroll_offset_x, is.scroll_offset_y))
 }
 
 fn set_ime_cursor_area(
@@ -343,7 +343,7 @@ pub fn handle_cursor_moved(
                     .and_then(|hid| dom.hitbox_store.get(hid))?
                     .bounds;
                 Some((
-                    is.scroll_offset,
+                    is.scroll_offset_x,
                     is.scroll_offset_y,
                     is.multiline,
                     input_padding,
@@ -717,7 +717,7 @@ pub fn handle_mouse_input(
                             .and_then(|hid| dom.hitbox_store.get(hid))
                             .map(|hb| hb.bounds);
                         (
-                            is.scroll_offset,
+                            is.scroll_offset_x,
                             is.scroll_offset_y,
                             is.multiline,
                             input_padding,

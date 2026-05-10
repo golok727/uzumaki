@@ -16,14 +16,21 @@ export interface InputEventMap extends UzEventMap {
   valuechange: string;
 }
 
+export type UzInputType =
+  | 'text'
+  | 'password'
+  | 'email'
+  | 'tel'
+  | 'url'
+  | 'search';
+
 export class UzInputElement extends UzElement<InputEventMap> {
   constructor(window: Window) {
     super('input', window);
 
     this.on('input', () => {
       if (this._emitter._listenerCount('valuechange') > 0) {
-        const value = this.value;
-        this._emitter.emit('valuechange', value);
+        this._emitter.emit('valuechange', this.value);
       }
     });
   }
@@ -31,8 +38,59 @@ export class UzInputElement extends UzElement<InputEventMap> {
   get value(): string {
     return String(this.getAttribute('value') ?? '');
   }
-
   set value(value: string) {
     this.setAttribute('value', value);
+  }
+
+  get placeholder(): string {
+    return String(this.getAttribute('placeholder') ?? '');
+  }
+  set placeholder(value: string) {
+    this.setAttribute('placeholder', value);
+  }
+
+  get disabled(): boolean {
+    return Boolean(this.getAttribute('disabled'));
+  }
+  set disabled(value: boolean) {
+    this.setAttribute('disabled', value);
+  }
+
+  get multiline(): boolean {
+    return Boolean(this.getAttribute('multiline'));
+  }
+  set multiline(value: boolean) {
+    this.setAttribute('multiline', value);
+  }
+
+  get secure(): boolean {
+    return Boolean(this.getAttribute('secure'));
+  }
+  set secure(value: boolean) {
+    this.setAttribute('secure', value);
+  }
+
+  get maxLength(): number | null {
+    const v = this.getAttribute('maxLength');
+    return typeof v === 'number' ? v : (v == null ? null : Number(v));
+  }
+  set maxLength(value: number | null | undefined) {
+    if (value == null) {
+      this.setAttribute('maxLength', -1);
+    } else {
+      this.setAttribute('maxLength', value);
+    }
+  }
+
+  /**
+   * Convenience type selector. `password` toggles `secure` on; everything else
+   * leaves it off. The runtime doesn't differentiate the other types yet, but
+   * this keeps the surface familiar to web developers.
+   */
+  get type(): UzInputType {
+    return this.secure ? 'password' : 'text';
+  }
+  set type(value: UzInputType) {
+    this.secure = value === 'password';
   }
 }
