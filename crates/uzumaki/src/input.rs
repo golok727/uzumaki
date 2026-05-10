@@ -506,9 +506,7 @@ impl InputState {
         self.delete_impl(DeleteAction::WordForward, renderer)
     }
 
-    // --- caret/selection movement ------------------------------------------
-
-    fn do_move(&mut self, action: MoveAction, extend: bool, renderer: &mut TextRenderer) {
+    fn move_impl(&mut self, action: MoveAction, extend: bool, renderer: &mut TextRenderer) {
         self.break_undo_batch();
         self.drive(renderer, |d| match (action, extend) {
             (MoveAction::Left, false) => d.move_left(),
@@ -536,34 +534,34 @@ impl InputState {
     }
 
     pub fn move_left(&mut self, extend: bool, renderer: &mut TextRenderer) {
-        self.do_move(MoveAction::Left, extend, renderer);
+        self.move_impl(MoveAction::Left, extend, renderer);
     }
     pub fn move_right(&mut self, extend: bool, renderer: &mut TextRenderer) {
-        self.do_move(MoveAction::Right, extend, renderer);
+        self.move_impl(MoveAction::Right, extend, renderer);
     }
     pub fn move_word_left(&mut self, extend: bool, renderer: &mut TextRenderer) {
-        self.do_move(MoveAction::WordLeft, extend, renderer);
+        self.move_impl(MoveAction::WordLeft, extend, renderer);
     }
     pub fn move_word_right(&mut self, extend: bool, renderer: &mut TextRenderer) {
-        self.do_move(MoveAction::WordRight, extend, renderer);
+        self.move_impl(MoveAction::WordRight, extend, renderer);
     }
     pub fn move_up(&mut self, extend: bool, renderer: &mut TextRenderer) {
-        self.do_move(MoveAction::Up, extend, renderer);
+        self.move_impl(MoveAction::Up, extend, renderer);
     }
     pub fn move_down(&mut self, extend: bool, renderer: &mut TextRenderer) {
-        self.do_move(MoveAction::Down, extend, renderer);
+        self.move_impl(MoveAction::Down, extend, renderer);
     }
     pub fn move_home(&mut self, extend: bool, renderer: &mut TextRenderer) {
-        self.do_move(MoveAction::LineStart, extend, renderer);
+        self.move_impl(MoveAction::LineStart, extend, renderer);
     }
     pub fn move_end(&mut self, extend: bool, renderer: &mut TextRenderer) {
-        self.do_move(MoveAction::LineEnd, extend, renderer);
+        self.move_impl(MoveAction::LineEnd, extend, renderer);
     }
     pub fn move_absolute_home(&mut self, extend: bool, renderer: &mut TextRenderer) {
-        self.do_move(MoveAction::TextStart, extend, renderer);
+        self.move_impl(MoveAction::TextStart, extend, renderer);
     }
     pub fn move_absolute_end(&mut self, extend: bool, renderer: &mut TextRenderer) {
-        self.do_move(MoveAction::TextEnd, extend, renderer);
+        self.move_impl(MoveAction::TextEnd, extend, renderer);
     }
 
     pub fn move_to_point(&mut self, x: f32, y: f32, renderer: &mut TextRenderer) {
@@ -594,7 +592,7 @@ impl InputState {
         self.reset_blink();
     }
 
-    // --- IME ----------------------------------------------------------------
+    // Ime
 
     pub fn set_preedit(&mut self, text: String, cursor: Option<(usize, usize)>) {
         self.preedit = if text.is_empty() {
@@ -619,8 +617,6 @@ impl InputState {
         self.insert_text(text, renderer)
     }
 
-    // --- bulk state ---------------------------------------------------------
-
     pub fn set_value(&mut self, value: &str) {
         if self.editor.raw_text() != value {
             self.editor.set_text(value);
@@ -635,8 +631,6 @@ impl InputState {
     pub fn set_scale(&mut self, scale: f32) {
         self.editor.set_scale(scale);
     }
-
-    // --- caret blink --------------------------------------------------------
 
     pub fn reset_blink(&mut self) {
         self.blink_reset = Instant::now();
@@ -666,8 +660,6 @@ impl InputState {
         self.blink_reset.elapsed().as_millis() % Self::BLINK_CYCLE_MS
     }
 
-    // --- scroll -------------------------------------------------------------
-
     pub fn update_scroll(&mut self, cursor_x: f32, visible_width: f32) {
         if visible_width <= 0.0 {
             return;
@@ -695,8 +687,6 @@ impl InputState {
         }
         self.scroll_offset_y = self.scroll_offset_y.max(0.0);
     }
-
-    // --- key dispatch -------------------------------------------------------
 
     pub fn handle_key(
         &mut self,
@@ -759,7 +749,7 @@ impl InputState {
                     } else {
                         MoveAction::Left
                     };
-                    self.do_move(action, shift, renderer);
+                    self.move_impl(action, shift, renderer);
                     KeyResult::Handled
                 }
                 NamedKey::ArrowRight => {
@@ -768,15 +758,15 @@ impl InputState {
                     } else {
                         MoveAction::Right
                     };
-                    self.do_move(action, shift, renderer);
+                    self.move_impl(action, shift, renderer);
                     KeyResult::Handled
                 }
                 NamedKey::ArrowUp => {
-                    self.do_move(MoveAction::Up, shift, renderer);
+                    self.move_impl(MoveAction::Up, shift, renderer);
                     KeyResult::Handled
                 }
                 NamedKey::ArrowDown => {
-                    self.do_move(MoveAction::Down, shift, renderer);
+                    self.move_impl(MoveAction::Down, shift, renderer);
                     KeyResult::Handled
                 }
                 NamedKey::Home => {
@@ -785,7 +775,7 @@ impl InputState {
                     } else {
                         MoveAction::LineStart
                     };
-                    self.do_move(action, shift, renderer);
+                    self.move_impl(action, shift, renderer);
                     KeyResult::Handled
                 }
                 NamedKey::End => {
@@ -794,7 +784,7 @@ impl InputState {
                     } else {
                         MoveAction::LineEnd
                     };
-                    self.do_move(action, shift, renderer);
+                    self.move_impl(action, shift, renderer);
                     KeyResult::Handled
                 }
                 NamedKey::Undo => edit_or_handled(self.undo(renderer)),
