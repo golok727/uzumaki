@@ -14,8 +14,8 @@
 
   /* Complementary cool accent — used for inline code and API symbol names
      so they read as identifiers rather than as primary brand UI */
-  --uz-cool: #7dd3fc;
-  --uz-cool-soft: #a8e2fb;
+  --uz-cool: #c4b5fd;
+  --uz-cool-soft: #ddd2ff;
 
   --sl-font: 'Geist Mono', ui-monospace, monospace;
   --sl-font-mono: 'Geist Mono', ui-monospace, monospace;
@@ -148,8 +148,8 @@ body:has(.hero)::before {
   letter-spacing: 0.08em;
   text-transform: uppercase;
   color: var(--uz-cool);
-  background: rgba(125, 211, 252, 0.08);
-  border: 1px solid rgba(125, 211, 252, 0.35);
+  background: rgba(196, 181, 253, 0.08);
+  border: 1px solid rgba(196, 181, 253, 0.35);
   border-radius: 999px;
   -webkit-text-fill-color: var(--uz-cool);
   background-clip: border-box;
@@ -270,12 +270,9 @@ body:has(.hero)::before {
   white-space: nowrap;
 }
 
-/* Inline code inside links keeps the link color */
 a:not(.button):not(.card) :not(pre) > code,
 a:not(.button):not(.card) > code {
-  color: var(--uz-accent);
-  background: rgba(226, 165, 46, 0.08);
-  border-color: rgba(226, 165, 46, 0.35);
+  color: var(--uz-cool);
 }
 
 a {
