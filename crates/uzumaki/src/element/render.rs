@@ -355,10 +355,8 @@ impl<'a> Painter<'a> {
 
         let display_text = is.display_text();
         let placeholder = is.placeholder.clone();
-        let (scroll_offset_x, scroll_offset_y) = node_mut
-            .scroll_state()
-            .map(|s| (s.scroll_offset_x, s.scroll_offset_y))
-            .unwrap_or((0.0, 0.0));
+        let scroll_offset_x = node_mut.scroll_state.scroll_offset_x;
+        let scroll_offset_y = node_mut.scroll_state.scroll_offset_y;
 
         InputRenderInfo {
             display_text,
@@ -401,11 +399,10 @@ impl<'a> Painter<'a> {
         if !axis_info.overflows() {
             return None;
         }
-        if let Some(scroll) = self.dom.nodes[node_id].ensure_scroll_state() {
-            let max_y = axis_info.max_scroll() as f32;
-            if scroll.scroll_offset_y > max_y {
-                scroll.scroll_offset_y = max_y;
-            }
+        let max_y = axis_info.max_scroll() as f32;
+        let scroll = &mut self.dom.nodes[node_id].scroll_state;
+        if scroll.scroll_offset_y > max_y {
+            scroll.scroll_offset_y = max_y;
         }
 
         let view_local = Bounds::new(0.0, 0.0, w, h);
@@ -479,7 +476,7 @@ impl<'a> Painter<'a> {
         let max_x = (layout.content_w - layout.size_w).max(0.0);
         let max_y = (layout.content_h - visible_h).max(0.0);
 
-        let ss = self.dom.nodes[node_id].ensure_scroll_state()?;
+        let ss = &mut self.dom.nodes[node_id].scroll_state;
         if ss.scroll_offset_x as f64 > max_x {
             ss.scroll_offset_x = max_x as f32;
         }

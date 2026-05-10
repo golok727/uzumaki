@@ -372,11 +372,7 @@ impl UIState {
             ScrollAxis::X => true_viewport,
         };
 
-        let cur_offset = scroller_ref
-            .scroll_state()
-            .as_ref()
-            .map(|s| s.offset(axis))
-            .unwrap_or(0.0);
+        let cur_offset = scroller_ref.scroll_state.offset(axis);
 
         let Some(next_offset) = scroll::compute_scroll_offset(
             rel,
@@ -390,9 +386,9 @@ impl UIState {
             return;
         };
 
-        if let Some(ss) = self.nodes[scroller_id].ensure_scroll_state() {
-            ss.set_offset(axis, next_offset);
-        }
+        self.nodes[scroller_id]
+            .scroll_state
+            .set_offset(axis, next_offset);
     }
 
     fn nearest_overflow_scroller(

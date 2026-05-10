@@ -158,10 +158,8 @@ fn sync_focused_input_cursor(
             is.editor.cursor_geometry(1.5)
         }
     }?;
-    let (scroll_offset_x, scroll_offset_y) = node
-        .scroll_state()
-        .map(|s| (s.scroll_offset_x, s.scroll_offset_y))
-        .unwrap_or((0.0, 0.0));
+    let scroll_offset_x = node.scroll_state.scroll_offset_x;
+    let scroll_offset_y = node.scroll_state.scroll_offset_y;
     Some((cursor_rect, scroll_offset_x, scroll_offset_y))
 }
 
@@ -272,13 +270,11 @@ pub fn scroll_input_to_cursor(dom: &mut UIState, handle: &mut Window) {
         if let Some(rect) = cursor_rect {
             if meta.multiline {
                 let line_height = (meta.text_style.font_size * meta.text_style.line_height).round();
-                if let Some(scroll) = node.ensure_scroll_state() {
-                    scroll.scroll_input_y(
-                        rect.y0 as f32,
-                        line_height,
-                        meta.input_height - meta.top_pad * 2.0,
-                    );
-                }
+                node.scroll_state.scroll_input_y(
+                    rect.y0 as f32,
+                    line_height,
+                    meta.input_height - meta.top_pad * 2.0,
+                );
             } else {
                 let display_text = is.display_text();
                 let natural_w = handle
@@ -288,17 +284,16 @@ pub fn scroll_input_to_cursor(dom: &mut UIState, handle: &mut Window) {
                 let raw_selection = is.editor.raw_selection();
                 let cursor_at_text_end = raw_selection.is_collapsed()
                     && raw_selection.focus().index() == is.editor.raw_text().len();
-                if let Some(scroll) = node.ensure_scroll_state() {
-                    if cursor_at_text_end {
-                        scroll.scroll_single_line_input_end(natural_w, meta.input_width);
-                    } else {
-                        scroll.scroll_input_x(
-                            rect.x0 as f32,
-                            rect.x1 as f32,
-                            natural_w,
-                            meta.input_width,
-                        );
-                    }
+                if cursor_at_text_end {
+                    node.scroll_state
+                        .scroll_single_line_input_end(natural_w, meta.input_width);
+                } else {
+                    node.scroll_state.scroll_input_x(
+                        rect.x0 as f32,
+                        rect.x1 as f32,
+                        natural_w,
+                        meta.input_width,
+                    );
                 }
             }
         }
@@ -346,9 +341,7 @@ pub fn handle_cursor_moved(
         let axis = drag.axis;
         let clamped = new_offset.clamp(0.0, drag.max_scroll);
         if let Some(node) = dom.nodes.get_mut(nid) {
-            if let Some(ss) = node.scroll_state_mut() {
-                ss.set_offset(axis, clamped);
-            }
+            node.scroll_state.set_offset(axis, clamped);
         }
         needs_redraw = true;
     }
@@ -358,10 +351,8 @@ pub fn handle_cursor_moved(
         if let DragMode::InputSelection(drag_nid) = dom.drag_mode {
             let hit_info = dom.nodes.get(drag_nid).and_then(|node| {
                 let is = node.as_text_input()?;
-                let (scroll_offset_x, scroll_offset_y) = node
-                    .scroll_state()
-                    .map(|s| (s.scroll_offset_x, s.scroll_offset_y))
-                    .unwrap_or((0.0, 0.0));
+                let scroll_offset_x = node.scroll_state.scroll_offset_x;
+                let scroll_offset_y = node.scroll_state.scroll_offset_y;
                 let input_padding = node.style.padding.left as f64;
                 let top_pad = node.style.padding.top;
                 let hb = node
@@ -646,7 +637,7 @@ pub fn handle_mouse_input(
             let start_offset = dom
                 .nodes
                 .get(nid)
-                .map(|n| n.scroll_state().map(|ss| ss.offset(axis)).unwrap_or(0.0))
+                .map(|n| n.scroll_state.offset(axis))
                 .unwrap_or(0.0);
             dom.drag_mode = DragMode::ScrollbarThumb(ScrollDragState {
                 node_id: nid,
@@ -730,10 +721,8 @@ pub fn handle_mouse_input(
                     let click_info = {
                         let node = &dom.nodes[nid];
                         let is = node.as_text_input().unwrap();
-                        let (scroll_offset_x, scroll_offset_y) = node
-                            .scroll_state()
-                            .map(|s| (s.scroll_offset_x, s.scroll_offset_y))
-                            .unwrap_or((0.0, 0.0));
+                        let scroll_offset_x = node.scroll_state.scroll_offset_x;
+                        let scroll_offset_y = node.scroll_state.scroll_offset_y;
                         let input_padding = node.style.padding.left as f64;
                         let top_pad = node.style.padding.top;
                         let hb = node
@@ -1720,13 +1709,9 @@ fn apply_wheel_delta_to_node(
     let max_scroll = (thumb.content_size - thumb.visible_size).max(0.0);
     let node = dom.nodes.get_mut(node_id)?;
 
-    if let Some(ss) = node.scroll_state_mut() {
-        let cur = ss.offset(axis);
-        let next = (cur - delta as f32).clamp(0.0, max_scroll);
-        let actual_change = next - cur;
-        ss.set_offset(axis, next);
-        Some(delta + actual_change as f64)
-    } else {
-        None
-    }
+    let cur = node.scroll_state.offset(axis);
+    let next = (cur - delta as f32).clamp(0.0, max_scroll);
+    let actual_change = next - cur;
+    node.scroll_state.set_offset(axis, next);
+    Some(delta + actual_change as f64)
 }

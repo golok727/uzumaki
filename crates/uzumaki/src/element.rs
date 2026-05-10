@@ -283,8 +283,6 @@ pub struct ElementNode {
     pub kind: ElementKind,
     pub is_focussable: bool,
     pub data: ElementData,
-    /// Per-element scroll offsets for content that can scroll on either axis.
-    pub scroll_state: Option<ScrollState>,
 }
 
 impl ElementNode {
@@ -293,7 +291,6 @@ impl ElementNode {
             kind,
             is_focussable: false,
             data,
-            scroll_state: None,
         }
     }
 
@@ -652,6 +649,8 @@ pub struct Node {
     pub style_variants: StyleVariants,
     /// Hitbox assigned during the latest paint pass. None if not painted yet.
     pub hitbox_id: Option<HitboxId>,
+    /// Per-node scroll offsets for content that can scroll on either axis.
+    pub scroll_state: ScrollState,
     /// Cached parley layout for text-bearing nodes (text node or `<text>`
     /// element). Refreshed once per frame after taffy compute, then reused by
     /// paint, selection geometry and hit-testing instead of rebuilding parley
@@ -672,6 +671,7 @@ impl Node {
             style,
             style_variants: StyleVariants::new(),
             hitbox_id: None,
+            scroll_state: ScrollState::new(),
             text_layout: None,
             final_layout: taffy::Layout::new(),
         }
@@ -714,27 +714,6 @@ impl Node {
 
     pub fn as_element_mut(&mut self) -> Option<&mut ElementNode> {
         self.data.as_element_mut()
-    }
-
-    pub fn scroll_state(&self) -> Option<&ScrollState> {
-        self.as_element()
-            .and_then(|element| element.scroll_state.as_ref())
-    }
-
-    pub fn scroll_state_mut(&mut self) -> Option<&mut ScrollState> {
-        self.as_element_mut()
-            .and_then(|element| element.scroll_state.as_mut())
-    }
-
-    pub fn ensure_scroll_state(&mut self) -> Option<&mut ScrollState> {
-        let element = self.as_element_mut()?;
-        Some(element.scroll_state.get_or_insert_with(ScrollState::new))
-    }
-
-    pub fn clear_scroll_state(&mut self) {
-        if let Some(element) = self.as_element_mut() {
-            element.scroll_state = None;
-        }
     }
 
     pub fn get_text_content(&self) -> Option<&TextContent> {
