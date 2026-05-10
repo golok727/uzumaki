@@ -660,19 +660,23 @@ impl InputState {
         self.blink_reset.elapsed().as_millis() % Self::BLINK_CYCLE_MS
     }
 
-    pub fn update_scroll(&mut self, cursor_x: f32, visible_width: f32) {
+    pub fn update_scroll(&mut self, cursor_x: f32, natural_w: f32, visible_width: f32) {
         if visible_width <= 0.0 {
             return;
         }
-        // Margin so the 1.5px caret and any glyph overshoot (italics, kerning,
-        // antialiasing) aren't clipped against the content edge.
-        const RIGHT_PAD: f32 = 4.0;
+        // No artificial right margin: the caret butts up against the content
+        // edge, and the element's CSS padding (which the painter now bleeds
+        // into) provides the visual breathing room — same as a browser input.
         if cursor_x - self.scroll_offset_x < 0.0 {
             self.scroll_offset_x = cursor_x;
-        } else if cursor_x - self.scroll_offset_x > visible_width - RIGHT_PAD {
-            self.scroll_offset_x = (cursor_x - visible_width + RIGHT_PAD).max(0.0);
+        } else if cursor_x - self.scroll_offset_x > visible_width {
+            self.scroll_offset_x = cursor_x - visible_width;
         }
-        self.scroll_offset_x = self.scroll_offset_x.max(0.0);
+        // Clamp from above so a delete that shrinks the text past the current
+        // scroll doesn't leave the layout shifted left, showing whitespace
+        // where text used to be.
+        let max_scroll = (natural_w - visible_width).max(0.0);
+        self.scroll_offset_x = self.scroll_offset_x.clamp(0.0, max_scroll);
     }
 
     pub fn update_scroll_y(&mut self, cursor_y: f32, line_height: f32, visible_height: f32) {
@@ -933,17 +937,18 @@ mod tests {
 
     #[test]
     fn update_scroll_scrolls_right() {
+        // Caret sits exactly at the right content edge — no artificial margin.
         let mut is = InputState::new();
         is.scroll_offset_x = 0.0;
-        is.update_scroll(250.0, 200.0);
-        assert_eq!(is.scroll_offset_x, 54.0);
+        is.update_scroll(250.0, 300.0, 200.0);
+        assert_eq!(is.scroll_offset_x, 50.0);
     }
 
     #[test]
     fn update_scroll_scrolls_left() {
         let mut is = InputState::new();
         is.scroll_offset_x = 100.0;
-        is.update_scroll(50.0, 200.0);
+        is.update_scroll(50.0, 300.0, 200.0);
         assert_eq!(is.scroll_offset_x, 50.0);
     }
 
@@ -951,8 +956,19 @@ mod tests {
     fn update_scroll_no_negative() {
         let mut is = InputState::new();
         is.scroll_offset_x = -10.0;
-        is.update_scroll(50.0, 200.0);
+        is.update_scroll(50.0, 300.0, 200.0);
         assert!(is.scroll_offset_x >= 0.0);
+    }
+
+    #[test]
+    fn update_scroll_clamps_to_natural_width() {
+        // Stale large scroll offset, but text is now shorter than visible
+        // width — scroll should snap back to 0 so the text isn't shifted
+        // off-screen to the left.
+        let mut is = InputState::new();
+        is.scroll_offset_x = 200.0;
+        is.update_scroll(30.0, 30.0, 200.0);
+        assert_eq!(is.scroll_offset_x, 0.0);
     }
 
     #[test]

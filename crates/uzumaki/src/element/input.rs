@@ -4,8 +4,15 @@ use vello::kurbo::{Affine, Rect};
 use vello::peniko::{Color as VelloColor, Fill};
 
 use crate::input::input_align_offset;
-use crate::style::{Bounds, Color, Corners, Edges, TextStyle, UzStyle};
+use crate::style::{Bounds, Edges, TextStyle, UzStyle};
 use crate::text::TextRenderer;
+
+const SELECTION_COLOR: VelloColor = VelloColor::from_rgba8(56, 121, 185, 128);
+const PLACEHOLDER_COLOR: VelloColor = VelloColor::from_rgba8(128, 128, 128, 255);
+const PREEDIT_BG_COLOR: VelloColor = VelloColor::from_rgba8(50, 50, 60, 180);
+const PREEDIT_UNDERLINE_COLOR: VelloColor = VelloColor::from_rgba8(180, 180, 180, 255);
+const CARET_COLOR: VelloColor = VelloColor::from_rgba8(212, 212, 212, 255);
+const CARET_WIDTH: f64 = 1.5;
 
 pub struct InputRenderInfo {
     pub display_text: String,
@@ -14,7 +21,7 @@ pub struct InputRenderInfo {
     pub focused: bool,
     pub cursor_rect: Option<BoundingBox>,
     pub selection_rects: Vec<BoundingBox>,
-    pub scroll_offset: f32,
+    pub scroll_offset_x: f32,
     pub scroll_offset_y: f32,
     pub blink_visible: bool,
     pub multiline: bool,
@@ -28,207 +35,243 @@ pub struct PreeditRenderInfo {
     pub width: f32,
 }
 
-/// Paint an input element with its text, selection highlight, and cursor.
+/// Paint an input: background/border come from the standard `UzStyle::paint`
+/// pipeline (same as a view), then the text/selection/caret are painted into
+/// the content box, clipped against it.
 pub fn paint_input(
     scene: &mut Scene,
     text_renderer: &mut TextRenderer,
     bounds: Bounds,
     style: &UzStyle,
-    input: &InputRenderInfo,
+    info: &InputRenderInfo,
     transform: Affine,
 ) {
-    let pad_l = style.padding.left as f64;
-    let pad_r = style.padding.right as f64;
-    let pad_t = style.padding.top as f64;
-    let pad_b = style.padding.bottom as f64;
-    let content_x = pad_l;
-    let content_y = pad_t;
-    let content_w = (bounds.width - pad_l - pad_r).max(0.0);
-    let content_h = (bounds.height - pad_t - pad_b).max(0.0);
-
-    let mut paint_style = style.clone();
-    if !paint_style.border_widths.any_nonzero() {
-        paint_style.border_widths = Edges::all(1.0);
-    }
-    if paint_style.border_color.is_none() {
-        paint_style.border_color = Some(Color::rgba(60, 60, 60, 255));
-    }
-    if paint_style.background.is_none() {
-        paint_style.background = Some(Color::rgba(30, 30, 30, 255));
-    }
-    if !paint_style.corner_radii.any_nonzero() {
-        paint_style.corner_radii = Corners::uniform(4.0);
-    }
-
-    paint_style.paint(bounds, scene, transform, |_| {});
-
-    // Clip to text area
-    let clip_rect = Rect::new(
-        content_x,
-        content_y,
-        content_x + content_w,
-        content_y + content_h,
-    );
-    scene.push_clip_layer(Fill::NonZero, transform, &clip_rect);
-
-    let is_empty = input.display_text.is_empty();
-    let line_height = (input.text_style.font_size * input.text_style.line_height).round();
-    let scroll_y = input.scroll_offset_y as f64;
-
-    // Browser-style horizontal alignment for single-line inputs: when the text
-    // fits the content box, shift it by `align_offset`; once it overflows the
-    // offset is 0 and `scroll_offset` keeps the cursor in view. Multiline
-    // alignment is baked into the editor's layout, so the offset is 0 there.
-    let align_offset = if input.multiline || is_empty {
-        0.0
-    } else {
-        let (natural_w, _) =
-            text_renderer.measure_text(&input.display_text, &input.text_style, None, None);
-        input_align_offset(content_w as f32, natural_w, input.text_style.text_align) as f64
-    };
-    let single_x_shift = align_offset - input.scroll_offset as f64;
-
-    // Placeholder
-    if is_empty && !input.placeholder.is_empty() {
-        let py = if input.multiline {
-            content_y as f32
-        } else {
-            content_y as f32 + ((content_h as f32 - line_height) / 2.0).max(0.0)
-        };
-        // Placeholder respects text-align: pass the content width so the
-        // editor's alignment is applied, single-line or multiline.
-        text_renderer.draw_text(
+    style.paint(bounds, scene, transform, |scene| {
+        InputPainter {
             scene,
-            &input.placeholder,
-            &input.text_style,
-            Some(content_w as f32),
-            (content_x as f32, py),
-            VelloColor::from_rgba8(128, 128, 128, 255),
+            text_renderer,
+            bounds,
+            padding: style.padding,
+            info,
             transform,
+        }
+        .paint();
+    });
+}
+
+struct InputPainter<'a> {
+    scene: &'a mut Scene,
+    text_renderer: &'a mut TextRenderer,
+    bounds: Bounds,
+    padding: Edges,
+    info: &'a InputRenderInfo,
+    transform: Affine,
+}
+
+/// Origin where the parley layout's (0, 0) maps to inside the input. All
+/// glyph/selection/caret coordinates returned from the editor are relative to
+/// this point.
+#[derive(Clone, Copy)]
+struct LayoutOrigin {
+    x: f64,
+    y: f64,
+}
+
+impl InputPainter<'_> {
+    fn paint(mut self) {
+        let content = self.content_box();
+        if content.width <= 0.0 || content.height <= 0.0 {
+            return;
+        }
+
+        // Clip to the element rect (the area the background fills), not to
+        // the content box. Padding then doubles as visual breathing room: the
+        // caret and trailing glyphs can render into it instead of being
+        // amputated at the content edge. Borders paint over the top of any
+        // pixels that bleed into the border area.
+        self.scene
+            .push_clip_layer(Fill::NonZero, self.transform, &self.bounds.to_rect());
+
+        let origin = self.layout_origin(content);
+        let is_empty = self.info.display_text.is_empty();
+
+        if is_empty && !self.info.placeholder.is_empty() {
+            self.paint_placeholder(content);
+        }
+
+        if !is_empty {
+            if self.info.focused {
+                self.paint_selection(origin);
+            }
+            self.paint_text(origin, content);
+        }
+
+        if let Some(preedit) = &self.info.preedit
+            && let Some(cursor) = &self.info.cursor_rect
+        {
+            self.paint_preedit(origin, preedit, cursor);
+        }
+
+        if self.should_paint_caret()
+            && let Some(cursor) = &self.info.cursor_rect
+        {
+            self.paint_caret(origin, cursor);
+        }
+
+        self.scene.pop_layer();
+    }
+
+    fn content_box(&self) -> Bounds {
+        Bounds::new(
+            self.bounds.x + self.padding.left as f64,
+            self.bounds.y + self.padding.top as f64,
+            (self.bounds.width - (self.padding.left + self.padding.right) as f64).max(0.0),
+            (self.bounds.height - (self.padding.top + self.padding.bottom) as f64).max(0.0),
+        )
+    }
+
+    fn line_height(&self) -> f32 {
+        (self.info.text_style.font_size * self.info.text_style.line_height).round()
+    }
+
+    /// Where layout-(0, 0) sits in element-local coords.
+    ///
+    /// - Multiline: top-left of the content box, vertically scrolled by
+    ///   `scroll_offset_y`. Horizontal alignment was already baked into the
+    ///   layout via `editor.set_alignment(...)`.
+    /// - Single-line: vertically centered to mimic browser behavior; horizontal
+    ///   position depends on whether the natural width fits the content. When
+    ///   it fits we honor `text-align`; when it overflows we lock to the left
+    ///   edge and translate by `-scroll_offset_x` so the caret stays in view.
+    fn layout_origin(&mut self, content: Bounds) -> LayoutOrigin {
+        if self.info.multiline {
+            return LayoutOrigin {
+                x: content.x,
+                y: content.y - self.info.scroll_offset_y as f64,
+            };
+        }
+
+        let line_h = self.line_height() as f64;
+        let y = content.y + ((content.height - line_h) * 0.5).max(0.0);
+
+        // Align based on natural width — including the empty case, so the
+        // caret of an empty `text-align: center` / `right` input renders in
+        // the right place. For empty text `measure_text` returns 0, which
+        // gives full-slack alignment as expected.
+        let (natural_w, _) = self.text_renderer.measure_text(
+            &self.info.display_text,
+            &self.info.text_style,
+            None,
+            None,
+        );
+        let align = input_align_offset(
+            content.width as f32,
+            natural_w,
+            self.info.text_style.text_align,
+        ) as f64;
+        let x = content.x + align - self.info.scroll_offset_x as f64;
+
+        LayoutOrigin { x, y }
+    }
+
+    fn paint_placeholder(&mut self, content: Bounds) {
+        let line_h = self.line_height();
+        let py = if self.info.multiline {
+            content.y as f32
+        } else {
+            content.y as f32 + ((content.height as f32 - line_h) * 0.5).max(0.0)
+        };
+        // Placeholder respects text-align: pass the content width so parley's
+        // alignment is applied in single-line and multiline alike.
+        self.text_renderer.draw_text(
+            self.scene,
+            &self.info.placeholder,
+            &self.info.text_style,
+            Some(content.width as f32),
+            (content.x as f32, py),
+            PLACEHOLDER_COLOR,
+            self.transform,
         );
     }
 
-    if !is_empty {
-        let x_shift = if input.multiline { 0.0 } else { single_x_shift };
-
-        // Selection highlights
-        if input.focused && !input.selection_rects.is_empty() {
-            let sel_color = VelloColor::from_rgba8(56, 121, 185, 128);
-            let oy = if input.multiline {
-                content_y - scroll_y
-            } else {
-                content_y + ((content_h - line_height as f64) / 2.0).max(0.0)
-            };
-            for rect in &input.selection_rects {
-                let x1 = content_x + x_shift + rect.x0;
-                let x2 = content_x + x_shift + rect.x1;
-                let y1 = oy + rect.y0;
-                let y2 = oy + rect.y1;
-                scene.fill(
-                    Fill::NonZero,
-                    transform,
-                    sel_color,
-                    None,
-                    &Rect::new(x1, y1, x2, y2),
-                );
-            }
+    fn paint_selection(&mut self, origin: LayoutOrigin) {
+        for rect in &self.info.selection_rects {
+            let r = Rect::new(
+                origin.x + rect.x0,
+                origin.y + rect.y0,
+                origin.x + rect.x1,
+                origin.y + rect.y1,
+            );
+            self.scene
+                .fill(Fill::NonZero, self.transform, SELECTION_COLOR, None, &r);
         }
+    }
 
-        // Text. For single-line we draw with no wrap width so the layout
-        // doesn't apply any alignment of its own — we position via x_shift.
-        // For multiline the editor already aligned within content_w.
-        let ty = if input.multiline {
-            (content_y - scroll_y) as f32
-        } else {
-            content_y as f32 + ((content_h as f32 - line_height) / 2.0).max(0.0)
-        };
-        let tx = (content_x + x_shift) as f32;
-        let tw = if input.multiline {
-            Some(content_w as f32)
+    fn paint_text(&mut self, origin: LayoutOrigin, content: Bounds) {
+        // Multiline keeps the editor's wrap width so alignment applies inside
+        // the layout. Single-line draws with no wrap so the layout grows
+        // naturally and we position via `origin.x`.
+        let wrap = if self.info.multiline {
+            Some(content.width as f32)
         } else {
             None
         };
-        text_renderer.draw_text(
-            scene,
-            &input.display_text,
-            &input.text_style,
-            tw,
-            (tx, ty),
-            input.text_style.color.to_vello(),
-            transform,
+        self.text_renderer.draw_text(
+            self.scene,
+            &self.info.display_text,
+            &self.info.text_style,
+            wrap,
+            (origin.x as f32, origin.y as f32),
+            self.info.text_style.color.to_vello(),
+            self.transform,
         );
     }
 
-    // Preedit (IME composition text)
-    if let Some(preedit) = &input.preedit
-        && let Some(cr) = &input.cursor_rect
-    {
-        let x_shift = if input.multiline { 0.0 } else { single_x_shift };
-        let oy = if input.multiline {
-            content_y - scroll_y
-        } else {
-            content_y + ((content_h - line_height as f64) / 2.0).max(0.0)
-        };
-        let px = content_x + x_shift + cr.x0;
-        let py = oy + cr.y0;
-        let preedit_h = cr.y1 - cr.y0;
+    fn paint_preedit(
+        &mut self,
+        origin: LayoutOrigin,
+        preedit: &PreeditRenderInfo,
+        cursor: &BoundingBox,
+    ) {
+        let px = origin.x + cursor.x0;
+        let py = origin.y + cursor.y0;
+        let height = cursor.y1 - cursor.y0;
+        let width = preedit.width as f64;
 
-        // Background highlight for preedit
-        let preedit_bg = VelloColor::from_rgba8(50, 50, 60, 180);
-        let preedit_rect = Rect::new(px, py, px + preedit.width as f64, py + preedit_h);
-        scene.fill(Fill::NonZero, transform, preedit_bg, None, &preedit_rect);
+        let bg = Rect::new(px, py, px + width, py + height);
+        self.scene
+            .fill(Fill::NonZero, self.transform, PREEDIT_BG_COLOR, None, &bg);
 
-        // Preedit text — natural single-line layout, positioned manually.
-        text_renderer.draw_text(
-            scene,
+        self.text_renderer.draw_text(
+            self.scene,
             &preedit.text,
-            &input.text_style,
+            &self.info.text_style,
             None,
             (px as f32, py as f32),
-            input.text_style.color.to_vello(),
-            transform,
+            self.info.text_style.color.to_vello(),
+            self.transform,
         );
 
-        // Underline
-        let underline_y = py + preedit_h - 1.0;
-        let underline = Rect::new(
-            px,
-            underline_y,
-            px + preedit.width as f64,
-            underline_y + 1.0,
-        );
-        scene.fill(
+        let underline_y = py + height - 1.0;
+        let underline = Rect::new(px, underline_y, px + width, underline_y + 1.0);
+        self.scene.fill(
             Fill::NonZero,
-            transform,
-            VelloColor::from_rgba8(180, 180, 180, 255),
+            self.transform,
+            PREEDIT_UNDERLINE_COLOR,
             None,
             &underline,
         );
     }
 
-    // Cursor (hide during preedit)
-    if input.focused
-        && input.blink_visible
-        && input.preedit.is_none()
-        && let Some(cr) = &input.cursor_rect
-    {
-        let x_shift = if input.multiline { 0.0 } else { single_x_shift };
-        let oy = if input.multiline {
-            content_y - scroll_y
-        } else {
-            content_y + ((content_h - line_height as f64) / 2.0).max(0.0)
-        };
-        let cx = content_x + x_shift + cr.x0;
-        let cy = oy + cr.y0;
-        let cursor_rect = Rect::new(cx, cy + 2.0, cx + 1.5, cy + cr.y1 - cr.y0 - 2.0);
-        scene.fill(
-            Fill::NonZero,
-            transform,
-            VelloColor::from_rgba8(212, 212, 212, 255),
-            None,
-            &cursor_rect,
-        );
+    fn paint_caret(&mut self, origin: LayoutOrigin, cursor: &BoundingBox) {
+        let cx = origin.x + cursor.x0;
+        let cy = origin.y + cursor.y0;
+        let rect = Rect::new(cx, cy, cx + CARET_WIDTH, cy + (cursor.y1 - cursor.y0));
+        self.scene
+            .fill(Fill::NonZero, self.transform, CARET_COLOR, None, &rect);
     }
 
-    scene.pop_layer();
+    fn should_paint_caret(&self) -> bool {
+        self.info.focused && self.info.blink_visible && self.info.preedit.is_none()
+    }
 }
