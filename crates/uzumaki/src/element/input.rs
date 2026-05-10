@@ -68,9 +68,7 @@ struct InputPainter<'a> {
     transform: Affine,
 }
 
-/// Origin where the parley layout's (0, 0) maps to inside the input. All
-/// glyph/selection/caret coordinates returned from the editor are relative to
-/// this point.
+// todo replace with point
 #[derive(Clone, Copy)]
 struct LayoutOrigin {
     x: f64,
@@ -84,11 +82,6 @@ impl InputPainter<'_> {
             return;
         }
 
-        // Clip to the element rect (the area the background fills), not to
-        // the content box. Padding then doubles as visual breathing room: the
-        // caret and trailing glyphs can render into it instead of being
-        // amputated at the content edge. Borders paint over the top of any
-        // pixels that bleed into the border area.
         self.scene
             .push_clip_layer(Fill::NonZero, self.transform, &self.bounds.to_rect());
 
@@ -134,15 +127,6 @@ impl InputPainter<'_> {
         (self.info.text_style.font_size * self.info.text_style.line_height).round()
     }
 
-    /// Where layout-(0, 0) sits in element-local coords.
-    ///
-    /// - Multiline: top-left of the content box, vertically scrolled by
-    ///   `scroll_offset_y`. Horizontal alignment was already baked into the
-    ///   layout via `editor.set_alignment(...)`.
-    /// - Single-line: vertically centered to mimic browser behavior; horizontal
-    ///   position depends on whether the natural width fits the content. When
-    ///   it fits we honor `text-align`; when it overflows we lock to the left
-    ///   edge and translate by `-scroll_offset_x` so the caret stays in view.
     fn layout_origin(&mut self, content: Bounds) -> LayoutOrigin {
         if self.info.multiline {
             return LayoutOrigin {
@@ -154,10 +138,6 @@ impl InputPainter<'_> {
         let line_h = self.line_height() as f64;
         let y = content.y + ((content.height - line_h) * 0.5).max(0.0);
 
-        // Align based on natural width — including the empty case, so the
-        // caret of an empty `text-align: center` / `right` input renders in
-        // the right place. For empty text `measure_text` returns 0, which
-        // gives full-slack alignment as expected.
         let (natural_w, _) = self.text_renderer.measure_text(
             &self.info.display_text,
             &self.info.text_style,
