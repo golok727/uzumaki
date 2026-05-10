@@ -11,20 +11,14 @@ These docs target `0.0.1-alpha.2`, which is not released yet. If your installed 
 
 ## Requirements
 
-- Node.js with `pnpm`
-- A working Rust toolchain when developing the runtime from this repository
-- The Uzumaki CLI from the install script below
-
-:::note
-The generated app uses `pnpm`. Use `bun` only when an existing script in this repository already uses it.
-:::
+The Uzumaki CLI is the only requirement. Uzumaki is built on Deno, so it ships a full JavaScript and TypeScript runtime. You do not need Node.js, Deno, or Bun installed to run apps. To install app dependencies like React you need any package manager (`pnpm`, `npm`, `yarn`, or `bun` all work — examples below use `pnpm`).
 
 ## Install the CLI
 
 ### Windows
 
-```powershell
-irm https://uzumaki.run/install.ps1 | iex
+```sh
+powershell irm https://uzumaki.run/install.ps1 | iex
 ```
 
 ### macOS and Linux
@@ -50,7 +44,7 @@ pnpm install
 pnpm dev
 ```
 
-The dev command starts your app in the native runtime. There is no browser tab to open.
+The dev command starts your app in the native runtime. There is no browser tab to open. Swap `pnpm` for `npm`, `yarn`, or `bun` if you prefer.
 
 ## Common Commands
 

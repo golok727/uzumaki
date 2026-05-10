@@ -76,6 +76,7 @@ export default defineConfig({
         {
           label: 'Reference',
           items: [
+            { label: 'CLI', slug: 'reference/cli' },
             { label: 'Elements', slug: 'reference/elements' },
             { label: 'Props', slug: 'reference/props' },
             { label: 'Events', slug: 'reference/events' },
@@ -87,6 +88,23 @@ export default defineConfig({
         typeDocSidebarGroup,
       ],
       head: [
+        {
+          tag: 'script',
+          content: `(() => {
+  function pickPlatformTab() {
+    var label = /Windows/i.test(navigator.userAgent || '') ? 'Windows' : 'macOS & Linux';
+    document.querySelectorAll('starlight-tabs').forEach(function (group) {
+      group.querySelectorAll('[role="tab"]').forEach(function (tab) {
+        if ((tab.textContent || '').trim() === label && tab.getAttribute('aria-selected') !== 'true') {
+          tab.click();
+        }
+      });
+    });
+  }
+  if (document.readyState !== 'loading') pickPlatformTab();
+  else document.addEventListener('DOMContentLoaded', pickPlatformTab);
+})();`,
+        },
         {
           tag: 'link',
           attrs: {

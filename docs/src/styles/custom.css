@@ -1,28 +1,41 @@
-/* Uzumaki docs — dark only, black + orange */
+/* Uzumaki docs — dark only, black + amber */
 
 :root,
 :root[data-theme='light'],
 :root[data-theme='dark'] {
   --uz-accent: #e2a52e;
+  --uz-accent-soft: #f5c869;
+  --uz-accent-deep: #b07d18;
   --uz-accent-dim: #1a1508;
-  --sl-font: 'Geist Mono', system-ui, -apple-system, sans-serif;
-  --sl-font-mono: 'Geist Mono', monospace;
+  --uz-bg: #08080a;
+  --uz-bg-elev: #0d0d10;
+  --uz-line: #1c1c20;
+  --uz-line-strong: #27272d;
+
+  /* Complementary cool accent — used for inline code and API symbol names
+     so they read as identifiers rather than as primary brand UI */
+  --uz-cool: #7dd3fc;
+  --uz-cool-soft: #a8e2fb;
+
+  --sl-font: 'Geist Mono', ui-monospace, monospace;
+  --sl-font-mono: 'Geist Mono', ui-monospace, monospace;
+
   --sl-color-accent-low: var(--uz-accent-dim);
   --sl-color-accent: var(--uz-accent);
-  --sl-color-accent-high: #ffd6b3;
-  --sl-color-white: #e4e4e7;
+  --sl-color-accent-high: #ffd6a3;
+  --sl-color-white: #f4f4f5;
   --sl-color-gray-1: #a1a1aa;
   --sl-color-gray-2: #71717a;
   --sl-color-gray-3: #3f3f46;
-  --sl-color-gray-4: #27272a;
-  --sl-color-gray-5: #18181b;
-  --sl-color-gray-6: #0a0a0a;
+  --sl-color-gray-4: var(--uz-line-strong);
+  --sl-color-gray-5: #141418;
+  --sl-color-gray-6: var(--uz-bg);
   --sl-color-black: #000000;
-  --sl-color-bg-sidebar: #0a0a0a;
-  --sl-color-bg-nav: #0a0a0a;
-  --sl-color-bg: #0a0a0a;
-  --sl-color-hairline-shade: #1a1a1a;
-  --sl-color-hairline-light: #27272a;
+  --sl-color-bg-sidebar: var(--uz-bg);
+  --sl-color-bg-nav: rgba(8, 8, 10, 0.72);
+  --sl-color-bg: var(--uz-bg);
+  --sl-color-hairline-shade: var(--uz-line);
+  --sl-color-hairline-light: var(--uz-line-strong);
   --sl-color-text: #e4e4e7;
   --sl-color-text-accent: var(--uz-accent);
 }
@@ -32,108 +45,360 @@ starlight-theme-select {
   display: none !important;
 }
 
+/* Body — just the dot grid; the hero owns the warm glow */
+body {
+  background-color: var(--uz-bg);
+  background-image: radial-gradient(
+    circle,
+    rgba(255, 255, 255, 0.022) 1px,
+    transparent 1px
+  );
+  background-size: 22px 22px;
+  background-attachment: fixed;
+  background-repeat: repeat;
+}
+
+/* Frosted nav */
+header.header {
+  background: rgba(8, 8, 10, 0.6) !important;
+  backdrop-filter: saturate(140%) blur(10px);
+  -webkit-backdrop-filter: saturate(140%) blur(10px);
+  border-bottom: 1px solid var(--uz-line) !important;
+}
+
 /* Site title */
 .site-title {
+  font-family: var(--sl-font-mono);
   font-weight: 700;
   letter-spacing: -0.02em;
 }
 
-/* Code blocks */
-.expressive-code pre {
-  border: 1px solid #27272a;
-  background: #0f0f0f !important;
+/* Sidebar + content rails */
+nav.sidebar {
+  border-right-color: var(--uz-line);
+}
+.content-panel {
+  border-top-color: var(--uz-line);
 }
 
-/* Links */
-a {
-  text-decoration: none;
-}
+/* ---------- Hero ---------- */
 
-/* Hero section overrides */
 .hero {
+  position: relative;
   border-bottom: none !important;
+}
+
+/* Amber aurora — fixed to viewport so it never clips against parent edges.
+   Scoped to splash-template pages via :has() so doc pages stay clean. */
+body:has(.hero)::before {
+  content: '';
+  position: fixed;
+  inset: 0 0 auto 0;
+  height: 90vh;
+  z-index: 0;
+  pointer-events: none;
+  background:
+    radial-gradient(
+      ellipse 45% 55% at 22% 28%,
+      rgba(226, 165, 46, 0.22),
+      transparent 70%
+    ),
+    radial-gradient(
+      ellipse 35% 45% at 75% 12%,
+      rgba(176, 125, 24, 0.1),
+      transparent 75%
+    );
+  -webkit-mask-image: linear-gradient(180deg, #000 30%, transparent 100%);
+  mask-image: linear-gradient(180deg, #000 30%, transparent 100%);
+}
+
+/* Make sure hero content sits above the aurora */
+.hero > * {
+  position: relative;
+  z-index: 1;
 }
 
 @media (min-width: 50rem) {
   .hero {
     grid-template-columns: minmax(0, 46rem) !important;
-    padding-block: clamp(2.5rem, 7vmin, 5.5rem) 2.25rem !important;
+    padding-block: clamp(3rem, 8vmin, 6rem) 2.5rem !important;
   }
 }
 
-/* Sidebar */
-nav.sidebar {
-  border-right-color: #1a1a1a;
+/* Hero title — plain mono wordmark */
+.hero h1 {
+  font-family: var(--sl-font-mono);
+  font-weight: 700;
+  letter-spacing: -0.04em;
+  line-height: 1;
+  text-wrap: balance;
+  color: #f4f4f5;
 }
 
-/* Content area */
-.content-panel {
-  border-top-color: #1a1a1a;
+/* Alpha badge as a superscript next to the wordmark */
+.hero h1::after {
+  content: 'alpha';
+  display: inline-block;
+  vertical-align: super;
+  margin-left: 0.45rem;
+  padding: 0.2em 0.55em;
+  font-family: var(--sl-font-mono);
+  font-size: 0.32em;
+  font-weight: 600;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--uz-cool);
+  background: rgba(125, 211, 252, 0.08);
+  border: 1px solid rgba(125, 211, 252, 0.35);
+  border-radius: 999px;
+  -webkit-text-fill-color: var(--uz-cool);
+  background-clip: border-box;
+  -webkit-background-clip: border-box;
+  line-height: 1;
+  translate: 0 -0.2em;
 }
 
-/* Inline code */
-:not(pre) > code {
-  background: #1a1a1a;
-  border: 1px solid #27272a;
+/* Hero tagline — statement, not subtitle */
+.hero .tagline {
+  font-family: var(--sl-font-mono);
+  color: #e8e8ec;
+  font-size: clamp(1.15rem, 1.8vw, 1.45rem);
+  font-weight: 500;
+  line-height: 1.5;
+  letter-spacing: -0.01em;
+  text-wrap: balance;
+  max-width: 40rem;
+  margin-top: 1rem;
+  padding-left: 1rem;
+  border-left: 2px solid var(--uz-accent);
+}
+
+/* Primary CTA — gradient + soft glow, the hero's focal point */
+.hero .actions a.button[data-variant='primary'],
+.hero .actions a.button:not([data-variant='minimal']) {
+  background: linear-gradient(
+    135deg,
+    #ffd884 0%,
+    var(--uz-accent) 55%,
+    var(--uz-accent-deep) 100%
+  );
+  color: #1a1306;
+  border: 1px solid rgba(255, 222, 158, 0.55);
+  box-shadow:
+    0 1px 0 rgba(255, 255, 255, 0.3) inset,
+    0 0 0 1px rgba(226, 165, 46, 0.18),
+    0 16px 44px -12px rgba(226, 165, 46, 0.55);
+  transition:
+    transform 0.18s ease,
+    box-shadow 0.25s ease,
+    filter 0.18s ease;
+}
+
+.hero .actions a.button:not([data-variant='minimal']):hover {
+  filter: brightness(1.05);
+  transform: translateY(-1px);
+  box-shadow:
+    0 1px 0 rgba(255, 255, 255, 0.3) inset,
+    0 0 0 1px rgba(226, 165, 46, 0.25),
+    0 18px 50px -12px rgba(226, 165, 46, 0.6);
+}
+
+.hero .actions a.button[data-variant='minimal'] {
+  border: 1px solid var(--uz-line-strong);
+  background: rgba(255, 255, 255, 0.02);
+  transition:
+    border-color 0.18s ease,
+    background 0.18s ease,
+    color 0.18s ease;
+}
+.hero .actions a.button[data-variant='minimal']:hover {
+  border-color: var(--uz-accent);
   color: var(--uz-accent);
-  padding: 0.15em 0.35em;
-  border-radius: 4px;
-  font-size: 0.9em;
+  background: rgba(226, 165, 46, 0.06);
 }
 
-/* Aside/callout boxes */
+/* ---------- Prose ---------- */
+
+.sl-markdown-content h1,
+.sl-markdown-content h2,
+.sl-markdown-content h3,
+.sl-markdown-content h4 {
+  font-family: var(--sl-font-mono);
+  letter-spacing: -0.02em;
+  text-wrap: balance;
+}
+
+.sl-markdown-content h2 {
+  position: relative;
+  padding-bottom: 0.4rem;
+}
+.sl-markdown-content h2::after {
+  content: '';
+  position: absolute;
+  left: 0;
+  bottom: 0;
+  width: 2.25rem;
+  height: 2px;
+  border-radius: 2px;
+  background: linear-gradient(90deg, var(--uz-accent), transparent);
+}
+
+
+/* ---------- Code ---------- */
+
+.expressive-code pre {
+  border: 1px solid var(--uz-line-strong) !important;
+  background: linear-gradient(180deg, #0f0f12, #0b0b0e) !important;
+  box-shadow:
+    0 1px 0 rgba(255, 255, 255, 0.02) inset,
+    0 20px 50px -30px rgba(0, 0, 0, 0.8);
+}
+
+.expressive-code .frame {
+  border-radius: 12px;
+  overflow: hidden;
+}
+
+:not(pre) > code {
+  background: #161619;
+  border: 1px solid #25252b;
+  color: var(--uz-cool);
+  padding: 0.14em 0.42em;
+  border-radius: 5px;
+  font-size: 0.88em;
+  font-weight: 500;
+  white-space: nowrap;
+}
+
+/* Inline code inside links keeps the link color */
+a:not(.button):not(.card) :not(pre) > code,
+a:not(.button):not(.card) > code {
+  color: var(--uz-accent);
+  background: rgba(226, 165, 46, 0.08);
+  border-color: rgba(226, 165, 46, 0.35);
+}
+
+a {
+  text-decoration: none;
+}
+
+.sl-markdown-content a:not(.button):not(.card):hover {
+  text-decoration: underline;
+  text-decoration-color: rgba(226, 165, 46, 0.5);
+  text-underline-offset: 3px;
+}
+
+/* ---------- Asides ---------- */
+
 .starlight-aside {
-  border-color: var(--uz-accent);
-  background: var(--uz-accent-dim);
+  border-color: rgba(226, 165, 46, 0.5);
+  background:
+    linear-gradient(135deg, rgba(226, 165, 46, 0.08), transparent 55%),
+    var(--uz-bg-elev);
+  border-radius: 10px;
 }
-
 .starlight-aside--caution {
-  border-color: var(--uz-accent);
+  border-color: rgba(226, 165, 46, 0.55);
 }
 
-/* Tabs */
+/* ---------- Cards (CardGrid) ---------- */
+
+.sl-link-card,
+.card {
+  border: 1px solid var(--uz-line-strong) !important;
+  background: var(--uz-bg-elev) !important;
+  border-radius: 12px !important;
+  transition:
+    border-color 0.2s ease,
+    transform 0.2s ease,
+    box-shadow 0.25s ease,
+    background 0.2s ease;
+  position: relative;
+  overflow: hidden;
+}
+
+.sl-link-card::before,
+.card::before {
+  content: '';
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  background: linear-gradient(
+    135deg,
+    rgba(226, 165, 46, 0.08),
+    transparent 40%
+  );
+  opacity: 0;
+  transition: opacity 0.25s ease;
+}
+
+.sl-link-card:hover,
+.card:hover {
+  border-color: rgba(226, 165, 46, 0.45) !important;
+  transform: translateY(-2px);
+  box-shadow: 0 18px 50px -28px rgba(226, 165, 46, 0.35);
+}
+
+.sl-link-card:hover::before,
+.card:hover::before {
+  opacity: 1;
+}
+
+/* ---------- Tabs ---------- */
+
 starlight-tabs [role='tablist'] {
-  border-bottom-color: #27272a;
+  border-bottom-color: var(--uz-line-strong);
 }
-
 starlight-tabs [role='tab'][aria-selected='true'] {
   border-bottom-color: var(--uz-accent);
   color: var(--uz-accent);
 }
 
-/* Scrollbar */
+/* ---------- Scrollbar ---------- */
+
 * {
   scrollbar-width: thin;
-  scrollbar-color: #27272a transparent;
+  scrollbar-color: var(--uz-line-strong) transparent;
 }
-
 *:hover {
   scrollbar-color: #3f3f46 transparent;
 }
-
 ::-webkit-scrollbar {
   width: 6px;
   height: 6px;
 }
-
 ::-webkit-scrollbar-track {
   background: transparent;
 }
-
 ::-webkit-scrollbar-thumb {
-  background: #27272a;
+  background: var(--uz-line-strong);
   border-radius: 3px;
 }
-
 ::-webkit-scrollbar-thumb:hover {
   background: var(--uz-accent);
 }
-
 ::-webkit-scrollbar-corner {
   background: transparent;
 }
 
-/* Small framework diagrams */
+/* ---------- Reduced motion ---------- */
+
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    transition: none !important;
+    animation: none !important;
+  }
+  .sl-link-card:hover,
+  .card:hover,
+  .hero .actions a.button:hover {
+    transform: none;
+  }
+}
+
+/* ---------- Small framework diagrams ---------- */
+
 .uz-flow {
   display: flex;
   align-items: center;
@@ -141,10 +406,11 @@ starlight-tabs [role='tab'][aria-selected='true'] {
   margin: 1.25rem 0;
   padding: 1rem;
   overflow-x: auto;
-  border: 1px solid #27272a;
+  border: 1px solid var(--uz-line-strong);
   border-radius: 14px;
   background:
-    linear-gradient(135deg, rgba(226, 165, 46, 0.08), transparent 42%), #0f0f0f;
+    linear-gradient(135deg, rgba(226, 165, 46, 0.08), transparent 42%),
+    var(--uz-bg-elev);
 }
 
 .uz-flow__split {
@@ -161,7 +427,7 @@ starlight-tabs [role='tab'][aria-selected='true'] {
 .uz-flow__node {
   flex: 0 0 auto;
   padding: 0.7rem 0.85rem;
-  border: 1px solid #27272a;
+  border: 1px solid var(--uz-line-strong);
   border-radius: 10px;
   background: #09090b;
   box-shadow: 0 10px 30px rgba(0, 0, 0, 0.24);
