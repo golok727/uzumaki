@@ -130,8 +130,6 @@ impl DeleteAction {
 pub struct InputState {
     pub editor: PlainEditor<TextBrush>,
     pub placeholder: String,
-    pub scroll_offset_x: f32,
-    pub scroll_offset_y: f32,
     pub blink_reset: Instant,
     pub disabled: bool,
     pub secure: bool,
@@ -155,8 +153,6 @@ impl InputState {
         Self {
             editor: PlainEditor::new(16.0),
             placeholder: String::new(),
-            scroll_offset_x: 0.0,
-            scroll_offset_y: 0.0,
             blink_reset: Instant::now(),
             disabled: false,
             secure: false,
@@ -660,41 +656,6 @@ impl InputState {
         self.blink_reset.elapsed().as_millis() % Self::BLINK_CYCLE_MS
     }
 
-    pub fn update_scroll(
-        &mut self,
-        cursor_left: f32,
-        cursor_right: f32,
-        natural_w: f32,
-        visible_width: f32,
-    ) {
-        if visible_width <= 0.0 {
-            return;
-        }
-        if cursor_left - self.scroll_offset_x < 0.0 {
-            self.scroll_offset_x = cursor_left;
-        } else if cursor_right - self.scroll_offset_x > visible_width {
-            self.scroll_offset_x = cursor_right - visible_width;
-        }
-        // Clamp from above so a delete that shrinks the text past the current
-        // scroll doesn't leave the layout shifted left, showing whitespace
-        // where text used to be.
-        let max_scroll = (natural_w - visible_width).max(0.0);
-        self.scroll_offset_x = self.scroll_offset_x.clamp(0.0, max_scroll);
-    }
-
-    pub fn update_scroll_y(&mut self, cursor_y: f32, line_height: f32, visible_height: f32) {
-        if visible_height <= 0.0 {
-            return;
-        }
-        let cursor_bottom = cursor_y + line_height;
-        if cursor_y < self.scroll_offset_y {
-            self.scroll_offset_y = cursor_y;
-        } else if cursor_bottom > self.scroll_offset_y + visible_height {
-            self.scroll_offset_y = cursor_bottom - visible_height;
-        }
-        self.scroll_offset_y = self.scroll_offset_y.max(0.0);
-    }
-
     pub fn handle_key(
         &mut self,
         key: &Key,
@@ -936,73 +897,6 @@ mod tests {
         is.insert_text("old", &mut r);
         is.set_value("new");
         assert_eq!(is.text(), "new");
-    }
-
-    #[test]
-    fn update_scroll_scrolls_right() {
-        let mut is = InputState::new();
-        is.scroll_offset_x = 0.0;
-        is.update_scroll(250.0, 251.5, 300.0, 200.0);
-        assert_eq!(is.scroll_offset_x, 51.5);
-    }
-
-    #[test]
-    fn update_scroll_scrolls_left() {
-        let mut is = InputState::new();
-        is.scroll_offset_x = 100.0;
-        is.update_scroll(50.0, 51.5, 300.0, 200.0);
-        assert_eq!(is.scroll_offset_x, 50.0);
-    }
-
-    #[test]
-    fn update_scroll_no_negative() {
-        let mut is = InputState::new();
-        is.scroll_offset_x = -10.0;
-        is.update_scroll(50.0, 51.5, 300.0, 200.0);
-        assert!(is.scroll_offset_x >= 0.0);
-    }
-
-    #[test]
-    fn update_scroll_clamps_to_natural_width() {
-        // Stale large scroll offset, but text is now shorter than visible
-        // width — scroll should snap back to 0 so the text isn't shifted
-        // off-screen to the left.
-        let mut is = InputState::new();
-        is.scroll_offset_x = 200.0;
-        is.update_scroll(30.0, 31.5, 30.0, 200.0);
-        assert_eq!(is.scroll_offset_x, 0.0);
-    }
-
-    #[test]
-    fn update_scroll_keeps_full_caret_visible() {
-        let mut is = InputState::new();
-        is.scroll_offset_x = 0.0;
-        is.update_scroll(198.5, 200.0, 200.0, 200.0);
-        assert_eq!(is.scroll_offset_x, 0.0);
-    }
-
-    #[test]
-    fn update_scroll_does_not_scroll_past_natural_width_for_caret_width() {
-        let mut is = InputState::new();
-        is.scroll_offset_x = 0.0;
-        is.update_scroll(200.0, 201.5, 200.0, 200.0);
-        assert_eq!(is.scroll_offset_x, 0.0);
-    }
-
-    #[test]
-    fn update_scroll_y_scrolls_down() {
-        let mut is = InputState::new();
-        is.scroll_offset_y = 0.0;
-        is.update_scroll_y(250.0, 20.0, 200.0);
-        assert_eq!(is.scroll_offset_y, 70.0);
-    }
-
-    #[test]
-    fn update_scroll_y_scrolls_up() {
-        let mut is = InputState::new();
-        is.scroll_offset_y = 100.0;
-        is.update_scroll_y(50.0, 20.0, 200.0);
-        assert_eq!(is.scroll_offset_y, 50.0);
     }
 
     #[test]

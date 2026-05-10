@@ -3,9 +3,8 @@ use slab::Slab;
 use crate::{
     cursor::UzCursorIcon,
     element::{
-        DragMode, ElementNode, ImageData, ImageNode, Node, ScrollAxis, ScrollState,
-        ScrollThumbRect, ScrollWheelTarget, TextContent, TextNode, TextRunEntry, TextSelectRun,
-        UzNodeId,
+        DragMode, ElementNode, ImageData, ImageNode, Node, ScrollAxis, ScrollThumbRect,
+        ScrollWheelTarget, TextContent, TextNode, TextRunEntry, TextSelectRun, UzNodeId,
         scroll::{self, ScrollAlign, ScrollIntoViewOptions},
     },
     input::InputState,
@@ -374,7 +373,7 @@ impl UIState {
         };
 
         let cur_offset = scroller_ref
-            .scroll_state
+            .scroll_state()
             .as_ref()
             .map(|s| s.offset(axis))
             .unwrap_or(0.0);
@@ -391,10 +390,9 @@ impl UIState {
             return;
         };
 
-        let ss = self.nodes[scroller_id]
-            .scroll_state
-            .get_or_insert(ScrollState::new());
-        ss.set_offset(axis, next_offset);
+        if let Some(ss) = self.nodes[scroller_id].ensure_scroll_state() {
+            ss.set_offset(axis, next_offset);
+        }
     }
 
     fn nearest_overflow_scroller(

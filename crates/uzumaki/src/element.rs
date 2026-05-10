@@ -51,6 +51,38 @@ impl ScrollState {
             ScrollAxis::Y => self.scroll_offset_y = value,
         }
     }
+
+    pub fn scroll_input_x(
+        &mut self,
+        cursor_left: f32,
+        cursor_right: f32,
+        natural_w: f32,
+        visible_width: f32,
+    ) {
+        if visible_width <= 0.0 {
+            return;
+        }
+        if cursor_left - self.scroll_offset_x < 0.0 {
+            self.scroll_offset_x = cursor_left;
+        } else if cursor_right - self.scroll_offset_x > visible_width {
+            self.scroll_offset_x = cursor_right - visible_width;
+        }
+        let max_scroll = (natural_w - visible_width).max(0.0);
+        self.scroll_offset_x = self.scroll_offset_x.clamp(0.0, max_scroll);
+    }
+
+    pub fn scroll_input_y(&mut self, cursor_y: f32, line_height: f32, visible_height: f32) {
+        if visible_height <= 0.0 {
+            return;
+        }
+        let cursor_bottom = cursor_y + line_height;
+        if cursor_y < self.scroll_offset_y {
+            self.scroll_offset_y = cursor_y;
+        } else if cursor_bottom > self.scroll_offset_y + visible_height {
+            self.scroll_offset_y = cursor_bottom - visible_height;
+        }
+        self.scroll_offset_y = self.scroll_offset_y.max(0.0);
+    }
 }
 
 /// Active scroll-thumb drag. Stored on the dom (only one drag at a time).
@@ -243,6 +275,8 @@ pub struct ElementNode {
     pub kind: ElementKind,
     pub is_focussable: bool,
     pub data: ElementData,
+    /// Per-element scroll offsets for content that can scroll on either axis.
+    pub scroll_state: Option<ScrollState>,
 }
 
 impl ElementNode {
@@ -251,6 +285,7 @@ impl ElementNode {
             kind,
             is_focussable: false,
             data,
+            scroll_state: None,
         }
     }
 
@@ -609,8 +644,6 @@ pub struct Node {
     pub style_variants: StyleVariants,
     /// Hitbox assigned during the latest paint pass. None if not painted yet.
     pub hitbox_id: Option<HitboxId>,
-    /// Per-node scroll offsets for content that can scroll on either axis.
-    pub scroll_state: Option<ScrollState>,
     /// Cached parley layout for text-bearing nodes (text node or `<text>`
     /// element). Refreshed once per frame after taffy compute, then reused by
     /// paint, selection geometry and hit-testing instead of rebuilding parley
@@ -631,7 +664,6 @@ impl Node {
             style,
             style_variants: StyleVariants::new(),
             hitbox_id: None,
-            scroll_state: None,
             text_layout: None,
             final_layout: taffy::Layout::new(),
         }
@@ -674,6 +706,27 @@ impl Node {
 
     pub fn as_element_mut(&mut self) -> Option<&mut ElementNode> {
         self.data.as_element_mut()
+    }
+
+    pub fn scroll_state(&self) -> Option<&ScrollState> {
+        self.as_element()
+            .and_then(|element| element.scroll_state.as_ref())
+    }
+
+    pub fn scroll_state_mut(&mut self) -> Option<&mut ScrollState> {
+        self.as_element_mut()
+            .and_then(|element| element.scroll_state.as_mut())
+    }
+
+    pub fn ensure_scroll_state(&mut self) -> Option<&mut ScrollState> {
+        let element = self.as_element_mut()?;
+        Some(element.scroll_state.get_or_insert_with(ScrollState::new))
+    }
+
+    pub fn clear_scroll_state(&mut self) {
+        if let Some(element) = self.as_element_mut() {
+            element.scroll_state = None;
+        }
     }
 
     pub fn get_text_content(&self) -> Option<&TextContent> {
@@ -725,5 +778,78 @@ impl Node {
         self.as_element()
             .map(|e| e.is_focussable())
             .unwrap_or(false)
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::ScrollState;
+
+    #[test]
+    fn input_scroll_scrolls_right() {
+        let mut scroll = ScrollState::new();
+        scroll.scroll_input_x(250.0, 251.5, 300.0, 200.0);
+        assert_eq!(scroll.scroll_offset_x, 51.5);
+    }
+
+    #[test]
+    fn input_scroll_scrolls_left() {
+        let mut scroll = ScrollState {
+            scroll_offset_x: 100.0,
+            scroll_offset_y: 0.0,
+        };
+        scroll.scroll_input_x(50.0, 51.5, 300.0, 200.0);
+        assert_eq!(scroll.scroll_offset_x, 50.0);
+    }
+
+    #[test]
+    fn input_scroll_no_negative() {
+        let mut scroll = ScrollState {
+            scroll_offset_x: -10.0,
+            scroll_offset_y: 0.0,
+        };
+        scroll.scroll_input_x(50.0, 51.5, 300.0, 200.0);
+        assert!(scroll.scroll_offset_x >= 0.0);
+    }
+
+    #[test]
+    fn input_scroll_clamps_to_natural_width() {
+        let mut scroll = ScrollState {
+            scroll_offset_x: 200.0,
+            scroll_offset_y: 0.0,
+        };
+        scroll.scroll_input_x(30.0, 31.5, 30.0, 200.0);
+        assert_eq!(scroll.scroll_offset_x, 0.0);
+    }
+
+    #[test]
+    fn input_scroll_keeps_full_caret_visible() {
+        let mut scroll = ScrollState::new();
+        scroll.scroll_input_x(198.5, 200.0, 200.0, 200.0);
+        assert_eq!(scroll.scroll_offset_x, 0.0);
+    }
+
+    #[test]
+    fn input_scroll_does_not_scroll_past_natural_width_for_caret_width() {
+        let mut scroll = ScrollState::new();
+        scroll.scroll_input_x(200.0, 201.5, 200.0, 200.0);
+        assert_eq!(scroll.scroll_offset_x, 0.0);
+    }
+
+    #[test]
+    fn input_scroll_y_scrolls_down() {
+        let mut scroll = ScrollState::new();
+        scroll.scroll_input_y(250.0, 20.0, 200.0);
+        assert_eq!(scroll.scroll_offset_y, 70.0);
+    }
+
+    #[test]
+    fn input_scroll_y_scrolls_up() {
+        let mut scroll = ScrollState {
+            scroll_offset_x: 0.0,
+            scroll_offset_y: 100.0,
+        };
+        scroll.scroll_input_y(50.0, 20.0, 200.0);
+        assert_eq!(scroll.scroll_offset_y, 50.0);
     }
 }

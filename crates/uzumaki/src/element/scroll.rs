@@ -41,9 +41,8 @@ impl Default for ScrollIntoViewOptions {
     }
 }
 
-/// A scrollable extent on one axis. Geometry-only — the owner of this info
-/// (e.g. `ScrollState` for views, `InputState` for multiline inputs) holds
-/// the actual offset.
+/// A scrollable extent on one axis. Geometry-only — the owning element's
+/// `ScrollState` holds the actual offset.
 #[derive(Clone, Copy, Debug)]
 pub struct ScrollAxisInfo {
     pub content_size: f64,
