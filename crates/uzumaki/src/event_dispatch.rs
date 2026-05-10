@@ -233,11 +233,11 @@ fn single_line_align_offset(dom: &mut UIState, handle: &mut Window, nid: UzNodeI
         &mut handle.text_renderer.font_ctx,
         &mut handle.text_renderer.layout_ctx,
     );
-    let natural_w = is
-        .editor
-        .try_layout()
-        .map(|l| l.full_width())
-        .unwrap_or(0.0);
+    let display_text = is.display_text();
+    let natural_w = handle
+        .text_renderer
+        .measure_text(&display_text, &meta.text_style, None, None)
+        .0;
     input_align_offset(meta.input_width, natural_w, meta.text_style.text_align)
 }
 
@@ -280,25 +280,25 @@ pub fn scroll_input_to_cursor(dom: &mut UIState, handle: &mut Window) {
                     );
                 }
             } else {
-                let natural_w = if is.secure {
-                    let display_text = is.display_text();
-                    handle
-                        .text_renderer
-                        .measure_text(&display_text, &meta.text_style, None, None)
-                        .0
-                } else {
-                    is.editor
-                        .try_layout()
-                        .map(|l| l.full_width())
-                        .unwrap_or(0.0)
-                };
+                let display_text = is.display_text();
+                let natural_w = handle
+                    .text_renderer
+                    .measure_text(&display_text, &meta.text_style, None, None)
+                    .0;
+                let raw_selection = is.editor.raw_selection();
+                let cursor_at_text_end = raw_selection.is_collapsed()
+                    && raw_selection.focus().index() == is.editor.raw_text().len();
                 if let Some(scroll) = node.ensure_scroll_state() {
-                    scroll.scroll_input_x(
-                        rect.x0 as f32,
-                        rect.x1 as f32,
-                        natural_w,
-                        meta.input_width,
-                    );
+                    if cursor_at_text_end {
+                        scroll.scroll_single_line_input_end(natural_w, meta.input_width);
+                    } else {
+                        scroll.scroll_input_x(
+                            rect.x0 as f32,
+                            rect.x1 as f32,
+                            natural_w,
+                            meta.input_width,
+                        );
+                    }
                 }
             }
         }

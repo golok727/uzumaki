@@ -71,6 +71,14 @@ impl ScrollState {
         self.scroll_offset_x = self.scroll_offset_x.clamp(0.0, max_scroll);
     }
 
+    pub fn scroll_single_line_input_end(&mut self, natural_w: f32, visible_width: f32) {
+        if visible_width <= 0.0 {
+            return;
+        }
+        let max_scroll = (natural_w - visible_width).max(0.0);
+        self.scroll_offset_x = max_scroll;
+    }
+
     pub fn scroll_input_y(&mut self, cursor_y: f32, line_height: f32, visible_height: f32) {
         if visible_height <= 0.0 {
             return;
@@ -833,6 +841,23 @@ mod tests {
     fn input_scroll_does_not_scroll_past_natural_width_for_caret_width() {
         let mut scroll = ScrollState::new();
         scroll.scroll_input_x(200.0, 201.5, 200.0, 200.0);
+        assert_eq!(scroll.scroll_offset_x, 0.0);
+    }
+
+    #[test]
+    fn single_line_input_end_scrolls_to_natural_width() {
+        let mut scroll = ScrollState::new();
+        scroll.scroll_single_line_input_end(300.0, 200.0);
+        assert_eq!(scroll.scroll_offset_x, 100.0);
+    }
+
+    #[test]
+    fn single_line_input_end_does_not_scroll_when_text_fits() {
+        let mut scroll = ScrollState {
+            scroll_offset_x: 20.0,
+            scroll_offset_y: 0.0,
+        };
+        scroll.scroll_single_line_input_end(180.0, 200.0);
         assert_eq!(scroll.scroll_offset_x, 0.0);
     }
 
