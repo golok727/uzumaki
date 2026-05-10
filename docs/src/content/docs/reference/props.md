@@ -1,36 +1,82 @@
 ---
 title: Props
-description: Layout, style, and interaction props.
+description: Layout, style, interaction, and state props.
 ---
 
-Numbers are logical pixels. Strings can be `"50%"`, `"2rem"`, `"auto"`, `"full"`. Colors are hex strings.
+Uzumaki style props are runtime attributes. They are shared by most elements.
+
+## Values
+
+Numbers are logical pixels:
+
+```tsx
+<view p={16} rounded={12} />
+```
+
+Strings can express relative or special values:
+
+```tsx
+<view w="100%" h="full" m="auto" fontSize="1.25rem" />
+```
+
+Colors are hex strings:
+
+```tsx
+<text color="#f4f4f5" />
+```
+
+## Size and Spacing
+
+| Prop                                    | Description               |
+| --------------------------------------- | ------------------------- |
+| `w`, `h`                                | Width and height.         |
+| `minW`, `minH`                          | Minimum width and height. |
+| `p`, `px`, `py`, `pt`, `pr`, `pb`, `pl` | Padding.                  |
+| `m`, `mx`, `my`, `mt`, `mr`, `mb`, `ml` | Margin.                   |
 
 ## Layout
 
-`w`, `h`, `minW`, `minH`, `maxW`, `maxH`. Padding: `p`, `px`, `py`, `pt`, `pr`, `pb`, `pl`. Margin: `m`, `mx`, `my`, `mt`, `mr`, `mb`, `ml`. `display`, `position` (`relative` / `absolute`), `top`, `right`, `bottom`, `left`.
+| Prop                             | Values                  |
+| -------------------------------- | ----------------------- |
+| `display`                        | `flex`, `block`, `none` |
+| `position`                       | `relative`, `absolute`  |
+| `top`, `right`, `bottom`, `left` | Number or string offset |
 
 ## Flex
 
-- `display="flex"`
-- `flexDir` — `row` | `col` | `column`
-- `flexWrap` — `nowrap` | `wrap` | `wrap-reverse`
-- `flex`, `flexGrow`, `flexShrink`
-- `items` — `start` | `end` | `center` | `stretch` | `baseline`
-- `justify` — `start` | `end` | `center` | `between` | `around` | `evenly`
-- `gap`
+| Prop                             | Values                                                  |
+| -------------------------------- | ------------------------------------------------------- |
+| `flexDir`                        | `row`, `col`, `column`                                  |
+| `flexWrap`                       | `nowrap`, `wrap`, `wrap-reverse`                        |
+| `flex`, `flexGrow`, `flexShrink` | Number, string, or `true` for `flex`                    |
+| `items`                          | `start`, `end`, `center`, `stretch`, `baseline`         |
+| `justify`                        | `start`, `end`, `center`, `between`, `around`, `evenly` |
+| `gap`                            | Number or string                                        |
 
-## Color & text
+```tsx
+<view display="flex" flexDir="row" items="center" justify="between" gap={12} />
+```
 
-- `bg`, `color`, `opacity`, `visibility`
-- `fontSize`, `fontWeight`, `fontFamily`
-- `textAlign` — `left` | `center` | `right` | `start` | `end` | `justify`
-- `textWrap`, `wordBreak`
+## Color and Typography
 
-## Borders & corners
+| Prop                                   | Values                                               |
+| -------------------------------------- | ---------------------------------------------------- |
+| `bg`, `color`                          | Hex color                                            |
+| `opacity`                              | Number or string                                     |
+| `visibility`                           | `visible`, `hidden`                                  |
+| `fontSize`, `fontWeight`, `fontFamily` | Number or string                                     |
+| `textAlign`                            | `left`, `center`, `right`, `start`, `end`, `justify` |
+| `textWrap`                             | `wrap`, `nowrap`, `anywhere`, `break-word`           |
+| `wordBreak`                            | `normal`, `break-all`, `keep-all`                    |
 
-- `rounded`, `roundedTL`, `roundedTR`, `roundedBR`, `roundedBL`
-- `border`, `borderTop`, `borderRight`, `borderBottom`, `borderLeft`, `borderColor`
-- `outline`, `outlineColor`, `outlineOffset`
+## Borders, Corners, and Outlines
+
+| Prop                                                               | Description                |
+| ------------------------------------------------------------------ | -------------------------- |
+| `rounded`, `roundedTL`, `roundedTR`, `roundedBR`, `roundedBL`      | Corner radius.             |
+| `border`, `borderTop`, `borderRight`, `borderBottom`, `borderLeft` | Border width.              |
+| `borderColor`                                                      | Border color.              |
+| `outline`, `outlineColor`, `outlineOffset`                         | Focus or emphasis outline. |
 
 ## Transforms
 
@@ -38,19 +84,42 @@ Numbers are logical pixels. Strings can be `"50%"`, `"2rem"`, `"auto"`, `"full"`
 <view translate={[8, 0]} rotate={-3} scale={1.05} hover:scale={1.08} />
 ```
 
-`translate`, `translateX`, `translateY`, `rotate` (deg), `scale`, `scaleX`, `scaleY`.
+| Prop                       | Description                      |
+| -------------------------- | -------------------------------- |
+| `translate`                | Number, `[x, y]`, or `{ x, y }`. |
+| `translateX`, `translateY` | Single-axis translate.           |
+| `rotate`                   | Rotation in degrees.             |
+| `scale`                    | Number, `[x, y]`, or `{ x, y }`. |
+| `scaleX`, `scaleY`         | Single-axis scale.               |
 
 ## Interaction
 
-`cursor`, `focusable`, `selectable`.
+| Prop         | Description                                         |
+| ------------ | --------------------------------------------------- |
+| `cursor`     | Cursor shown while hovering.                        |
+| `focusable`  | Allows a view to receive focus and keyboard events. |
+| `selectable` | Allows text inside a view to be selected.           |
 
 ## Scrolling
 
-`scroll`, `scrollX`, `scrollY`, `scrollbarWidth`, `scrollbarRadius`, `scrollbarColor`, `scrollbarHoverColor`, `scrollbarActiveColor`.
+```tsx
+<view scrollY h={320} scrollbarWidth={6} scrollbarRadius={999}>
+  {rows}
+</view>
+```
 
-## State variants
+| Prop                           | Description              |
+| ------------------------------ | ------------------------ |
+| `scroll`, `scrollX`, `scrollY` | Enable scrolling.        |
+| `scrollbarWidth`               | Scrollbar thickness.     |
+| `scrollbarColor`               | Default scrollbar color. |
+| `scrollbarHoverColor`          | Hover color.             |
+| `scrollbarActiveColor`         | Active drag color.       |
+| `scrollbarRadius`              | Scrollbar radius.        |
 
-`hover:`, `active:`, `focus:` prefixes work on most visual props.
+## State Variants
+
+Prefix most visual props with `hover:`, `active:`, or `focus:`.
 
 ```tsx
 <button
@@ -64,6 +133,4 @@ Numbers are logical pixels. Strings can be `"50%"`, `"2rem"`, `"auto"`, `"full"`
 </button>
 ```
 
-## Events
-
-`onClick`, `onMouseDown`, `onMouseUp`, `onKeyDown`, `onKeyUp`, `onFocus`, `onBlur`, plus `Capture` variants. See [Events](/reference/events/).
+See [Elements](/reference/elements/) for element-specific props and [Events](/reference/events/) for event handlers.

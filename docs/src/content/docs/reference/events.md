@@ -1,11 +1,44 @@
 ---
 title: Events
-description: Event handlers and event objects.
+description: Event handlers, event objects, propagation, and lifecycle events.
 ---
 
-Most elements accept `onClick`, `onMouseDown`, `onMouseUp`, `onKeyDown`, `onKeyUp`, `onFocus`, `onBlur`. Pointer and keyboard events also have `Capture` variants.
+Uzumaki events are runtime events. They are modeled after DOM event flow, but they move through the Uzumaki element tree.
 
-## Mouse event
+## Handler Props
+
+Most elements accept these handlers:
+
+| Handler                    | Event                               |
+| -------------------------- | ----------------------------------- |
+| `onClick`                  | Mouse click.                        |
+| `onMouseDown`, `onMouseUp` | Mouse button press and release.     |
+| `onKeyDown`, `onKeyUp`     | Keyboard events.                    |
+| `onFocus`, `onBlur`        | Focus events on focusable elements. |
+
+Pointer and keyboard handlers also support capture variants such as `onClickCapture` and `onKeyDownCapture`.
+
+## Event Flow
+
+Events can pass through capture, target, and bubble phases. Each event exposes:
+
+```ts
+event.target;
+event.currentTarget;
+event.eventPhase;
+event.bubbles;
+event.defaultPrevented;
+```
+
+Use flow-control methods when needed:
+
+```ts
+event.preventDefault();
+event.stopPropagation();
+event.stopImmediatePropagation();
+```
+
+## Mouse Events
 
 ```ts
 event.x;
@@ -16,7 +49,15 @@ event.button;
 event.buttons;
 ```
 
-## Keyboard event
+Example:
+
+```tsx
+<button onClick={(event) => console.log(event.x, event.y)}>
+  <text>Inspect click</text>
+</button>
+```
+
+## Keyboard Events
 
 ```ts
 event.key;
@@ -29,62 +70,78 @@ event.shiftKey;
 event.metaKey;
 ```
 
-## Flow control
+Example:
 
-```ts
-event.preventDefault();
-event.stopPropagation();
-event.stopImmediatePropagation();
+```tsx
+<view
+  focusable
+  onKeyDown={(event) => {
+    if (event.key === 'Escape') closePanel();
+  }}
+/>
 ```
 
-## `<input>`
+## Input Events
+
+Use `onValueChange` for controlled input state:
+
+```tsx
+<input value={query} onValueChange={setQuery} placeholder="Search" />
+```
+
+Use `onInput` for lower-level event data:
 
 ```tsx
 <input
   value={query}
   onValueChange={setQuery}
-  onInput={(e) => console.log(e.inputType, e.data)}
+  onInput={(event) => {
+    console.log(event.inputType, event.data);
+  }}
 />
 ```
 
-## `<checkbox>`
+Checkboxes use the same value-change pattern:
 
 ```tsx
 <checkbox checked={done} onValueChange={setDone} />
 ```
 
-## Clipboard
+## Clipboard Events and API
 
-`copy`, `cut`, `paste` events:
+Clipboard events expose selected and clipboard text:
 
 ```ts
 event.selectionText;
 event.clipboardText;
 ```
 
-Or use the API directly:
+Use the clipboard API directly when you need imperative access:
 
 ```ts
 import { Clipboard } from 'uzumaki';
-Clipboard.readText();
+
+const text = Clipboard.readText();
 Clipboard.writeText('hi');
 ```
 
-## Window lifecycle
+## Window Lifecycle
 
 ```ts
 window.on('load', () => {});
-window.on('resize', (e) => console.log(e.width, e.height));
+window.on('resize', (event) => console.log(event.width, event.height));
 window.on('close', () => {});
 ```
 
-## `<image>`
+UI events bubble to the window too, so a `Window` can handle global shortcuts.
+
+## Image Events
 
 ```tsx
 <image
   src={src}
   onLoadStart={() => setStatus('loading')}
   onLoad={() => setStatus('loaded')}
-  onError={(e) => setError(e.message)}
+  onError={(event) => setError(event.message)}
 />
 ```

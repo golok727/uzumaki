@@ -1,0 +1,9 @@
+{
+  "extends": "../tsconfig.json",
+  "compilerOptions": {
+    "types": [],
+    "skipLibCheck": true,
+    "moduleResolution": "bundler"
+  },
+  "include": ["../packages/uzumaki-types/uzumaki.d.ts"]
+}

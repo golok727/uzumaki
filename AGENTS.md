@@ -1,71 +1,61 @@
-# Repository Guidelines
+# Agent Rules
 
-## Project Structure & Module Organization
+## Package Manager
 
-This repository is a mixed Rust and TypeScript workspace for the Uzumaki runtime and React renderer.
+Use pnpm for all package management commands (not npm or yarn).
 
-- `crates/uzumaki/`: main runtime, renderer, event system, TypeScript bridge, and React JSX runtime
-- `crates/refineable/`: shared Rust support crate plus `derive_refineable/` proc-macro code
-- `packages/playground/`: the main TypeScript playground app
-- `scripts/`: small repo utilities
+Exception: end-user install instructions should use `npm install -g` (global) or `npm install -D` (project dev dependency) since npm is universal.
 
-Build artifacts land in `target/`. Top-level config lives in `Cargo.toml`, `package.json`, `pnpm-workspace.yaml`, and `tsconfig.json`.
+## Dependencies
 
-## Framework Notes
+Always check for the latest npm version when adding dependencies. Use `pnpm add <package>` (without version) to get the latest, or verify with `npm view <package> version` first.
 
-For the playground TypeScript app, use the current built-in `uzumaki` runtime module and the `uzumaki-react` renderer.
+## No Emojis
 
-- Import `Window` and runtime APIs from `uzumaki`
-- Import `render` from `uzumaki-react`
-- Follow the JSX setup already used by the repo: `jsx: react-jsx` with `jsxImportSource: uzumaki-react`
-- Use `uzumaki-types` in TypeScript configs where runtime module types are needed
-- Use the Uzumaki intrinsic elements and prop names that already exist in the repo instead of inventing DOM-style props
+Do not use emojis anywhere in this repository — code, comments, output, or docs.
 
-Check the docs and in-tree types before writing playground code:
+## Dashes
 
-- `crates/uzumaki/README.md`
-- `packages/uzumaki-react/src/jsx/types.ts`
-- `packages/uzumaki-types/uzumaki.d.ts`
-- existing examples in `packages/playground/src/`
+Never use `--` as a dash in prose, comments, or user-facing output. Use an em dash (—) when a dash is needed, but prefer rephrasing to avoid dashes entirely. The only exception is CLI flags (e.g. `--port`).
 
-Keep this file focused on repo-specific syntax and behavior. For broader framework usage, read the docs instead of guessing.
+## Boolean Environment Variables
 
-## Build, Test, and Development Commands
+Document boolean env vars using only `0` and `1` in CLI help, docs, and README. Code may accept `true`/`false` as well, but these alternatives are not documented.
 
-- `pnpm start`: runs the playground through the native runtime
-- `cargo build --release -p uzumaki`: builds the desktop runtime
-- `cargo check`: required after Rust changes
-- `cargo test -p uzumaki`: runs the Rust unit tests
-- `pnpm format`: formats Markdown, TS, JS, and JSON with Prettier
+## Coding Style
 
-Use `pnpm` for workspace scripts, `cargo` for Rust work, and `bun` only where an existing package script already uses it.
+Rust follows standard `rustfmt` conventions: 4-space indentation, `snake_case` modules/functions, `PascalCase` types. TypeScript and TSX use Prettier with semicolons and single quotes; 2-space indentation.
 
-## Coding Style & Engineering Expectations
+### Rust 2024 idioms
 
-Rust follows standard `rustfmt` conventions: 4-space indentation, `snake_case` modules/functions, and `PascalCase` types. TypeScript and TSX use Prettier with semicolons and single quotes; current files use 2-space indentation.
+Write idiomatic Rust 2024. In particular:
+
+- Use `if let` chains instead of nested `if let` blocks. Rust 2024 stabilized `if let` chains — prefer `if let Some(x) = foo && condition` over nesting.
+- Prefer `let else` for early returns over nested `if let` when the happy path should continue flat.
+- Do not write nested `if` blocks where a single `if let ... && ...` chain would do.
 
 When implementing changes:
 
-- Ask questions when you have real doubt instead of making risky assumptions
+- Ask when you have real doubt instead of making risky assumptions
 - Keep code easy to test and easy to change later
 - Avoid overcomplicated abstractions
-- If there is a genuinely better and simpler fix, do that instead of adding fake fixes or workarounds
+- If there is a genuinely better and simpler fix, do that instead of patching around the problem
 - Use comments sparingly and only when they add real value
 
-## Validation Workflow
+## Validation
 
-After writing or modifying Rust code, always run:
+**Prefer `cargo check` over `cargo build`** for verifying Rust changes — it is faster and sufficient for catching type and borrow errors.
 
-- `cargo check`
+When you need to check Rust code, run against the runtime crate:
 
-Add focused tests near the code you change when it makes sense. Rust unit tests should live inline in `mod tests` blocks near the relevant module.
+```
+cargo check -p uzumaki_runtime
+```
 
-There is no root JS test runner configured yet, so playground changes are usually manual-test territory unless the change introduces or updates coverage.
+The `uzumaki` crate is the CLI. Only check or build it when the change touches CLI code specifically. Do not default to checking the whole workspace or building unless there is a concrete reason.
 
-## Documentation Expectations
+Add focused tests near the code you change when it makes sense. Rust unit tests live inline in `mod tests` blocks near the relevant module.
 
-After implementing a notable feature, update the docs when needed. This is especially important for user-facing API changes such as new JS APIs, new JSX props, new events, or changes in expected playground usage.
+## Documentation
 
-## Commit & Pull Request Guidelines
-
-Keep commits brief, specific, and scoped to one change. PRs should explain the behavior change, note affected crates or packages, and include screenshots or recordings for UI-facing playground changes.
+After implementing a notable feature, update the docs when needed — especially for user-facing API changes: new JS APIs, new JSX props, new events, or changes in expected playground usage.

@@ -2,10 +2,12 @@ import { build } from 'tsdown';
 import { $ } from 'bun';
 import path from 'node:path';
 
+const tsconfig = path.resolve('crates/uzumaki/tsconfig.json');
 await build({
   entry: ['js/runtime.ts'],
   dts: { emitDtsOnly: true },
   outDir: 'dist',
+  tsconfig,
   cwd: path.resolve('crates/uzumaki'),
 });
 

@@ -3,6 +3,8 @@ title: Window
 description: Create and control native windows.
 ---
 
+`Window` creates and controls a native Uzumaki window.
+
 ```tsx
 import { Window } from 'uzumaki';
 import { render } from 'uzumaki-react';
@@ -18,22 +20,35 @@ const window = new Window('main', {
 render(window, <App />);
 ```
 
-The first arg is a unique label.
+The first argument is a unique label. Use it to find an existing window later.
+
+## Constructor
+
+```ts
+new Window(label: string, options?: WindowOptions);
+```
 
 ## Options
 
-- `width`, `height`, `title`, `visible`, `resizable`
-- `decorations`, `transparent`
-- `maximized`, `minimized`, `fullscreen`
-- `windowLevel` — `normal` | `alwaysOnTop` | `alwaysOnBottom`
-- `minWidth`, `minHeight`, `maxWidth`, `maxHeight`
-- `position` — `{ x, y }`
-- `theme` — `light` | `dark` | `system`
-- `closable`, `minimizable`, `maximizable`
-- `active`, `contentProtected`
-- `rootStyles` — element props applied to the window root before mount
+| Option                                           | Description                                                |
+| ------------------------------------------------ | ---------------------------------------------------------- |
+| `width`, `height`                                | Initial content size.                                      |
+| `title`                                          | Window title.                                              |
+| `visible`                                        | Whether the window starts visible.                         |
+| `resizable`                                      | Whether the window can be resized.                         |
+| `decorations`                                    | Native titlebar and frame.                                 |
+| `transparent`                                    | Transparent window background.                             |
+| `maximized`, `minimized`, `fullscreen`           | Initial window state.                                      |
+| `windowLevel`                                    | `normal`, `alwaysOnTop`, or `alwaysOnBottom`.              |
+| `minWidth`, `minHeight`, `maxWidth`, `maxHeight` | Size constraints.                                          |
+| `position`                                       | Initial `{ x, y }` screen position.                        |
+| `theme`                                          | `light`, `dark`, or `system`.                              |
+| `active`                                         | Whether the window should become active.                   |
+| `contentProtected`                               | Ask the platform to prevent screen capture when supported. |
+| `closable`, `minimizable`, `maximizable`         | Native window control availability.                        |
+| `rootStyles`                                     | Props applied to the root element before render.           |
 
-## Mutable properties
+## Mutable Properties
 
 ```ts
 window.title = 'Renamed';
@@ -47,6 +62,9 @@ window.fullscreen = false;
 window.windowLevel = 'alwaysOnTop';
 window.theme = 'dark';
 window.contentProtected = false;
+window.closable = true;
+window.minimizable = true;
+window.maximizable = true;
 ```
 
 ## Methods
@@ -62,25 +80,41 @@ window.setPosition(120, 80);
 
 ## Getters
 
-`id`, `label`, `innerWidth`, `innerHeight`, `innerSize`, `outerSize`, `position`, `scaleFactor`, `active`, `isDisposed`, `remBase`.
+| Getter                      | Description                               |
+| --------------------------- | ----------------------------------------- |
+| `id`, `label`               | Runtime id and developer label.           |
+| `innerWidth`, `innerHeight` | Current content size.                     |
+| `innerSize`, `outerSize`    | Current size objects.                     |
+| `position`                  | Current window position.                  |
+| `scaleFactor`               | Platform scale factor.                    |
+| `active`                    | Whether the window is active.             |
+| `isDisposed`                | Whether the window has been disposed.     |
+| `root`                      | Root Uzumaki element.                     |
+| `remBase`                   | Number of logical pixels used for `1rem`. |
 
-`remBase` controls what `"1rem"` resolves to.
+`remBase` is mutable:
+
+```ts
+window.remBase = 18;
+```
 
 ## Events
 
 ```ts
 window.on('load', () => {});
-window.on('resize', (e) => console.log(e.width, e.height));
+window.on('resize', (event) => console.log(event.width, event.height));
 window.on('close', () => {});
 ```
 
-UI events bubble to the window — useful for global shortcuts.
+UI events bubble to the window, which is useful for global shortcuts.
 
-## Multiple windows
+## Multiple Windows
 
 ```ts
 import { Window, getWindow } from 'uzumaki';
 
 const existing = getWindow('main');
-if (!existing) new Window('main', { width: 800, height: 600 });
+const main = existing ?? new Window('main', { width: 800, height: 600 });
 ```
+
+Use stable labels such as `main`, `settings`, or `inspector`.

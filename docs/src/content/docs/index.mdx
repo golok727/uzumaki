@@ -1,68 +1,92 @@
 ---
 title: Uzumaki
-description: Build native desktop apps with React.
+description: Build native desktop apps with React, TypeScript, and the Uzumaki runtime.
 template: splash
 hero:
-  tagline: Native desktop apps with React. No browser, no webview.
+  tagline: Native desktop apps with React. No browser. No webview. Just a small runtime, JSX, and real windows.
   actions:
-    - text: Get Started
-      link: /guides/installation/
+    - text: Start the Tutorial
+      link: /guides/quick-start/
       icon: right-arrow
+    - text: Install Uzumaki
+      link: /guides/installation/
+      variant: minimal
     - text: GitHub
       link: https://github.com/golok727/uzumaki
       icon: external
       variant: minimal
 ---
 
-import { Tabs, TabItem, Aside } from '@astrojs/starlight/components';
+import { Card, CardGrid, Aside, Tabs, TabItem } from '@astrojs/starlight/components';
 
-Write JSX, render natively.
+Uzumaki is a desktop UI runtime for people who like React's component model but do not want to ship a browser.
+
+You write TypeScript and JSX. Uzumaki creates native windows, renders a small set of native elements, and exposes low-level runtime APIs for paths, windows, events, clipboard, and custom renderer work.
+
+<Aside type="caution" title="Alpha runtime">
+  These docs target `0.0.1-alpha.2`, which is not released yet. Uzumaki is early, so the docs teach the current runtime honestly while APIs are still settling.
+</Aside>
 
 ## Install
 
 <Tabs syncKey="platform">
   <TabItem label="Windows">
-    ```powershell 
-      powershell irm https://uzumaki.run/install.ps1 | iex 
-    ```
+
+```powershell
+irm https://uzumaki.run/install.ps1 | iex
+```
+
   </TabItem>
   <TabItem label="macOS & Linux">
-    ```sh 
-      curl -fsSL https://uzumaki.run/install.sh | sh 
-    ```
+
+```sh
+curl -fsSL https://uzumaki.run/install.sh | sh
+```
+
   </TabItem>
 </Tabs>
-<Aside type="caution">Alpha. APIs will change.</Aside>
 
-## Example
+Then create an app:
+
+```sh
+uzumaki init my-app
+cd my-app
+pnpm install
+pnpm dev
+```
+
+## A Tiny App
 
 ```tsx
 import { useState } from 'react';
 import { Window } from 'uzumaki';
 import { render } from 'uzumaki-react';
 
-const window = new Window('main', { width: 900, height: 620, title: 'My App' });
+const window = new Window('main', {
+  width: 900,
+  height: 620,
+  title: 'Counter',
+  rootStyles: { bg: '#0b0b0f', color: '#f4f4f5' },
+});
 
 function App() {
   const [count, setCount] = useState(0);
+
   return (
-    <view
-      display="flex"
-      justify="center"
-      items="center"
-      w="full"
-      h="full"
-      gap={16}
-    >
-      <text fontSize={28}>Count: {count}</text>
+    <view display="flex" flexDir="col" items="center" justify="center" h="full" gap={18}>
+      <text fontSize={32} fontWeight={700}>
+        {count}
+      </text>
       <button
-        onClick={() => setCount(count + 1)}
         px={18}
         py={10}
-        rounded={8}
-        bg="#27272a"
+        rounded={10}
+        bg="#f59e0b"
+        color="#111827"
+        hover:bg="#fbbf24"
+        onClick={() => setCount((value) => value + 1)}
       >
-        <text>Increment</text>
+        <text fontWeight={700}>Count up</text>
       </button>
     </view>
   );
@@ -71,8 +95,28 @@ function App() {
 render(window, <App />);
 ```
 
-## Next
+## Choose Your Path
 
-- [Installation](/guides/installation/)
-- [Quick Start](/guides/quick-start/)
-- [Runtime API](/reference/runtime-api/)
+<CardGrid>
+  <Card title="Learn the runtime" icon="rocket" href="/guides/quick-start/">
+    Build a small app from an empty scaffold and learn the pieces as they appear.
+  </Card>
+  <Card title="Understand the model" icon="seti:typescript" href="/concepts/how-it-works/">
+    See how windows, elements, events, resources, and React fit together.
+  </Card>
+  <Card title="Look up an API" icon="document" href="/reference/runtime-api/">
+    Find the supported elements, props, events, window options, and runtime APIs.
+  </Card>
+</CardGrid>
+
+## What Makes It Different?
+
+Uzumaki is closer to a framework runtime than a browser shell:
+
+- `Window` creates real native windows.
+- JSX elements like `<view>`, `<text>`, and `<button>` are Uzumaki elements, not HTML tags.
+- Layout and style props are explicit runtime props, not CSS files.
+- The `uzumaki` module is provided by the runtime, so app bundles mark it external.
+- React is the first renderer, and the low-level runtime API is available for future renderers.
+
+Start with [Quick Start](/guides/quick-start/) if you want the guided path.

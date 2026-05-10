@@ -1,23 +1,44 @@
 ---
 title: Runtime API
-description: Low-level imperative APIs from the uzumaki module.
+description: Low-level imperative APIs from the built-in uzumaki module.
 ---
 
-Uzumaki isn't React-only. React is what's shipped today, but the runtime exposes a low-level API so other frameworks (Solid, etc.) can build custom renderers on top. First-party support for more is planned.
+Most apps use React through `uzumaki-react`, but the built-in `uzumaki` module also exposes the runtime directly. Use this API for window control, custom renderers, clipboard access, resource paths, and imperative element work.
 
-## Exports
+:::note[Framework support]
+Uzumaki's architecture is framework-agnostic, but React is the first supported renderer today. React fits the current runtime well because JSX can be transformed as plain JavaScript. Frameworks like Solid and Vue have their own compilers, so supporting them cleanly needs a native transform/plugin system rather than a one-off workaround. That support is planned, but it will take a little time to land properly.
+:::
 
-From `uzumaki`:
+## Importing
 
-- `Window`, `getWindow`
-- `UzNode`, `UzTextNode`
-- `Element`, `UzElement`, plus `UzRootElement`, `UzViewElement`, `UzTextElement`, `UzButtonElement`, `UzInputElement`, `UzCheckboxElement`, `UzImageElement`
-- `Clipboard`
-- `EventEmitter`
-- `UzEvent`, `EventType`, `EventPhase`
-- `RUNTIME_VERSION`
+```ts
+import {
+  Window,
+  Clipboard,
+  Element,
+  UzEvent,
+  EventPhase,
+  EventType,
+  RUNTIME_VERSION,
+} from 'uzumaki';
+```
 
-## Building a tree
+`uzumaki` is provided by the runtime. Do not bundle it into your app.
+
+## Main Exports
+
+| Export                                                                                                                        | Purpose                                      |
+| ----------------------------------------------------------------------------------------------------------------------------- | -------------------------------------------- |
+| `Window`, `getWindow`                                                                                                         | Create and look up native windows.           |
+| `UzNode`, `UzTextNode`                                                                                                        | Base tree node APIs.                         |
+| `Element`, `UzElement`                                                                                                        | Runtime element APIs.                        |
+| `UzRootElement`, `UzViewElement`, `UzTextElement`, `UzButtonElement`, `UzInputElement`, `UzCheckboxElement`, `UzImageElement` | Built-in element classes.                    |
+| `Clipboard`                                                                                                                   | Read and write text clipboard contents.      |
+| `EventEmitter`                                                                                                                | Local event emitter used by runtime objects. |
+| `UzEvent`, `EventType`, `EventPhase`                                                                                          | Event objects and enums.                     |
+| `RUNTIME_VERSION`                                                                                                             | Numeric runtime version.                     |
+
+## Build a Tree Imperatively
 
 ```ts
 import { Window } from 'uzumaki';
@@ -44,7 +65,9 @@ view.appendChild(label);
 window.root.appendChild(view);
 ```
 
-## Tree ops
+This is the API that renderers build on top of. React users usually do not need to create trees manually.
+
+## Tree Operations
 
 ```ts
 node.appendChild(child);
@@ -52,12 +75,15 @@ node.insertBefore(child, beforeNode);
 node.removeChild(child);
 node.remove();
 node.removeChildren();
+node.destroy();
+
+window.createElement('button');
 window.createTextNode('Hello');
 ```
 
 ## Attributes
 
-Same names and values as JSX:
+Use the same attribute names as JSX:
 
 ```ts
 button.setAttributes({
@@ -67,6 +93,7 @@ button.setAttributes({
   bg: '#27272a',
   'hover:bg': '#3f3f46',
 });
+
 button.setAttribute('bg', '#18181b');
 button.getAttribute('bg');
 button.removeAttribute('bg');
@@ -76,36 +103,46 @@ button.focus();
 ## Events
 
 ```ts
-button.on('click', () => {});
-button.on('keydown', (e) => {
-  if (e.key === 'Enter') e.preventDefault();
+button.on('click', (event) => {
+  event.preventDefault();
+});
+
+button.on('keydown', (event) => {
+  if (event.key === 'Enter') submit();
 });
 ```
 
-`EventEmitter` is exported for your own use.
+Handlers receive Uzumaki event objects. See [Events](/reference/events/) for event fields.
 
-## Window
+## Window Control
 
 ```ts
-window.requestRedraw();
+window.title = 'Renamed';
 window.focus();
+window.requestRedraw();
 window.setPosition(100, 80);
+window.setMinSize(720, 480);
 window.remBase = 18;
 ```
+
+See [Window](/reference/window/) for all options and mutable properties.
 
 ## Clipboard
 
 ```ts
 import { Clipboard } from 'uzumaki';
-Clipboard.readText();
-Clipboard.writeText('hi');
+
+const text = Clipboard.readText();
+Clipboard.writeText('Copied from Uzumaki');
 ```
 
-## Paths & version
+## Paths and Version
 
 ```ts
-Uz.path.resource('assets/logo.svg');
-Uz.path.dataDir();
+const logo = Uz.path.resource('assets/logo.svg');
+const dataDir = Uz.path.dataDir();
 
 import { RUNTIME_VERSION } from 'uzumaki';
 ```
+
+For generated signatures, see the Generated API section in the sidebar.

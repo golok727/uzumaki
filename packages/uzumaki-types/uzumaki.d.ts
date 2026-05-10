@@ -111,10 +111,6 @@ declare module 'uzumaki' {
   interface ListenerOptions {
     capture?: boolean;
   }
-  interface EmitterEntry<F extends Function = Function> {
-    handler: F;
-    capture: boolean;
-  }
   interface EventTargetOptions<M extends Record<string, any>> {
     dispatch?: <K extends keyof M>(name: K, event: M[K]) => boolean | undefined;
   }
@@ -133,15 +129,7 @@ declare module 'uzumaki' {
       options?: ListenerOptions,
     ): void;
     emit<K extends keyof M>(name: K, event: M[K]): boolean;
-    /** @internal Fire local listeners without DOM-style propagation. */
-    _emitLocal<K extends keyof M>(name: K, event: M[K]): boolean;
-    /** @internal Used by the dispatcher to filter handlers by phase. */
-    _listeners<K extends keyof M>(name: K): readonly EmitterEntry[] | undefined;
-    /** @internal */
-    _hasAny(): boolean;
     _listenerCount<K extends keyof M>(name: K): number;
-    /** @internal */
-    _clear(): void;
   }
   //#endregion
   //#region js/events.d.ts
@@ -241,12 +229,6 @@ declare module 'uzumaki' {
   type WindowEventHandler<K extends WindowEventName = WindowEventName> = (
     event: WindowEventMap[K],
   ) => void;
-  interface InternalFlags {
-    _stopped: boolean;
-    _stoppedImmediate: boolean;
-    _prevented: boolean;
-    _phase: EventPhase;
-  }
   interface UzEventInit<T extends UzNode = UzNode> {
     bubbles?: boolean;
     currentTarget?: T | null;
@@ -269,19 +251,11 @@ declare module 'uzumaki' {
     stopPropagation(): void;
     stopImmediatePropagation(): void;
     preventDefault(): void;
-    /** @internal */
-    _getFlags(): InternalFlags;
-    /** @internal */
-    _setPhase(phase: EventPhase): void;
-    /** @internal */
-    _setTarget(target: UzNode | null): void;
   }
   //#endregion
   //#region js/elements/element.d.ts
   declare class Element<M extends UzEventMap = UzEventMap> extends UzNode {
     private _elementId;
-    /** @internal */
-    readonly _emitter: UzEventTarget<M>;
     constructor(window: Window, native: CoreNode);
     get id(): string | null;
     set id(value: string | null);
@@ -370,9 +344,23 @@ declare module 'uzumaki' {
     beforeinput: UzInputEvent;
     valuechange: string;
   }
+  type UzInputType = 'text' | 'password';
   declare class UzInputElement extends UzElement<InputEventMap> {
     constructor(window: Window);
     get value(): string;
+    set value(value: string);
+    get placeholder(): string;
+    set placeholder(value: string);
+    get disabled(): boolean;
+    set disabled(value: boolean);
+    get multiline(): boolean;
+    set multiline(value: boolean);
+    get secure(): boolean;
+    set secure(value: boolean);
+    get maxLength(): number | null;
+    set maxLength(value: number | null | undefined);
+    get inputType(): UzInputType;
+    set inputType(value: UzInputType);
   }
   //#endregion
   //#region js/elements/checkbox.d.ts
@@ -405,8 +393,6 @@ declare module 'uzumaki' {
     private _disposed;
     private _disposables;
     private _root;
-    /** @internal Used by the dispatcher and runtime glue. */
-    readonly _emitter: UzEventTarget<WindowEventMap>;
     constructor(label: string, attributes?: WindowOptions);
     close(): void;
     addDisposable(cb: () => void): void;
@@ -472,11 +458,6 @@ declare module 'uzumaki' {
       handler: WindowEventHandler<K>,
       options?: ListenerOptions,
     ): void;
-    /** @internal Fire a lifecycle event (load/close/resize). */
-    _dispatchLifecycle(
-      name: 'load' | 'close' | 'resize',
-      payload?: any,
-    ): boolean;
   }
   declare function getWindow(label: string): Window | undefined;
   declare function __internalDebugNodeCount(windowId: number): number;

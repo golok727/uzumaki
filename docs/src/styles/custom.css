@@ -54,6 +54,13 @@ a {
   border-bottom: none !important;
 }
 
+@media (min-width: 50rem) {
+  .hero {
+    grid-template-columns: minmax(0, 46rem) !important;
+    padding-block: clamp(2.5rem, 7vmin, 5.5rem) 2.25rem !important;
+  }
+}
+
 /* Sidebar */
 nav.sidebar {
   border-right-color: #1a1a1a;
@@ -124,4 +131,56 @@ starlight-tabs [role='tab'][aria-selected='true'] {
 
 ::-webkit-scrollbar-corner {
   background: transparent;
+}
+
+/* Small framework diagrams */
+.uz-flow {
+  display: flex;
+  align-items: center;
+  gap: 0.8rem;
+  margin: 1.25rem 0;
+  padding: 1rem;
+  overflow-x: auto;
+  border: 1px solid #27272a;
+  border-radius: 14px;
+  background:
+    linear-gradient(135deg, rgba(226, 165, 46, 0.08), transparent 42%), #0f0f0f;
+}
+
+.uz-flow__split {
+  display: grid;
+  gap: 0.65rem;
+}
+
+.uz-flow__path {
+  display: flex;
+  align-items: center;
+  gap: 0.8rem;
+}
+
+.uz-flow__node {
+  flex: 0 0 auto;
+  padding: 0.7rem 0.85rem;
+  border: 1px solid #27272a;
+  border-radius: 10px;
+  background: #09090b;
+  box-shadow: 0 10px 30px rgba(0, 0, 0, 0.24);
+}
+
+.uz-flow__node--accent {
+  border-color: var(--uz-accent);
+  background: var(--uz-accent-dim);
+}
+
+.uz-flow__arrow {
+  flex: 0 0 auto;
+  color: var(--uz-accent);
+  font-weight: 700;
+}
+
+@media (max-width: 50rem) {
+  .uz-flow,
+  .uz-flow__path {
+    align-items: flex-start;
+  }
 }
