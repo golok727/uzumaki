@@ -16,13 +16,7 @@ export interface InputEventMap extends UzEventMap {
   valuechange: string;
 }
 
-export type UzInputType =
-  | 'text'
-  | 'password'
-  | 'email'
-  | 'tel'
-  | 'url'
-  | 'search';
+export type UzInputType = 'text' | 'password';
 
 export class UzInputElement extends UzElement<InputEventMap> {
   constructor(window: Window) {
@@ -66,6 +60,7 @@ export class UzInputElement extends UzElement<InputEventMap> {
   get secure(): boolean {
     return Boolean(this.getAttribute('secure'));
   }
+
   set secure(value: boolean) {
     this.setAttribute('secure', value);
   }
@@ -82,15 +77,11 @@ export class UzInputElement extends UzElement<InputEventMap> {
     }
   }
 
-  /**
-   * Convenience type selector. `password` toggles `secure` on; everything else
-   * leaves it off. The runtime doesn't differentiate the other types yet, but
-   * this keeps the surface familiar to web developers.
-   */
-  get type(): UzInputType {
+  get inputType(): UzInputType {
     return this.secure ? 'password' : 'text';
   }
-  set type(value: UzInputType) {
+
+  set inputType(value: UzInputType) {
     this.secure = value === 'password';
   }
 }
