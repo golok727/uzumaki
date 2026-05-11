@@ -19,11 +19,7 @@ const TokenRenderer = memo(function TokenComponent({
 }: {
   token: TokenRenderer;
 }) {
-  return (
-    <text textWrap="anywhere" color={token.color}>
-      {token.content}
-    </text>
-  );
+  return <text color={token.color}>{token.content}</text>;
 });
 
 const LineRenderer = memo(function LineComponent({
@@ -38,7 +34,7 @@ const LineRenderer = memo(function LineComponent({
       <text selectable={false} color={C.textMuted} fontSize={14} w={32}>
         {String(lineNumber)}
       </text>
-      <view display="flex" flexDir="row" flexWrap="wrap" flex={1} fontSize={16}>
+      <view fontSize={16}>
         {tokens.map((token, j) => (
           <TokenRenderer key={j} token={token} />
         ))}

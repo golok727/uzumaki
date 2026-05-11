@@ -302,6 +302,8 @@ impl<'a> Painter<'a> {
         colors: Option<&HashMap<usize, VelloColor>>,
     ) {
         style.paint(bounds, scene, transform, |scene| {
+            let text_x = style.padding.left as f64;
+            let text_y = style.padding.top as f64;
             if let Some((sel_start, sel_end)) = selection {
                 let rects =
                     crate::text::selection_rects_from_layout(layout, text_len, sel_start, sel_end);
@@ -312,7 +314,12 @@ impl<'a> Painter<'a> {
                         transform,
                         sel_color,
                         None,
-                        &Rect::new(rect.x0, rect.y0, rect.x1, rect.y1),
+                        &Rect::new(
+                            rect.x0 + text_x,
+                            rect.y0 + text_y,
+                            rect.x1 + text_x,
+                            rect.y1 + text_y,
+                        ),
                     );
                 }
             }
@@ -320,7 +327,7 @@ impl<'a> Painter<'a> {
                 crate::text::draw_layout_with_brush(
                     scene,
                     layout,
-                    (0.0, 0.0),
+                    (style.padding.left, style.padding.top),
                     transform,
                     |brush| {
                         colors
@@ -333,7 +340,7 @@ impl<'a> Painter<'a> {
                 crate::text::draw_layout(
                     scene,
                     layout,
-                    (0.0, 0.0),
+                    (style.padding.left, style.padding.top),
                     style.text.color.to_vello(),
                     transform,
                 );

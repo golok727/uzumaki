@@ -735,7 +735,7 @@ impl UIState {
             .as_ref()
             .map(|i| i.text.clone());
         if let Some(text) = inline_text {
-            let width = Some(self.nodes[node_id].final_layout.size.width);
+            let width = text_layout_width(&self.nodes[node_id].final_layout, &computed);
             let mut segments = Vec::new();
             for cid in &inline_children {
                 self.collect_inline_segments(*cid, Some(&computed), &mut segments);
@@ -751,7 +751,7 @@ impl UIState {
                 .get_text_content()
                 .map(|t| t.content.clone())
         {
-            let width = Some(self.nodes[node_id].final_layout.size.width);
+            let width = text_layout_width(&self.nodes[node_id].final_layout, &computed);
             let layout = text_renderer.build_layout(&text, &computed.text, width);
             self.nodes[node_id].text_layout = Some(layout);
         } else {
@@ -920,6 +920,11 @@ fn axis_loc(point: taffy::Point<f32>, axis: ScrollAxis) -> f32 {
         ScrollAxis::X => point.x,
         ScrollAxis::Y => point.y,
     }
+}
+
+fn text_layout_width(layout: &taffy::Layout, style: &UzStyle) -> Option<f32> {
+    let padding = style.padding.left + style.padding.right;
+    Some((layout.size.width - padding).max(0.0))
 }
 
 #[cfg(test)]

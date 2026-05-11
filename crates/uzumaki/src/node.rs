@@ -267,6 +267,13 @@ impl Node {
         self.data.is_text_node()
     }
 
+    pub fn is_text_element(&self) -> bool {
+        matches!(
+            &self.data,
+            NodeData::Element(el) if matches!(el.kind, crate::element::ElementKind::Text)
+        )
+    }
+
     pub fn default_cursor(&self) -> Option<UzCursorIcon> {
         self.data.default_cursor()
     }

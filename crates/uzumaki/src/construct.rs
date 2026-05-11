@@ -72,6 +72,20 @@ impl UIState {
             return;
         }
 
+        if children.len() == 1
+            && self
+                .nodes
+                .get(children[0])
+                .is_some_and(|node| node.is_text_element())
+        {
+            let child_id = children[0];
+            if let Some(child) = self.nodes.get_mut(child_id) {
+                child.layout_parent = Some(node_id);
+            }
+            self.build_layout_children(child_id);
+            return;
+        }
+
         if !any_block && parent_display != Display::Flex {
             self.nodes[node_id].inline_text = Some(self.collect_inline_text(&children));
             self.nodes[node_id].layout_children = Some(Vec::new());
@@ -265,5 +279,20 @@ mod tests {
         assert!(!dom.nodes[parent].flags.is_inline_root());
         assert!(dom.nodes[layout_children[0]].flags.is_anonymous());
         assert_eq!(layout_children[1], text_element);
+    }
+
+    #[test]
+    fn single_text_element_stays_as_its_own_layout_box() {
+        let mut dom = UIState::new();
+        let parent = dom.create_view(UzStyle::default_for_element("view"));
+        let text = dom.create_text_element("aligned".into(), UzStyle::default_for_element("text"));
+
+        dom.set_root(parent);
+        dom.append_child(parent, text);
+        dom.resolve_layout_children();
+
+        assert!(!dom.nodes[parent].flags.is_inline_root());
+        assert_eq!(dom.nodes[text].layout_parent, Some(parent));
+        assert!(dom.nodes[parent].layout_children.is_none());
     }
 }

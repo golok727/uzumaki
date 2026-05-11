@@ -493,8 +493,8 @@ fn hit_text_in_run(
         });
     }
 
-    let relative_x = (mx - bounds.x) as f32;
-    let relative_y = (my - bounds.y) as f32;
+    let relative_x = (mx - bounds.x) as f32 - node.style.padding.left;
+    let relative_y = (my - bounds.y) as f32 - node.style.padding.top;
     let (global_offset, affinity) = if let Some(layout) = node.text_layout.as_ref() {
         crate::text::hit_to_text_position_from_layout(layout, text_len, relative_x, relative_y)
     } else {
@@ -568,8 +568,8 @@ fn text_range_at_point(
         return Some((endpoint, endpoint));
     }
 
-    let rel_x = (mx - bounds.x) as f32;
-    let rel_y = (my - bounds.y) as f32;
+    let rel_x = (mx - bounds.x) as f32 - layout_node.style.padding.left;
+    let rel_y = (my - bounds.y) as f32 - layout_node.style.padding.top;
     let (global_start, global_end) = if let Some(layout) = layout_node.text_layout.as_ref() {
         if select_line {
             crate::text::line_byte_range_at_point_from_layout(layout, text_len, rel_x, rel_y)
