@@ -10,6 +10,42 @@ use parley::Layout as ParleyLayout;
 
 pub type UzNodeId = usize;
 
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+pub struct NodeFlags(u8);
+
+impl NodeFlags {
+    pub const ANONYMOUS: Self = Self(0b0000_0001);
+    pub const INLINE_ROOT: Self = Self(0b0000_0010);
+
+    pub fn empty() -> Self {
+        Self(0)
+    }
+
+    pub fn contains(self, other: Self) -> bool {
+        self.0 & other.0 == other.0
+    }
+
+    pub fn insert(&mut self, other: Self) {
+        self.0 |= other.0;
+    }
+
+    pub fn remove(&mut self, other: Self) {
+        self.0 &= !other.0;
+    }
+
+    pub fn reset_construction_flags(&mut self) {
+        self.remove(Self::INLINE_ROOT);
+    }
+
+    pub fn is_anonymous(self) -> bool {
+        self.contains(Self::ANONYMOUS)
+    }
+
+    pub fn is_inline_root(self) -> bool {
+        self.contains(Self::INLINE_ROOT)
+    }
+}
+
 /// Which axis a scroll operation targets. Used by drag/wheel routing and by
 /// the unified scrollbar geometry helpers.
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
@@ -104,6 +140,7 @@ pub struct Node {
     /// paint, selection geometry and hit-testing instead of rebuilding parley
     /// layouts on every read.
     pub text_layout: Option<ParleyLayout<TextBrush>>,
+    pub inline_text: Option<InlineText>,
     /// Cached taffy layout for this node, copied here after `compute_layout`
     /// runs. Reading `node.final_layout` avoids the
     /// `layout_engine.layout(node_id)` two-level lookup on the paint hot path.
@@ -116,10 +153,20 @@ pub struct Node {
     /// of `children`. Inserted by the construct phase to splice anonymous
     /// inline wrappers around runs of inline-level children.
     pub layout_children: Option<Vec<UzNodeId>>,
-    /// Marks this node as a synthetic wrapper produced by the construct
-    /// phase. Anonymous nodes are torn down and rebuilt every frame and must
-    /// be hidden from user-facing tree traversals.
-    pub is_anonymous: bool,
+    pub flags: NodeFlags,
+}
+
+#[derive(Clone, Debug, Default)]
+pub struct InlineText {
+    pub text: String,
+    pub entries: Vec<InlineTextEntry>,
+}
+
+#[derive(Clone, Debug)]
+pub struct InlineTextEntry {
+    pub node_id: UzNodeId,
+    pub byte_start: usize,
+    pub byte_len: usize,
 }
 
 impl Node {
@@ -133,10 +180,11 @@ impl Node {
             hitbox_id: None,
             scroll_state: ScrollState::new(),
             text_layout: None,
+            inline_text: None,
             final_layout: taffy::Layout::new(),
             layout_parent: None,
             layout_children: None,
-            is_anonymous: false,
+            flags: NodeFlags::empty(),
         }
     }
 }
@@ -237,8 +285,12 @@ impl Node {
         match &self.data {
             NodeData::Text(_) => true,
             NodeData::Element(el) => matches!(el.kind, crate::element::ElementKind::Text),
-            NodeData::Root => false,
+            NodeData::AnonymousBlock(_) | NodeData::Root => false,
         }
+    }
+
+    pub fn is_anonymous(&self) -> bool {
+        self.flags.is_anonymous()
     }
 }
 
@@ -276,6 +328,7 @@ pub enum NodeData {
     Text(TextNode),
     // element node
     Element(ElementNode),
+    AnonymousBlock(ElementNode),
 }
 
 impl From<ElementNode> for NodeData {
@@ -291,7 +344,7 @@ impl NodeData {
             // Plain text labels should inherit the cursor from their container.
             // Text cursor is handled separately for inputs and textSelect content.
             Self::Text(_) => None,
-            _ => None,
+            Self::AnonymousBlock(_) | Self::Root => None,
         }
     }
 
@@ -303,7 +356,7 @@ impl NodeData {
         match self {
             Self::Text(text) => Some(&text.0),
             Self::Element(element) => element.data.get_text_content(),
-            _ => None,
+            Self::AnonymousBlock(_) | Self::Root => None,
         }
     }
 
@@ -311,49 +364,49 @@ impl NodeData {
         match self {
             Self::Text(text) => Some(text),
             Self::Element(element) => element.data.text_content_mut(),
-            _ => None,
+            Self::AnonymousBlock(_) | Self::Root => None,
         }
     }
 
     pub fn as_text_input(&self) -> Option<&InputState> {
         match self {
             Self::Element(element) => element.data.as_text_input(),
-            _ => None,
+            Self::AnonymousBlock(_) | Self::Root | Self::Text(_) => None,
         }
     }
 
     pub fn as_text_input_mut(&mut self) -> Option<&mut InputState> {
         match self {
             Self::Element(element) => element.data.as_text_input_mut(),
-            _ => None,
+            Self::AnonymousBlock(_) | Self::Root | Self::Text(_) => None,
         }
     }
 
     pub fn as_checkbox_input(&self) -> Option<&bool> {
         match self {
             Self::Element(element) => element.data.as_checkbox_input(),
-            _ => None,
+            Self::AnonymousBlock(_) | Self::Root | Self::Text(_) => None,
         }
     }
 
     pub fn as_checkbox_input_mut(&mut self) -> Option<&mut bool> {
         match self {
             Self::Element(element) => element.data.as_checkbox_input_mut(),
-            _ => None,
+            Self::AnonymousBlock(_) | Self::Root | Self::Text(_) => None,
         }
     }
 
     pub fn as_image(&self) -> Option<&ImageNode> {
         match self {
             Self::Element(element) => element.data.as_image(),
-            _ => None,
+            Self::AnonymousBlock(_) | Self::Root | Self::Text(_) => None,
         }
     }
 
     pub fn as_image_mut(&mut self) -> Option<&mut ImageNode> {
         match self {
             Self::Element(element) => element.data.as_image_mut(),
-            _ => None,
+            Self::AnonymousBlock(_) | Self::Root | Self::Text(_) => None,
         }
     }
 
@@ -364,35 +417,35 @@ impl NodeData {
     pub fn is_text_input(&self) -> bool {
         match self {
             Self::Element(element) => element.data.is_text_input(),
-            _ => false,
+            Self::AnonymousBlock(_) | Self::Root | Self::Text(_) => false,
         }
     }
 
     pub fn is_checkbox_input(&self) -> bool {
         match self {
             Self::Element(element) => element.data.is_checkbox_input(),
-            _ => false,
+            Self::AnonymousBlock(_) | Self::Root | Self::Text(_) => false,
         }
     }
 
     pub fn is_image(&self) -> bool {
         match self {
             Self::Element(element) => element.data.is_image(),
-            _ => false,
+            Self::AnonymousBlock(_) | Self::Root | Self::Text(_) => false,
         }
     }
 
     pub fn is_button(&self) -> bool {
         match self {
             Self::Element(element) => element.is_button(),
-            _ => false,
+            Self::AnonymousBlock(_) | Self::Root | Self::Text(_) => false,
         }
     }
 
     pub fn is_keyboard_activatable(&self) -> bool {
         match self {
             Self::Element(element) => element.is_keyboard_activatable(),
-            _ => false,
+            Self::AnonymousBlock(_) | Self::Root | Self::Text(_) => false,
         }
     }
 
@@ -406,29 +459,29 @@ impl NodeData {
 
     pub fn as_element(&self) -> Option<&ElementNode> {
         match self {
-            Self::Element(element) => Some(element),
-            _ => None,
+            Self::AnonymousBlock(element) | Self::Element(element) => Some(element),
+            Self::Root | Self::Text(_) => None,
         }
     }
 
     pub fn as_element_mut(&mut self) -> Option<&mut ElementNode> {
         match self {
-            Self::Element(element) => Some(element),
-            _ => None,
+            Self::AnonymousBlock(element) | Self::Element(element) => Some(element),
+            Self::Root | Self::Text(_) => None,
         }
     }
 
     pub fn as_element_kind(&self) -> Option<&ElementNode> {
         match self {
-            Self::Element(element) => Some(element),
-            _ => None,
+            Self::AnonymousBlock(element) | Self::Element(element) => Some(element),
+            Self::Root | Self::Text(_) => None,
         }
     }
 
     pub fn as_element_kind_mut(&mut self) -> Option<&mut ElementNode> {
         match self {
-            Self::Element(element) => Some(element),
-            _ => None,
+            Self::AnonymousBlock(element) | Self::Element(element) => Some(element),
+            Self::Root | Self::Text(_) => None,
         }
     }
 }

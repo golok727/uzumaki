@@ -176,7 +176,7 @@ impl CoreNode {
     pub fn nodeType(&self, state: &OpState) -> Option<u32> {
         self.read_node(state, |node| match node.data {
             NodeData::Root => 1,
-            NodeData::Element(_) => 2,
+            NodeData::Element(_) | NodeData::AnonymousBlock(_) => 2,
             NodeData::Text(_) => 3,
         })
     }

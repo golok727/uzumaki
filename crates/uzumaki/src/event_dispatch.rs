@@ -463,42 +463,42 @@ fn hit_text_in_run(
         .iter()
         .find(|r| r.root_id == root_id)?;
 
-    // Find the text node closest to mouse position
     let mut best: Option<(UzNodeId, f64, Bounds)> = None;
     for entry in &run.entries {
-        let node = dom.nodes.get(entry.node_id)?;
+        let node = dom.nodes.get(entry.layout_node_id)?;
         let hid = node.hitbox_id?;
         let hb = dom.hitbox_store.get(hid)?;
         let dist = point_to_rect_dist(mx, my, &hb.bounds);
         if best.is_none() || dist < best.unwrap().1 {
-            best = Some((entry.node_id, dist, hb.bounds));
+            best = Some((entry.layout_node_id, dist, hb.bounds));
         }
     }
 
-    let (node_id, _, bounds) = best?;
-    let node = dom.nodes.get(node_id)?;
-    let text = node.get_text_content()?;
+    let (layout_node_id, _, bounds) = best?;
+    let node = dom.nodes.get(layout_node_id)?;
+    let text_len = node
+        .inline_text
+        .as_ref()
+        .map(|inline| inline.text.len())
+        .or_else(|| node.get_text_content().map(|text| text.content.len()))?;
 
-    if text.content.is_empty() {
+    if text_len == 0 {
+        let entry = run
+            .entries
+            .iter()
+            .find(|entry| entry.layout_node_id == layout_node_id)?;
         return Some(TextRunHit {
-            node_id,
-            endpoint: SelectionEndpoint::new(node_id, 0, Affinity::Downstream),
+            node_id: entry.node_id,
+            endpoint: SelectionEndpoint::new(entry.node_id, 0, Affinity::Downstream),
         });
     }
 
     let relative_x = (mx - bounds.x) as f32;
     let relative_y = (my - bounds.y) as f32;
-    // Hit-test against the cached parley layout the painter uses, so mouse
-    // byte offset stays consistent with what's drawn (the cached layout is
-    // built with the inherited computed style; node.style.text is raw).
-    let (offset, affinity) = if let Some(layout) = node.text_layout.as_ref() {
-        crate::text::hit_to_text_position_from_layout(
-            layout,
-            text.content.len(),
-            relative_x,
-            relative_y,
-        )
+    let (global_offset, affinity) = if let Some(layout) = node.text_layout.as_ref() {
+        crate::text::hit_to_text_position_from_layout(layout, text_len, relative_x, relative_y)
     } else {
+        let text = node.get_text_content()?;
         text_renderer.hit_to_text_position(
             &text.content,
             &node.style.text,
@@ -508,9 +508,26 @@ fn hit_text_in_run(
         )
     };
 
+    let entry = run
+        .entries
+        .iter()
+        .find(|entry| {
+            entry.layout_node_id == layout_node_id
+                && global_offset >= entry.flat_byte_start
+                && global_offset <= entry.flat_byte_start + entry.byte_len
+        })
+        .or_else(|| {
+            run.entries
+                .iter()
+                .find(|entry| entry.layout_node_id == layout_node_id)
+        })?;
+    let offset = global_offset
+        .saturating_sub(entry.flat_byte_start)
+        .min(entry.byte_len);
+
     Some(TextRunHit {
-        node_id,
-        endpoint: SelectionEndpoint::new(node_id, offset, affinity),
+        node_id: entry.node_id,
+        endpoint: SelectionEndpoint::new(entry.node_id, offset, affinity),
     })
 }
 
@@ -530,58 +547,89 @@ fn text_range_at_point(
     my: f64,
     select_line: bool,
 ) -> Option<(SelectionEndpoint, SelectionEndpoint)> {
-    let (_run, _entry) = dom.find_run_entry_for_node(node_id)?;
-    let node = dom.nodes.get(node_id)?;
-    let text = node.get_text_content()?;
-    let bounds = node
+    let (run, entry) = dom.find_run_entry_for_node(node_id)?;
+    let layout_node = dom.nodes.get(entry.layout_node_id)?;
+    let text_len = layout_node
+        .inline_text
+        .as_ref()
+        .map(|inline| inline.text.len())
+        .or_else(|| {
+            layout_node
+                .get_text_content()
+                .map(|text| text.content.len())
+        })?;
+    let bounds = layout_node
         .hitbox_id
         .and_then(|hid| dom.hitbox_store.get(hid))
         .map(|hb| hb.bounds)?;
 
-    if text.content.is_empty() {
+    if text_len == 0 {
         let endpoint = SelectionEndpoint::new(node_id, 0, Affinity::Downstream);
         return Some((endpoint, endpoint));
     }
 
     let rel_x = (mx - bounds.x) as f32;
     let rel_y = (my - bounds.y) as f32;
-    let (local_start, local_end) = if let Some(layout) = node.text_layout.as_ref() {
+    let (global_start, global_end) = if let Some(layout) = layout_node.text_layout.as_ref() {
         if select_line {
-            crate::text::line_byte_range_at_point_from_layout(
-                layout,
-                text.content.len(),
-                rel_x,
-                rel_y,
-            )
+            crate::text::line_byte_range_at_point_from_layout(layout, text_len, rel_x, rel_y)
         } else {
-            crate::text::word_byte_range_at_point_from_layout(
-                layout,
-                text.content.len(),
-                rel_x,
-                rel_y,
-            )
+            crate::text::word_byte_range_at_point_from_layout(layout, text_len, rel_x, rel_y)
         }
     } else if select_line {
+        let text = layout_node.get_text_content()?;
         text_renderer.line_byte_range_at_point(
             &text.content,
-            &node.style.text,
+            &layout_node.style.text,
             Some(bounds.width as f32),
             rel_x,
             rel_y,
         )
     } else {
+        let text = layout_node.get_text_content()?;
         text_renderer.word_byte_range_at_point(
             &text.content,
-            &node.style.text,
+            &layout_node.style.text,
             Some(bounds.width as f32),
             rel_x,
             rel_y,
         )
     };
 
-    Some((
-        SelectionEndpoint::new(node_id, local_start, Affinity::Downstream),
-        SelectionEndpoint::new(node_id, local_end, Affinity::Upstream),
+    let start = endpoint_for_layout_byte(
+        run,
+        entry.layout_node_id,
+        global_start,
+        Affinity::Downstream,
+    )?;
+    let end = endpoint_for_layout_byte(run, entry.layout_node_id, global_end, Affinity::Upstream)?;
+    Some((start, end))
+}
+
+fn endpoint_for_layout_byte(
+    run: &crate::element::TextSelectRun,
+    layout_node_id: UzNodeId,
+    byte: usize,
+    affinity: Affinity,
+) -> Option<SelectionEndpoint> {
+    let entry = run
+        .entries
+        .iter()
+        .find(|entry| {
+            entry.layout_node_id == layout_node_id
+                && byte >= entry.flat_byte_start
+                && byte <= entry.flat_byte_start + entry.byte_len
+        })
+        .or_else(|| {
+            run.entries
+                .iter()
+                .find(|entry| entry.layout_node_id == layout_node_id)
+        })?;
+    Some(SelectionEndpoint::new(
+        entry.node_id,
+        byte.saturating_sub(entry.flat_byte_start)
+            .min(entry.byte_len),
+        affinity,
     ))
 }
 

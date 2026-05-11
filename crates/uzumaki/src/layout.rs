@@ -13,6 +13,7 @@ use crate::{
 pub struct NodeContext {
     pub dom_id: UzNodeId,
     pub text: Option<TextContent>,
+    pub inline_text: Option<String>,
     pub text_style: TextStyle,
     pub is_input: bool,
     pub image: Option<ImageMeasureInfo>,
@@ -126,6 +127,7 @@ impl LayoutEngine {
         let context = NodeContext {
             dom_id: node_id,
             text: node.get_text_content().cloned(),
+            inline_text: node.inline_text.as_ref().map(|inline| inline.text.clone()),
             text_style: style.text.clone(),
             is_input: node.is_text_input(),
             image: node.as_image().and_then(|image| {

@@ -237,13 +237,52 @@ impl<'a> Painter<'a> {
                 data: img.data.clone(),
             };
             crate::paint::image::paint_image(scene, bounds, style, &info, transform);
+        } else if let Some(inline) = node.inline_text.as_ref() {
+            let sel = self.compute_inline_selection(node_id);
+            if let Some(layout) = node.text_layout.as_ref() {
+                let colors = inline
+                    .entries
+                    .iter()
+                    .map(|entry| {
+                        let color = self
+                            .dom
+                            .nodes
+                            .get(entry.node_id)
+                            .map(|node| {
+                                node.style_variants
+                                    .compute_style_inherited(
+                                        &node.style,
+                                        style,
+                                        entry.node_id,
+                                        &self.dom.hit_state,
+                                        self.dom.focused_node == Some(entry.node_id),
+                                    )
+                                    .text
+                                    .color
+                                    .to_vello()
+                            })
+                            .unwrap_or_else(|| style.text.color.to_vello());
+                        (entry.node_id, color)
+                    })
+                    .collect::<HashMap<_, _>>();
+                Self::paint_text_node(
+                    scene,
+                    bounds,
+                    style,
+                    layout,
+                    inline.text.len(),
+                    transform,
+                    sel,
+                    Some(&colors),
+                );
+            }
         } else if let Some(tc) = node.get_text_content() {
             let sel = text_selections.get(&node_id).copied();
             let text_len = tc.content.len();
             // Cached parley layout (built once per frame in refresh_text_layouts).
             // If absent (shouldn't happen for nodes with text content), skip.
             if let Some(layout) = node.text_layout.as_ref() {
-                Self::paint_text_node(scene, bounds, style, layout, text_len, transform, sel);
+                Self::paint_text_node(scene, bounds, style, layout, text_len, transform, sel, None);
             }
         } else {
             crate::paint::view::paint_view(scene, bounds, style, transform, |_| {});
@@ -260,6 +299,7 @@ impl<'a> Painter<'a> {
         text_len: usize,
         transform: Affine,
         selection: Option<(usize, usize)>,
+        colors: Option<&HashMap<usize, VelloColor>>,
     ) {
         style.paint(bounds, scene, transform, |scene| {
             if let Some((sel_start, sel_end)) = selection {
@@ -276,13 +316,28 @@ impl<'a> Painter<'a> {
                     );
                 }
             }
-            crate::text::draw_layout(
-                scene,
-                layout,
-                (0.0, 0.0),
-                style.text.color.to_vello(),
-                transform,
-            );
+            if let Some(colors) = colors {
+                crate::text::draw_layout_with_brush(
+                    scene,
+                    layout,
+                    (0.0, 0.0),
+                    transform,
+                    |brush| {
+                        colors
+                            .get(&brush.id)
+                            .copied()
+                            .unwrap_or_else(|| style.text.color.to_vello())
+                    },
+                );
+            } else {
+                crate::text::draw_layout(
+                    scene,
+                    layout,
+                    (0.0, 0.0),
+                    style.text.color.to_vello(),
+                    transform,
+                );
+            }
         });
     }
 
@@ -603,6 +658,50 @@ impl<'a> Painter<'a> {
             .is_some_and(|d| d.node_id == node_id && d.axis == axis)
     }
 
+    fn compute_inline_selection(&self, layout_node_id: UzNodeId) -> Option<(usize, usize)> {
+        let sel = self.dom.text_selection;
+        if sel.is_collapsed() {
+            return None;
+        }
+        let (start, end) = self.dom.ordered_text_selection()?;
+        let run = self.dom.find_run_for_node(start.node)?;
+        let mut range_start = None;
+        let mut range_end = None;
+        let mut in_range = false;
+        for entry in &run.entries {
+            if entry.node_id == start.node {
+                in_range = true;
+            }
+            if !in_range {
+                continue;
+            }
+            if entry.layout_node_id != layout_node_id {
+                if entry.node_id == end.node {
+                    break;
+                }
+                continue;
+            }
+            let local_start = if entry.node_id == start.node {
+                start.offset.min(entry.byte_len)
+            } else {
+                0
+            };
+            let local_end = if entry.node_id == end.node {
+                end.offset.min(entry.byte_len)
+            } else {
+                entry.byte_len
+            };
+            let byte_start = entry.flat_byte_start + local_start;
+            let byte_end = entry.flat_byte_start + local_end;
+            range_start = Some(range_start.map_or(byte_start, |v: usize| v.min(byte_start)));
+            range_end = Some(range_end.map_or(byte_end, |v: usize| v.max(byte_end)));
+            if entry.node_id == end.node {
+                break;
+            }
+        }
+        Some((range_start?, range_end?))
+    }
+
     fn compute_text_selections_map(&self) -> HashMap<UzNodeId, (usize, usize)> {
         let mut map = HashMap::new();
         let sel = self.dom.text_selection;
@@ -717,9 +816,13 @@ pub(crate) fn measure(
         };
     }
 
-    if let Some(text) = &ctx.text {
+    if let Some(text) = ctx
+        .inline_text
+        .as_ref()
+        .or(ctx.text.as_ref().map(|t| &t.content))
+    {
         let (measured_width, measured_height) = text_renderer.measure_text(
-            &text.content,
+            text,
             &ctx.text_style,
             known_dimensions
                 .width
@@ -782,6 +885,7 @@ mod tests {
         NodeContext {
             dom_id: 0,
             text: None,
+            inline_text: None,
             text_style: TextStyle::default(),
             is_input: false,
             image: Some(ImageMeasureInfo { width, height }),
@@ -874,6 +978,7 @@ mod tests {
         let mut ctx = NodeContext {
             dom_id: 0,
             text: None,
+            inline_text: None,
             text_style: TextStyle::default(),
             is_input: false,
             image: None,

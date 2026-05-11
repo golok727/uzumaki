@@ -12,7 +12,7 @@ use crate::{
         scroll::{self, ScrollAlign, ScrollIntoViewOptions},
     },
     selection::TextSelection,
-    style::{Length, UzStyle},
+    style::{Length, TextStyle, UzStyle},
     text::TextRenderer,
 };
 
@@ -724,17 +724,33 @@ impl UIState {
             .layout_children
             .clone()
             .unwrap_or_else(|| self.nodes[node_id].children.clone());
+        let inline_children = if self.nodes[node_id].inline_text.is_some() {
+            self.nodes[node_id].children.clone()
+        } else {
+            children.clone()
+        };
 
-        let is_input = self.nodes[node_id].is_text_input();
-        let text = (!is_input)
-            .then(|| {
-                self.nodes[node_id]
-                    .get_text_content()
-                    .map(|t| t.content.clone())
-            })
-            .flatten();
-
-        if let Some(text) = text {
+        let inline_text = self.nodes[node_id]
+            .inline_text
+            .as_ref()
+            .map(|i| i.text.clone());
+        if let Some(text) = inline_text {
+            let width = Some(self.nodes[node_id].final_layout.size.width);
+            let mut segments = Vec::new();
+            for cid in &inline_children {
+                self.collect_inline_segments(*cid, Some(&computed), &mut segments);
+            }
+            let layout = if segments.is_empty() {
+                text_renderer.build_layout(&text, &computed.text, width)
+            } else {
+                text_renderer.build_inline_layout(&segments, &computed.text, width)
+            };
+            self.nodes[node_id].text_layout = Some(layout);
+        } else if !self.nodes[node_id].is_text_input()
+            && let Some(text) = self.nodes[node_id]
+                .get_text_content()
+                .map(|t| t.content.clone())
+        {
             let width = Some(self.nodes[node_id].final_layout.size.width);
             let layout = text_renderer.build_layout(&text, &computed.text, width);
             self.nodes[node_id].text_layout = Some(layout);
@@ -744,6 +760,24 @@ impl UIState {
 
         for cid in children {
             self.refresh_text_layouts_at(cid, Some(&computed), text_renderer);
+        }
+    }
+
+    fn collect_inline_segments(
+        &self,
+        node_id: UzNodeId,
+        parent_style: Option<&UzStyle>,
+        segments: &mut Vec<(UzNodeId, String, TextStyle)>,
+    ) {
+        let computed = self.computed_style(node_id, parent_style);
+        if let Some(text) = self.nodes[node_id].get_text_content() {
+            segments.push((node_id, text.content.clone(), computed.text));
+            return;
+        }
+        if self.nodes[node_id].is_inline_level() {
+            for &cid in &self.nodes[node_id].children {
+                self.collect_inline_segments(cid, Some(&computed), segments);
+            }
         }
     }
 

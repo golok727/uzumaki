@@ -500,6 +500,24 @@ impl TextStyle {
         .chain(letter_spacing)
         .chain(word_spacing)
     }
+
+    pub fn to_parley_text_style(
+        &self,
+        node_id: usize,
+    ) -> parley::TextStyle<'static, 'static, TextBrush> {
+        parley::TextStyle {
+            font_family: FontFamily::from(&*self.font_family).into_owned(),
+            font_size: self.font_size,
+            font_weight: self.font_weight.to_parley(),
+            line_height: LineHeight::FontSizeRelative(self.line_height),
+            letter_spacing: self.letter_spacing,
+            word_spacing: self.word_spacing,
+            overflow_wrap: self.overflow_wrap,
+            word_break: self.word_break,
+            brush: TextBrush::from_id(node_id),
+            ..Default::default()
+        }
+    }
 }
 
 #[derive(Clone, Debug, PartialEq, Refineable)]

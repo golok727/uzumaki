@@ -69,13 +69,6 @@ impl ElementNode {
         Self::new(ElementKind::Image, ElementData::Image(Box::new(state)))
     }
 
-    /// Synthetic wrapper used by the construct phase to host a run of
-    /// inline children. A plain View element; anonymity is tracked on
-    /// `Node::is_anonymous`.
-    pub fn new_anonymous() -> Self {
-        Self::new(ElementKind::View, ElementData::None)
-    }
-
     pub fn is_text_input(&self) -> bool {
         self.data.is_text_input()
     }
@@ -196,8 +189,11 @@ impl ImageNode {
 /// One text node's contribution to a textSelect run.
 pub struct TextRunEntry {
     pub node_id: UzNodeId,
+    pub layout_node_id: UzNodeId,
     /// Start grapheme index of this node in the flat run.
     pub flat_start: usize,
+    pub flat_byte_start: usize,
+    pub byte_len: usize,
     pub grapheme_count: usize,
 }
 

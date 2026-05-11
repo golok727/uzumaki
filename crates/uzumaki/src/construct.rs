@@ -4,12 +4,13 @@
 //! children sit alongside block-level siblings.
 //!
 //! Mirrors Blitz's `collect_layout_children`: anonymous wrappers are real
-//! entries in `Slab<Node>` flagged `is_anonymous`, and they are torn down
+//! entries in `Slab<Node>` flagged anonymous, and they are torn down
 //! and rebuilt every frame. They appear only in `Node::layout_children`,
 //! never in the user-facing `Node::children` of the wrapped originals.
 
 use crate::element::ElementNode;
-use crate::node::{Node, UzNodeId};
+use crate::node::{InlineText, InlineTextEntry, Node, NodeData, NodeFlags, UzNodeId};
+use crate::style::Display;
 use crate::ui::UIState;
 
 impl UIState {
@@ -26,7 +27,7 @@ impl UIState {
         let anon_ids: Vec<UzNodeId> = self
             .nodes
             .iter()
-            .filter(|(_, n)| n.is_anonymous)
+            .filter(|(_, n)| n.flags.is_anonymous())
             .map(|(id, _)| id)
             .collect();
 
@@ -37,6 +38,8 @@ impl UIState {
         for (_, node) in self.nodes.iter_mut() {
             node.layout_children = None;
             node.layout_parent = node.parent;
+            node.inline_text = None;
+            node.flags.reset_construction_flags();
         }
     }
 
@@ -49,12 +52,14 @@ impl UIState {
             return;
         }
 
+        let parent_display = self.nodes[node_id].style.display;
         let kinds: Vec<bool> = children
             .iter()
             .map(|&c| self.nodes.get(c).is_some_and(|n| n.is_inline_level()))
             .collect();
 
         let any_inline = kinds.iter().any(|&v| v);
+        let any_block = kinds.iter().any(|&v| !v);
 
         if !any_inline {
             // Pure block container: layout_children == children.
@@ -67,18 +72,37 @@ impl UIState {
             return;
         }
 
-        // Wrap every contiguous run of inline children in an anonymous
-        // flex-row box so they flow horizontally regardless of the parent's
-        // display mode. Block children pass through unwrapped.
+        if !any_block && parent_display != Display::Flex {
+            self.nodes[node_id].inline_text = Some(self.collect_inline_text(&children));
+            self.nodes[node_id].layout_children = Some(Vec::new());
+            self.nodes[node_id].flags.insert(NodeFlags::INLINE_ROOT);
+            for &cid in &children {
+                if let Some(child) = self.nodes.get_mut(cid) {
+                    child.layout_parent = Some(node_id);
+                }
+            }
+            return;
+        }
+
+        // Wrap every contiguous run of inline children in an anonymous block.
+        // The wrapper is measured and painted as one inline formatting context.
+        // Flex containers only wrap bare text nodes, since flex items should
+        // stay as independent flex children.
         let mut layout_children: Vec<UzNodeId> = Vec::with_capacity(children.len());
         let mut open_wrapper: Option<UzNodeId> = None;
 
         for (i, &cid) in children.iter().enumerate() {
-            if kinds[i] {
+            let should_wrap = if parent_display == Display::Flex {
+                self.nodes.get(cid).is_some_and(|n| n.is_text_node())
+            } else {
+                kinds[i]
+            };
+
+            if should_wrap {
                 let wrapper_id = match open_wrapper {
                     Some(id) => id,
                     None => {
-                        let wrapper = self.create_anonymous_inline_wrapper(node_id);
+                        let wrapper = self.create_anonymous_block(node_id);
                         layout_children.push(wrapper);
                         open_wrapper = Some(wrapper);
                         wrapper
@@ -88,6 +112,7 @@ impl UIState {
                     child.layout_parent = Some(wrapper_id);
                 }
                 self.nodes[wrapper_id].children.push(cid);
+                self.append_inline_text(wrapper_id, cid);
             } else {
                 open_wrapper = None;
                 if let Some(child) = self.nodes.get_mut(cid) {
@@ -103,34 +128,142 @@ impl UIState {
 
     fn build_layout_children_recurse(&mut self, ids: &[UzNodeId]) {
         for &id in ids {
-            // Recurse into the original DOM children; anonymous wrappers'
-            // own children are already inline leaves with no further layout
-            // structure to construct.
-            let is_anon = self.nodes.get(id).is_some_and(|n| n.is_anonymous);
+            let is_anon = self.nodes.get(id).is_some_and(Node::is_anonymous);
             if !is_anon {
                 self.build_layout_children(id);
             }
         }
     }
 
-    fn create_anonymous_inline_wrapper(&mut self, parent_id: UzNodeId) -> UzNodeId {
-        let style = anonymous_inline_style(&self.nodes[parent_id].style);
-        let mut node = Node::new(style, ElementNode::new_anonymous());
-        node.is_anonymous = true;
+    fn create_anonymous_block(&mut self, parent_id: UzNodeId) -> UzNodeId {
+        let style = anonymous_block_style(&self.nodes[parent_id].style);
+        let mut node = Node::new(style, NodeData::AnonymousBlock(ElementNode::new_view()));
+        node.flags.insert(NodeFlags::ANONYMOUS);
+        node.flags.insert(NodeFlags::INLINE_ROOT);
         node.layout_parent = Some(parent_id);
-        node.parent = None; // anonymous nodes are layout-only; not in DOM tree
+        node.parent = None;
         self.nodes.insert(node)
+    }
+
+    fn collect_inline_text(&self, children: &[UzNodeId]) -> InlineText {
+        let mut inline = InlineText::default();
+        self.collect_inline_text_into(children, &mut inline);
+        inline
+    }
+
+    fn append_inline_text(&mut self, wrapper_id: UzNodeId, child_id: UzNodeId) {
+        let mut next = self.collect_inline_text(&[child_id]);
+        let inline = self.nodes[wrapper_id]
+            .inline_text
+            .get_or_insert_with(InlineText::default);
+        let offset = inline.text.len();
+        inline.text.push_str(&next.text);
+        inline
+            .entries
+            .extend(next.entries.drain(..).map(|mut entry| {
+                entry.byte_start += offset;
+                entry
+            }));
+    }
+
+    fn collect_inline_text_into(&self, children: &[UzNodeId], inline: &mut InlineText) {
+        for &node_id in children {
+            let Some(node) = self.nodes.get(node_id) else {
+                continue;
+            };
+            if let Some(text) = node.get_text_content() {
+                let byte_start = inline.text.len();
+                inline.text.push_str(&text.content);
+                inline.entries.push(InlineTextEntry {
+                    node_id,
+                    byte_start,
+                    byte_len: text.content.len(),
+                });
+                continue;
+            }
+            if node.is_inline_level() {
+                self.collect_inline_text_into(&node.children, inline);
+            }
+        }
     }
 }
 
-fn anonymous_inline_style(parent: &crate::style::UzStyle) -> crate::style::UzStyle {
-    use crate::style::{Display, FlexDirection, UzStyle};
+fn anonymous_block_style(parent: &crate::style::UzStyle) -> crate::style::UzStyle {
+    use crate::style::UzStyle;
     UzStyle {
-        display: Display::Flex,
-        flex_direction: FlexDirection::Row,
-        // Inherit text style so children sized via measure_text get the right
-        // metrics; everything else stays default.
+        display: Display::Block,
         text: parent.text.clone(),
         ..UzStyle::default()
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::style::UzStyle;
+
+    #[test]
+    fn all_inline_children_make_parent_inline_root() {
+        let mut dom = UIState::new();
+        let parent = dom.create_view(UzStyle::default_for_element("view"));
+        let first = dom.create_text_node("hello ".into(), UzStyle::default_for_element("#text"));
+        let second = dom.create_text_element("world".into(), UzStyle::default_for_element("text"));
+
+        dom.set_root(parent);
+        dom.append_child(parent, first);
+        dom.append_child(parent, second);
+        dom.resolve_layout_children();
+
+        assert!(dom.nodes[parent].flags.is_inline_root());
+        assert_eq!(dom.nodes[parent].layout_children.as_deref(), Some(&[][..]));
+        assert_eq!(
+            dom.nodes[parent]
+                .inline_text
+                .as_ref()
+                .map(|text| text.text.as_str()),
+            Some("hello world")
+        );
+    }
+
+    #[test]
+    fn mixed_inline_and_block_children_create_anonymous_block_runs() {
+        let mut dom = UIState::new();
+        let parent = dom.create_view(UzStyle::default_for_element("view"));
+        let first = dom.create_text_node("hello".into(), UzStyle::default_for_element("#text"));
+        let block = dom.create_view(UzStyle::default_for_element("view"));
+        let second = dom.create_text_node("world".into(), UzStyle::default_for_element("#text"));
+
+        dom.set_root(parent);
+        dom.append_child(parent, first);
+        dom.append_child(parent, block);
+        dom.append_child(parent, second);
+        dom.resolve_layout_children();
+
+        let layout_children = dom.nodes[parent].layout_children.as_ref().unwrap();
+        assert_eq!(layout_children.len(), 3);
+        assert!(dom.nodes[layout_children[0]].flags.is_anonymous());
+        assert_eq!(layout_children[1], block);
+        assert!(dom.nodes[layout_children[2]].flags.is_anonymous());
+    }
+
+    #[test]
+    fn flex_parent_does_not_become_inline_root() {
+        let mut dom = UIState::new();
+        let mut flex = UzStyle::default_for_element("view");
+        flex.display = Display::Flex;
+        let parent = dom.create_view(flex);
+        let bare_text = dom.create_text_node("hello".into(), UzStyle::default_for_element("#text"));
+        let text_element =
+            dom.create_text_element("world".into(), UzStyle::default_for_element("text"));
+
+        dom.set_root(parent);
+        dom.append_child(parent, bare_text);
+        dom.append_child(parent, text_element);
+        dom.resolve_layout_children();
+
+        let layout_children = dom.nodes[parent].layout_children.as_ref().unwrap();
+        assert!(!dom.nodes[parent].flags.is_inline_root());
+        assert!(dom.nodes[layout_children[0]].flags.is_anonymous());
+        assert_eq!(layout_children[1], text_element);
     }
 }

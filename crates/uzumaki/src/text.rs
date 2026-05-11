@@ -27,7 +27,15 @@ impl From<ParleyAffinity> for crate::selection::Affinity {
 }
 
 #[derive(Debug, Clone, Copy, Default, PartialEq)]
-pub struct TextBrush;
+pub struct TextBrush {
+    pub id: usize,
+}
+
+impl TextBrush {
+    pub fn from_id(id: usize) -> Self {
+        Self { id }
+    }
+}
 
 pub struct TextRenderer {
     pub font_ctx: FontContext,
@@ -70,6 +78,31 @@ impl TextRenderer {
         // Only apply alignment when a frame is provided. Without one, callers
         // (cursor x-positions, hit testing, single-line input drawing) want
         // natural unaligned coordinates and apply alignment themselves.
+        if alignment != ParleyAlignment::Start && max_width.is_some() {
+            layout.align(max_width, alignment, AlignmentOptions::default());
+        }
+        layout
+    }
+
+    pub(crate) fn build_inline_layout(
+        &mut self,
+        segments: &[(usize, String, TextStyle)],
+        root_style: &TextStyle,
+        max_width: Option<f32>,
+    ) -> Layout<TextBrush> {
+        let parley_root = root_style.to_parley_text_style(0);
+        let mut builder = self
+            .layout_ctx
+            .tree_builder(&mut self.font_ctx, 1.0, true, &parley_root);
+        for (node_id, text, style) in segments {
+            let span_style = style.to_parley_text_style(*node_id);
+            builder.push_style_span(span_style);
+            builder.push_text(text);
+            builder.pop_style_span();
+        }
+        let (mut layout, _) = builder.build();
+        layout.break_all_lines(max_width);
+        let alignment = root_style.text_align;
         if alignment != ParleyAlignment::Start && max_width.is_some() {
             layout.align(max_width, alignment, AlignmentOptions::default());
         }
@@ -374,6 +407,16 @@ pub fn draw_layout(
     color: Color,
     transform: Affine,
 ) {
+    draw_layout_with_brush(scene, layout, position, transform, |_| color);
+}
+
+pub fn draw_layout_with_brush(
+    scene: &mut Scene,
+    layout: &Layout<TextBrush>,
+    position: (f32, f32),
+    transform: Affine,
+    mut color_for_brush: impl FnMut(TextBrush) -> Color,
+) {
     let (px, py) = position;
     for line in layout.lines() {
         for item in line.items() {
@@ -391,7 +434,7 @@ pub fn draw_layout(
                     .font_size(run_font_size)
                     .transform(transform)
                     .glyph_transform(glyph_xform)
-                    .brush(&Brush::Solid(color))
+                    .brush(&Brush::Solid(color_for_brush(glyph_run.style().brush)))
                     .draw(
                         Fill::NonZero,
                         glyph_run.positioned_glyphs().map(|g| vello::Glyph {

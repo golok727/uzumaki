@@ -40,6 +40,32 @@ impl UIState {
         };
 
         if let Some(idx) = current_run
+            && let Some(inline) = self.nodes[node_id].inline_text.as_ref()
+            && let Some(layout) = self.nodes[node_id].text_layout.as_ref()
+        {
+            let entries = inline.entries.clone();
+            let run = &mut self.selectable_text_runs[idx];
+            for inline_entry in entries {
+                let flat_start = run.total_graphemes;
+                let flat_byte_start = inline_entry.byte_start;
+                let flat_byte_end = flat_byte_start + inline_entry.byte_len;
+                let grapheme_start = layout_byte_to_grapheme(layout, flat_byte_start);
+                let grapheme_end = layout_byte_to_grapheme(layout, flat_byte_end);
+                let grapheme_count = grapheme_end.saturating_sub(grapheme_start);
+                run.entries.push(TextRunEntry {
+                    node_id: inline_entry.node_id,
+                    layout_node_id: node_id,
+                    flat_start,
+                    flat_byte_start,
+                    byte_len: inline_entry.byte_len,
+                    grapheme_count,
+                });
+                run.total_graphemes += grapheme_count;
+            }
+            return;
+        }
+
+        if let Some(idx) = current_run
             && self.nodes[node_id].get_text_content().is_some()
         {
             let gc = self.nodes[node_id]
@@ -50,7 +76,13 @@ impl UIState {
             let run = &mut self.selectable_text_runs[idx];
             run.entries.push(TextRunEntry {
                 node_id,
+                layout_node_id: node_id,
                 flat_start: run.total_graphemes,
+                flat_byte_start: 0,
+                byte_len: self.nodes[node_id]
+                    .get_text_content()
+                    .map(|text| text.content.len())
+                    .unwrap_or(0),
                 grapheme_count: gc,
             });
             run.total_graphemes += gc;
@@ -203,8 +235,11 @@ impl UIState {
             let entry_end = entry.flat_start + entry.grapheme_count;
             if flat_index <= entry_end {
                 let local_grapheme = flat_index.saturating_sub(entry.flat_start);
-                let layout = self.nodes.get(entry.node_id)?.text_layout.as_ref()?;
-                let offset = layout_grapheme_to_byte(layout, local_grapheme);
+                let layout = self.nodes.get(entry.layout_node_id)?.text_layout.as_ref()?;
+                let entry_grapheme_start = layout_byte_to_grapheme(layout, entry.flat_byte_start);
+                let offset = layout_grapheme_to_byte(layout, entry_grapheme_start + local_grapheme)
+                    .saturating_sub(entry.flat_byte_start)
+                    .min(entry.byte_len);
                 return Some(SelectionEndpoint::new(entry.node_id, offset, affinity));
             }
         }
@@ -219,8 +254,13 @@ impl UIState {
 
     pub fn flat_index_for_endpoint(&self, endpoint: SelectionEndpoint) -> Option<usize> {
         let (_run, entry) = self.find_run_entry_for_node(endpoint.node)?;
-        let layout = self.nodes.get(endpoint.node)?.text_layout.as_ref()?;
-        Some(entry.flat_start + layout_byte_to_grapheme(layout, endpoint.offset))
+        let layout = self.nodes.get(entry.layout_node_id)?.text_layout.as_ref()?;
+        let entry_grapheme_start = layout_byte_to_grapheme(layout, entry.flat_byte_start);
+        let endpoint_grapheme = layout_byte_to_grapheme(
+            layout,
+            entry.flat_byte_start + endpoint.offset.min(entry.byte_len),
+        );
+        Some(entry.flat_start + endpoint_grapheme.saturating_sub(entry_grapheme_start))
     }
 
     /// Walk forward from `flat_idx` to the next word boundary inside the
@@ -247,7 +287,7 @@ impl UIState {
             let entry = &run.entries[entry_i];
             if let Some(layout) = self
                 .nodes
-                .get(entry.node_id)
+                .get(entry.layout_node_id)
                 .and_then(|n| n.text_layout.as_ref())
             {
                 if crossed_entry
@@ -257,12 +297,15 @@ impl UIState {
                     return entry.flat_start;
                 }
                 if local < entry.grapheme_count {
-                    let byte = layout_grapheme_to_byte(layout, local);
+                    let entry_grapheme_start =
+                        layout_byte_to_grapheme(layout, entry.flat_byte_start);
+                    let byte = layout_grapheme_to_byte(layout, entry_grapheme_start + local);
                     if let Some(cur) = Cluster::from_byte_index(layout, byte)
                         && let Some(next) = cur.next_logical_word()
                     {
-                        let g = layout_byte_to_grapheme(layout, next.text_range().start);
-                        return entry.flat_start + g;
+                        let g = layout_byte_to_grapheme(layout, next.text_range().start)
+                            .saturating_sub(entry_grapheme_start);
+                        return entry.flat_start + g.min(entry.grapheme_count);
                     }
                 }
             }
@@ -295,11 +338,15 @@ impl UIState {
             let entry = &run.entries[entry_i];
             if let Some(layout) = self
                 .nodes
-                .get(entry.node_id)
+                .get(entry.layout_node_id)
                 .and_then(|n| n.text_layout.as_ref())
             {
+                let entry_grapheme_start = layout_byte_to_grapheme(layout, entry.flat_byte_start);
                 let cur = if local >= entry.grapheme_count && entry.grapheme_count > 0 {
-                    let last_byte = layout_grapheme_to_byte(layout, entry.grapheme_count - 1);
+                    let last_byte = layout_grapheme_to_byte(
+                        layout,
+                        entry_grapheme_start + entry.grapheme_count - 1,
+                    );
                     let last = Cluster::from_byte_index(layout, last_byte);
                     if let Some(c) = &last
                         && c.is_word_boundary()
@@ -308,7 +355,7 @@ impl UIState {
                     }
                     last
                 } else if local > 0 {
-                    let byte = layout_grapheme_to_byte(layout, local);
+                    let byte = layout_grapheme_to_byte(layout, entry_grapheme_start + local);
                     Cluster::from_byte_index(layout, byte)
                 } else {
                     None
@@ -316,8 +363,9 @@ impl UIState {
                 if let Some(c) = cur
                     && let Some(prev) = c.previous_logical_word()
                 {
-                    let g = layout_byte_to_grapheme(layout, prev.text_range().start);
-                    return entry.flat_start + g;
+                    let g = layout_byte_to_grapheme(layout, prev.text_range().start)
+                        .saturating_sub(entry_grapheme_start);
+                    return entry.flat_start + g.min(entry.grapheme_count);
                 }
             }
             if entry_i == 0 {
