@@ -3,6 +3,8 @@ use std::sync::Arc;
 use crate::cursor::UzCursorIcon;
 use crate::input::InputState;
 use crate::node::UzNodeId;
+use crate::text::TextBrush;
+use parley::{ContentWidths, Layout as ParleyLayout};
 use vello::peniko::Blob;
 
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
@@ -26,6 +28,7 @@ pub struct ElementNode {
     pub kind: ElementKind,
     pub is_focussable: bool,
     pub data: ElementData,
+    pub inline_layout: Option<Box<TextLayout>>,
 }
 
 impl ElementNode {
@@ -34,6 +37,7 @@ impl ElementNode {
             kind,
             is_focussable: false,
             data,
+            inline_layout: None,
         }
     }
 
@@ -195,6 +199,21 @@ pub struct TextRunEntry {
     pub flat_byte_start: usize,
     pub byte_len: usize,
     pub grapheme_count: usize,
+}
+
+#[derive(Clone, Debug)]
+pub struct InlineTextEntry {
+    pub node_id: UzNodeId,
+    pub byte_start: usize,
+    pub byte_len: usize,
+}
+
+#[derive(Clone, Default)]
+pub struct TextLayout {
+    pub text: String,
+    pub entries: Vec<InlineTextEntry>,
+    pub content_widths: Option<ContentWidths>,
+    pub layout: ParleyLayout<TextBrush>,
 }
 
 /// The complete text run for a textSelect subtree.

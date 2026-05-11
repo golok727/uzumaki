@@ -13,9 +13,6 @@ const ALIGN_VALUES: TextAlignValue[] = [
   'justify',
 ];
 
-const SAMPLE_TEXT =
-  'The quick brown fox jumps over the lazy dog. Pack my box with five dozen liquor jugs.';
-
 function TextAlignDemo() {
   const [align, setAlign] = useState<TextAlignValue>('start');
   const [singleLine, setSingleLine] = useState('');
@@ -64,10 +61,16 @@ function TextAlignDemo() {
         rounded={8}
         border={1}
         borderColor={C.border}
+        selectable
+        fontSize={14}
+        color={C.text}
+        textAlign={align}
       >
-        <text selectable fontSize={14} color={C.text} textAlign={align}>
-          {SAMPLE_TEXT}
-        </text>
+        The quick brown{' '}
+        <text bg={C.dangerDim} p={4} rounded={5} fontWeight={700} fontSize={16}>
+          fox
+        </text>{' '}
+        jumps over the lazy dog. Pack my box with five dozen liquor jugs.
       </view>
 
       <view display="flex" flexDir="col" gap={8}>

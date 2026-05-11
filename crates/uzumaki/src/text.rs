@@ -398,8 +398,8 @@ pub fn layout_byte_to_grapheme(layout: &Layout<TextBrush>, byte: usize) -> usize
     count
 }
 
-/// Draw a parley layout that has already been built. Pure draw — no layout
-/// rebuild. Used by the painter against `Node::text_layout`.
+/// Draw a parley layout that has already been built. Pure draw with no layout
+/// rebuild. Used by the painter against an element's cached inline layout.
 pub fn draw_layout(
     scene: &mut Scene,
     layout: &Layout<TextBrush>,

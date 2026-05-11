@@ -4,8 +4,8 @@
 //! children sit alongside block-level siblings.
 //! adapted from https://github.com/DioxusLabs/blitz
 
-use crate::element::ElementNode;
-use crate::node::{InlineText, InlineTextEntry, Node, NodeData, NodeFlags, UzNodeId};
+use crate::element::{ElementNode, InlineTextEntry, TextLayout};
+use crate::node::{Node, NodeData, NodeFlags, UzNodeId};
 use crate::style::Display;
 use crate::ui::UIState;
 
@@ -34,7 +34,9 @@ impl UIState {
         for (_, node) in self.nodes.iter_mut() {
             node.layout_children = None;
             node.layout_parent = node.parent;
-            node.inline_text = None;
+            if let Some(element) = node.as_element_mut() {
+                element.inline_layout = None;
+            }
             node.flags.reset_construction_flags();
         }
     }
@@ -83,7 +85,7 @@ impl UIState {
         }
 
         if !any_block && parent_display != Display::Flex {
-            self.nodes[node_id].inline_text = Some(self.collect_inline_text(&children));
+            self.set_inline_layout(node_id, self.collect_inline_layout(&children));
             self.nodes[node_id].layout_children = Some(Vec::new());
             self.nodes[node_id].flags.insert(NodeFlags::INLINE_ROOT);
             for &cid in &children {
@@ -122,7 +124,7 @@ impl UIState {
                     child.layout_parent = Some(wrapper_id);
                 }
                 self.nodes[wrapper_id].children.push(cid);
-                self.append_inline_text(wrapper_id, cid);
+                self.append_inline_layout(wrapper_id, cid);
             } else {
                 open_wrapper = None;
                 if let Some(child) = self.nodes.get_mut(cid) {
@@ -155,17 +157,26 @@ impl UIState {
         self.nodes.insert(node)
     }
 
-    fn collect_inline_text(&self, children: &[UzNodeId]) -> InlineText {
-        let mut inline = InlineText::default();
+    fn set_inline_layout(&mut self, node_id: UzNodeId, inline: TextLayout) {
+        if let Some(element) = self.nodes[node_id].as_element_mut() {
+            element.inline_layout = Some(Box::new(inline));
+        }
+    }
+
+    fn collect_inline_layout(&self, children: &[UzNodeId]) -> TextLayout {
+        let mut inline = TextLayout::default();
         self.collect_inline_text_into(children, &mut inline);
         inline
     }
 
-    fn append_inline_text(&mut self, wrapper_id: UzNodeId, child_id: UzNodeId) {
-        let mut next = self.collect_inline_text(&[child_id]);
-        let inline = self.nodes[wrapper_id]
-            .inline_text
-            .get_or_insert_with(InlineText::default);
+    fn append_inline_layout(&mut self, wrapper_id: UzNodeId, child_id: UzNodeId) {
+        let mut next = self.collect_inline_layout(&[child_id]);
+        let Some(element) = self.nodes[wrapper_id].as_element_mut() else {
+            return;
+        };
+        let inline = element
+            .inline_layout
+            .get_or_insert_with(|| Box::new(TextLayout::default()));
         let offset = inline.text.len();
         inline.text.push_str(&next.text);
         inline
@@ -176,7 +187,7 @@ impl UIState {
             }));
     }
 
-    fn collect_inline_text_into(&self, children: &[UzNodeId], inline: &mut InlineText) {
+    fn collect_inline_text_into(&self, children: &[UzNodeId], inline: &mut TextLayout) {
         for &node_id in children {
             let Some(node) = self.nodes.get(node_id) else {
                 continue;
@@ -228,7 +239,8 @@ mod tests {
         assert_eq!(dom.nodes[parent].layout_children.as_deref(), Some(&[][..]));
         assert_eq!(
             dom.nodes[parent]
-                .inline_text
+                .as_element()
+                .and_then(|element| element.inline_layout.as_ref())
                 .as_ref()
                 .map(|text| text.text.as_str()),
             Some("hello world")

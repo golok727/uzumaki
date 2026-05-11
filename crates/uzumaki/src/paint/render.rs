@@ -237,9 +237,12 @@ impl<'a> Painter<'a> {
                 data: img.data.clone(),
             };
             crate::paint::image::paint_image(scene, bounds, style, &info, transform);
-        } else if let Some(inline) = node.inline_text.as_ref() {
+        } else if let Some(inline) = node
+            .as_element()
+            .and_then(|element| element.inline_layout.as_ref())
+        {
             let sel = self.compute_inline_selection(node_id);
-            if let Some(layout) = node.text_layout.as_ref() {
+            if !inline.entries.is_empty() {
                 let colors = inline
                     .entries
                     .iter()
@@ -269,11 +272,23 @@ impl<'a> Painter<'a> {
                     scene,
                     bounds,
                     style,
-                    layout,
+                    &inline.layout,
                     inline.text.len(),
                     transform,
                     sel,
                     Some(&colors),
+                );
+            } else {
+                let sel = text_selections.get(&node_id).copied();
+                Self::paint_text_node(
+                    scene,
+                    bounds,
+                    style,
+                    &inline.layout,
+                    inline.text.len(),
+                    transform,
+                    sel,
+                    None,
                 );
             }
         } else if let Some(tc) = node.get_text_content() {
@@ -281,7 +296,11 @@ impl<'a> Painter<'a> {
             let text_len = tc.content.len();
             // Cached parley layout (built once per frame in refresh_text_layouts).
             // If absent (shouldn't happen for nodes with text content), skip.
-            if let Some(layout) = node.text_layout.as_ref() {
+            if let Some(layout) = node
+                .as_element()
+                .and_then(|element| element.inline_layout.as_ref())
+                .map(|inline| &inline.layout)
+            {
                 Self::paint_text_node(scene, bounds, style, layout, text_len, transform, sel, None);
             }
         } else {
@@ -291,6 +310,7 @@ impl<'a> Painter<'a> {
 
     /// Draw a text node from its cached parley layout, optionally with a
     /// selection highlight.
+    #[allow(clippy::too_many_arguments)]
     fn paint_text_node(
         scene: &mut Scene,
         bounds: Bounds,

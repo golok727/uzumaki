@@ -708,7 +708,7 @@ impl UIState {
 
     /// Rebuild cached parley layouts for every text-bearing node at its final
     /// taffy width. Runs once per frame after layout. Paint / selection /
-    /// hit-test then reuse `node.text_layout` instead of rebuilding.
+    /// hit-test then reuse element inline layouts instead of rebuilding.
     fn refresh_text_layouts(&mut self, text_renderer: &mut TextRenderer) {
         let Some(root) = self.root else { return };
         self.refresh_text_layouts_at(root, None, text_renderer);
@@ -725,14 +725,18 @@ impl UIState {
             .layout_children
             .clone()
             .unwrap_or_else(|| self.nodes[node_id].children.clone());
-        let inline_children = if self.nodes[node_id].inline_text.is_some() {
+        let has_inline_layout = self.nodes[node_id]
+            .as_element()
+            .is_some_and(|element| element.inline_layout.is_some());
+        let inline_children = if has_inline_layout {
             self.nodes[node_id].children.clone()
         } else {
             children.clone()
         };
 
         let inline_text = self.nodes[node_id]
-            .inline_text
+            .as_element()
+            .and_then(|element| element.inline_layout.as_ref())
             .as_ref()
             .map(|i| i.text.clone());
         if let Some(text) = inline_text {
@@ -746,7 +750,11 @@ impl UIState {
             } else {
                 text_renderer.build_inline_layout(&segments, &computed.text, width)
             };
-            self.nodes[node_id].text_layout = Some(layout);
+            if let Some(element) = self.nodes[node_id].as_element_mut()
+                && let Some(inline_layout) = element.inline_layout.as_mut()
+            {
+                inline_layout.layout = layout;
+            }
         } else if !self.nodes[node_id].is_text_input()
             && let Some(text) = self.nodes[node_id]
                 .get_text_content()
@@ -754,9 +762,18 @@ impl UIState {
         {
             let width = text_layout_width(&self.nodes[node_id].final_layout, &computed);
             let layout = text_renderer.build_layout(&text, &computed.text, width);
-            self.nodes[node_id].text_layout = Some(layout);
+            if let Some(element) = self.nodes[node_id].as_element_mut() {
+                let inline_layout = element
+                    .inline_layout
+                    .get_or_insert_with(|| Box::new(crate::element::TextLayout::default()));
+                inline_layout.text = text;
+                inline_layout.entries.clear();
+                inline_layout.layout = layout;
+            }
         } else {
-            self.nodes[node_id].text_layout = None;
+            if let Some(element) = self.nodes[node_id].as_element_mut() {
+                element.inline_layout = None;
+            }
         }
 
         for cid in children {

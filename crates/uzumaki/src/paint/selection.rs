@@ -40,8 +40,10 @@ impl UIState {
         };
 
         if let Some(idx) = current_run
-            && let Some(inline) = self.nodes[node_id].inline_text.as_ref()
-            && let Some(layout) = self.nodes[node_id].text_layout.as_ref()
+            && let Some(inline) = self.nodes[node_id]
+                .as_element()
+                .and_then(|element| element.inline_layout.as_ref())
+            && !inline.entries.is_empty()
         {
             let entries = inline.entries.clone();
             let run = &mut self.selectable_text_runs[idx];
@@ -49,8 +51,8 @@ impl UIState {
                 let flat_start = run.total_graphemes;
                 let flat_byte_start = inline_entry.byte_start;
                 let flat_byte_end = flat_byte_start + inline_entry.byte_len;
-                let grapheme_start = layout_byte_to_grapheme(layout, flat_byte_start);
-                let grapheme_end = layout_byte_to_grapheme(layout, flat_byte_end);
+                let grapheme_start = layout_byte_to_grapheme(&inline.layout, flat_byte_start);
+                let grapheme_end = layout_byte_to_grapheme(&inline.layout, flat_byte_end);
                 let grapheme_count = grapheme_end.saturating_sub(grapheme_start);
                 run.entries.push(TextRunEntry {
                     node_id: inline_entry.node_id,
@@ -69,8 +71,9 @@ impl UIState {
             && self.nodes[node_id].get_text_content().is_some()
         {
             let gc = self.nodes[node_id]
-                .text_layout
-                .as_ref()
+                .as_element()
+                .and_then(|element| element.inline_layout.as_ref())
+                .map(|inline| &inline.layout)
                 .map(cluster_count)
                 .unwrap_or(0);
             let run = &mut self.selectable_text_runs[idx];
@@ -235,7 +238,13 @@ impl UIState {
             let entry_end = entry.flat_start + entry.grapheme_count;
             if flat_index <= entry_end {
                 let local_grapheme = flat_index.saturating_sub(entry.flat_start);
-                let layout = self.nodes.get(entry.layout_node_id)?.text_layout.as_ref()?;
+                let layout = &self
+                    .nodes
+                    .get(entry.layout_node_id)?
+                    .as_element()?
+                    .inline_layout
+                    .as_ref()?
+                    .layout;
                 let entry_grapheme_start = layout_byte_to_grapheme(layout, entry.flat_byte_start);
                 let offset = layout_grapheme_to_byte(layout, entry_grapheme_start + local_grapheme)
                     .saturating_sub(entry.flat_byte_start)
@@ -254,7 +263,13 @@ impl UIState {
 
     pub fn flat_index_for_endpoint(&self, endpoint: SelectionEndpoint) -> Option<usize> {
         let (_run, entry) = self.find_run_entry_for_node(endpoint.node)?;
-        let layout = self.nodes.get(entry.layout_node_id)?.text_layout.as_ref()?;
+        let layout = &self
+            .nodes
+            .get(entry.layout_node_id)?
+            .as_element()?
+            .inline_layout
+            .as_ref()?
+            .layout;
         let entry_grapheme_start = layout_byte_to_grapheme(layout, entry.flat_byte_start);
         let endpoint_grapheme = layout_byte_to_grapheme(
             layout,
@@ -288,7 +303,9 @@ impl UIState {
             if let Some(layout) = self
                 .nodes
                 .get(entry.layout_node_id)
-                .and_then(|n| n.text_layout.as_ref())
+                .and_then(|n| n.as_element())
+                .and_then(|element| element.inline_layout.as_ref())
+                .map(|inline| &inline.layout)
             {
                 if crossed_entry
                     && let Some(first) = Cluster::from_byte_index(layout, 0)
@@ -339,7 +356,9 @@ impl UIState {
             if let Some(layout) = self
                 .nodes
                 .get(entry.layout_node_id)
-                .and_then(|n| n.text_layout.as_ref())
+                .and_then(|n| n.as_element())
+                .and_then(|element| element.inline_layout.as_ref())
+                .map(|inline| &inline.layout)
             {
                 let entry_grapheme_start = layout_byte_to_grapheme(layout, entry.flat_byte_start);
                 let cur = if local >= entry.grapheme_count && entry.grapheme_count > 0 {

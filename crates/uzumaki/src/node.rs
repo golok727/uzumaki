@@ -5,8 +5,6 @@ use crate::element::{ElementNode, ImageNode, TextContent};
 use crate::input::InputState;
 use crate::interactivity::{HitboxId, StyleVariants};
 use crate::style::{TextSelectable, UzStyle};
-use crate::text::TextBrush;
-use parley::Layout as ParleyLayout;
 
 pub type UzNodeId = usize;
 
@@ -135,12 +133,6 @@ pub struct Node {
     pub hitbox_id: Option<HitboxId>,
     /// Per-node scroll offsets for content that can scroll on either axis.
     pub scroll_state: ScrollState,
-    /// Cached parley layout for text-bearing nodes (text node or `<text>`
-    /// element). Refreshed once per frame after taffy compute, then reused by
-    /// paint, selection geometry and hit-testing instead of rebuilding parley
-    /// layouts on every read.
-    pub text_layout: Option<ParleyLayout<TextBrush>>,
-    pub inline_text: Option<InlineText>,
     /// Cached taffy layout for this node, copied here after `compute_layout`
     /// runs. Reading `node.final_layout` avoids the
     /// `layout_engine.layout(node_id)` two-level lookup on the paint hot path.
@@ -156,19 +148,6 @@ pub struct Node {
     pub flags: NodeFlags,
 }
 
-#[derive(Clone, Debug, Default)]
-pub struct InlineText {
-    pub text: String,
-    pub entries: Vec<InlineTextEntry>,
-}
-
-#[derive(Clone, Debug)]
-pub struct InlineTextEntry {
-    pub node_id: UzNodeId,
-    pub byte_start: usize,
-    pub byte_len: usize,
-}
-
 impl Node {
     pub fn new(style: UzStyle, data: impl Into<NodeData>) -> Self {
         Self {
@@ -179,8 +158,6 @@ impl Node {
             style_variants: StyleVariants::new(),
             hitbox_id: None,
             scroll_state: ScrollState::new(),
-            text_layout: None,
-            inline_text: None,
             final_layout: taffy::Layout::new(),
             layout_parent: None,
             layout_children: None,

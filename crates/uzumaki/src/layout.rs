@@ -127,7 +127,10 @@ impl LayoutEngine {
         let context = NodeContext {
             dom_id: node_id,
             text: node.get_text_content().cloned(),
-            inline_text: node.inline_text.as_ref().map(|inline| inline.text.clone()),
+            inline_text: node
+                .as_element()
+                .and_then(|element| element.inline_layout.as_ref())
+                .map(|inline| inline.text.clone()),
             text_style: style.text.clone(),
             is_input: node.is_text_input(),
             image: node.as_image().and_then(|image| {
