@@ -374,8 +374,7 @@ impl<'a> Painter<'a> {
         style: &UzStyle,
         layout: &LayoutSnapshot,
     ) -> InputRenderInfo {
-        let pad_h = style.padding.left + style.padding.right;
-        let text_w = (layout.size_w as f32 - pad_h).max(0.0);
+        let text_w = (layout.size_w as f32 - style.padding.horizontal()).max(0.0);
         let text_style = style.text.clone();
 
         // Grab seed values first so we can drop the immutable borrow.
@@ -478,10 +477,8 @@ impl<'a> Painter<'a> {
         if !info.multiline {
             return None;
         }
-        let pad_t = style.padding.top as f64;
-        let pad_b = style.padding.bottom as f64;
         let axis_info = ScrollAxisInfo {
-            content_size: info.layout_height as f64 + pad_t + pad_b,
+            content_size: info.layout_height as f64 + style.padding.vertical() as f64,
             visible_size: h,
             offset: info.scroll_offset_y as f64,
         };

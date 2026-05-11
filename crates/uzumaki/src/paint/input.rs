@@ -115,12 +115,7 @@ impl InputPainter<'_> {
     }
 
     fn content_box(&self) -> Bounds {
-        Bounds::new(
-            self.bounds.x + self.padding.left as f64,
-            self.bounds.y + self.padding.top as f64,
-            (self.bounds.width - (self.padding.left + self.padding.right) as f64).max(0.0),
-            (self.bounds.height - (self.padding.top + self.padding.bottom) as f64).max(0.0),
-        )
+        self.bounds.inset_by(&self.padding)
     }
 
     fn line_height(&self) -> f32 {

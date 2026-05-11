@@ -117,7 +117,6 @@ pub fn input_layout_meta(dom: &UIState, focused_id: UzNodeId) -> Option<FocusedI
     let is = node.as_text_input()?;
     let input_padding = node.style.padding.left;
     let top_pad = node.style.padding.top;
-    let pad_h = node.style.padding.left + node.style.padding.right;
     let text_style = node.style.text.clone();
     let hb = node.hitbox_id.and_then(|hid| dom.hitbox_store.get(hid))?;
     let layout = &node.final_layout;
@@ -128,7 +127,7 @@ pub fn input_layout_meta(dom: &UIState, focused_id: UzNodeId) -> Option<FocusedI
         top_pad,
         multiline: is.multiline,
         text_style,
-        input_width: (layout.size.width - pad_h).max(0.0),
+        input_width: (layout.size.width - node.style.padding.horizontal()).max(0.0),
         input_height: layout.size.height,
     })
 }

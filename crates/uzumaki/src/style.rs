@@ -93,6 +93,17 @@ impl Bounds {
     pub fn to_rect(&self) -> Rect {
         Rect::new(self.x, self.y, self.x + self.width, self.y + self.height)
     }
+
+    /// Inset by an `Edges` (e.g. `style.padding`) to produce the inner box.
+    /// Width/height clamp at zero.
+    pub fn inset_by(&self, edges: &Edges) -> Bounds {
+        Bounds::new(
+            self.x + edges.left as f64,
+            self.y + edges.top as f64,
+            (self.width - edges.horizontal() as f64).max(0.0),
+            (self.height - edges.vertical() as f64).max(0.0),
+        )
+    }
 }
 
 #[derive(Clone, Copy, Debug, Default, PartialEq, Refineable)]
@@ -116,6 +127,14 @@ impl Edges {
 
     pub fn any_nonzero(&self) -> bool {
         self.top > 0.0 || self.right > 0.0 || self.bottom > 0.0 || self.left > 0.0
+    }
+
+    pub fn horizontal(&self) -> f32 {
+        self.left + self.right
+    }
+
+    pub fn vertical(&self) -> f32 {
+        self.top + self.bottom
     }
 }
 

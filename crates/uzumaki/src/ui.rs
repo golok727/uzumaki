@@ -941,8 +941,7 @@ fn axis_loc(point: taffy::Point<f32>, axis: ScrollAxis) -> f32 {
 }
 
 fn text_layout_width(layout: &taffy::Layout, style: &UzStyle) -> Option<f32> {
-    let padding = style.padding.left + style.padding.right;
-    Some((layout.size.width - padding).max(0.0))
+    Some((layout.size.width - style.padding.horizontal()).max(0.0))
 }
 
 #[cfg(test)]
