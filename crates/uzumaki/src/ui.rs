@@ -93,7 +93,7 @@ pub struct UIState {
     pub window_focused: bool,
     /// Scroll thumb rects from last paint pass (for hit testing).
     pub scroll_thumbs: Vec<ScrollThumbRect>,
-    /// Current UI-owned drag, following Blitz's document-level drag model.
+    /// Current UI-owned drag
     pub drag_mode: DragMode,
     /// Short-lived wheel routing capture for nested scroll continuity.
     pub wheel_capture: Option<ScrollWheelTarget>,
@@ -101,6 +101,7 @@ pub struct UIState {
     /// there is no active view selection
     pub text_selection: TextSelection,
     /// Text runs for textSelect subtrees, rebuilt each frame.
+    // todo move this to renderer ?
     pub selectable_text_runs: Vec<TextSelectRun>,
 }
 

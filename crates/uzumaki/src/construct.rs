@@ -2,11 +2,7 @@
 //! `layout_children` for every container, splicing synthetic anonymous
 //! wrapper nodes around runs of inline-level children when those inline
 //! children sit alongside block-level siblings.
-//!
-//! Mirrors Blitz's `collect_layout_children`: anonymous wrappers are real
-//! entries in `Slab<Node>` flagged anonymous, and they are torn down
-//! and rebuilt every frame. They appear only in `Node::layout_children`,
-//! never in the user-facing `Node::children` of the wrapped originals.
+//! adapted from https://github.com/DioxusLabs/blitz
 
 use crate::element::ElementNode;
 use crate::node::{InlineText, InlineTextEntry, Node, NodeData, NodeFlags, UzNodeId};
