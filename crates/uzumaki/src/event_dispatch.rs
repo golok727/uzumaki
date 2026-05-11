@@ -425,8 +425,11 @@ pub fn handle_cursor_moved(
                 logical_y,
             )
         {
-            if dom.selection_root(&dom.text_selection) == Some(root_id) {
-                dom.text_selection.focus = Some(hit.endpoint);
+            if let Some(selection) = dom.get_text_selection()
+                && dom.selection_root(&selection) == Some(root_id)
+                && let Some(anchor) = selection.anchor
+            {
+                dom.set_selection(TextSelection::new(anchor, hit.endpoint));
             }
             needs_redraw = true;
         }
