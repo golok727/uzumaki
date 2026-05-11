@@ -132,12 +132,12 @@ function AbsolutePositioningDemo() {
   return (
     <view display="flex" flexDir="col" gap={12}>
       <view display="flex" flexDir="col" gap={4}>
-        <text fontSize={14} fontWeight={700} color={C.text}>
+        <view fontSize={14} fontWeight={700} color={C.text}>
           Absolute positioning
-        </text>
-        <text fontSize={12} color={C.textMuted}>
+        </view>
+        <view fontSize={12} color={C.textMuted}>
           position="absolute" with top / right / bottom / left insets
-        </text>
+        </view>
       </view>
 
       <view display="flex" flexDir="row" gap={12}>
@@ -206,9 +206,9 @@ function AbsolutePositioningDemo() {
         items="center"
         justify="center"
       >
-        <text fontSize={12} color={C.textDim}>
+        <view fontSize={12} color={C.textDim}>
           relative container bg
-        </text>
+        </view>
         <view
           position="absolute"
           top={10}
@@ -262,14 +262,14 @@ export function LayoutPage() {
 
       <view display="flex" flexDir="col" gap={24} p={24}>
         <view display="flex" flexDir="col" gap={12}>
-          <text fontSize={14} fontWeight={700} color={C.text}>
+          <view fontSize={14} fontWeight={700} color={C.text}>
             Flexbox — justify variants
-          </text>
+          </view>
           {(['center', 'between', 'around', 'evenly'] as const).map((j) => (
             <view key={j} display="flex" flexDir="col" gap={4}>
-              <text fontSize={11} fontWeight={600} color={C.textMuted}>
+              <view fontSize={11} fontWeight={600} color={C.textMuted}>
                 justify="{j}"
-              </text>
+              </view>
               <view
                 display="flex"
                 flexDir="row"
@@ -299,9 +299,9 @@ export function LayoutPage() {
           <view display="flex" flexDir="row" gap={12}>
             {(['start', 'center', 'end', 'stretch'] as const).map((a) => (
               <view key={a} display="flex" flexDir="col" gap={4} flex={1}>
-                <text fontSize={11} fontWeight={600} color={C.textMuted}>
+                <view fontSize={11} fontWeight={600} color={C.textMuted}>
                   items="{a}"
-                </text>
+                </view>
                 <view
                   display="flex"
                   flexDir="row"
@@ -342,39 +342,39 @@ export function LayoutPage() {
           <view display="flex" flexDir="row" gap={12} items="center">
             <view display="flex" flexDir="col" items="center" gap={4}>
               <view w={60} h={60} bg={C.accent} roundedTL={24} />
-              <text fontSize={10} color={C.textMuted}>
+              <view fontSize={10} color={C.textMuted}>
                 TL
-              </text>
+              </view>
             </view>
             <view display="flex" flexDir="col" items="center" gap={4}>
               <view w={60} h={60} bg={C.primary} roundedTR={24} />
-              <text fontSize={10} color={C.textMuted}>
+              <view fontSize={10} color={C.textMuted}>
                 TR
-              </text>
+              </view>
             </view>
             <view display="flex" flexDir="col" items="center" gap={4}>
               <view w={60} h={60} bg={C.success} roundedBR={24} />
-              <text fontSize={10} color={C.textMuted}>
+              <view fontSize={10} color={C.textMuted}>
                 BR
-              </text>
+              </view>
             </view>
             <view display="flex" flexDir="col" items="center" gap={4}>
               <view w={60} h={60} bg={C.warning} roundedBL={24} />
-              <text fontSize={10} color={C.textMuted}>
+              <view fontSize={10} color={C.textMuted}>
                 BL
-              </text>
+              </view>
             </view>
             <view display="flex" flexDir="col" items="center" gap={4}>
               <view w={60} h={60} bg={C.accent} roundedTL={24} roundedBR={24} />
-              <text fontSize={10} color={C.textMuted}>
+              <view fontSize={10} color={C.textMuted}>
                 TL+BR
-              </text>
+              </view>
             </view>
             <view display="flex" flexDir="col" items="center" gap={4}>
               <view w={60} h={60} bg={C.danger} roundedTR={24} roundedBL={24} />
-              <text fontSize={10} color={C.textMuted}>
+              <view fontSize={10} color={C.textMuted}>
                 TR+BL
-              </text>
+              </view>
             </view>
           </view>
         </view>
@@ -382,9 +382,9 @@ export function LayoutPage() {
         <Divider />
 
         <view display="flex" flexDir="col" gap={12}>
-          <text fontSize={14} fontWeight={700} color={C.text}>
+          <view fontSize={14} fontWeight={700} color={C.text}>
             Per-side borders
-          </text>
+          </view>
           <view display="flex" flexDir="row" gap={12} items="center">
             {[
               { side: 'Top', prop: { borderTop: 3 }, color: C.accentHi },
@@ -419,9 +419,9 @@ export function LayoutPage() {
         <Divider />
 
         <view display="flex" flexDir="col" gap={12}>
-          <text fontSize={14} fontWeight={700} color={C.text}>
+          <view fontSize={14} fontWeight={700} color={C.text}>
             Opacity scale
-          </text>
+          </view>
           <view display="flex" flexDir="row" gap={8} items="center">
             {[1, 0.8, 0.6, 0.4, 0.2, 0.1].map((op) => (
               <view
@@ -454,12 +454,12 @@ export function LayoutPage() {
 
         <view display="flex" flexDir="col" gap={12}>
           <view display="flex" flexDir="col" gap={4}>
-            <text fontSize={14} fontWeight={700} color={C.text}>
+            <view fontSize={14} fontWeight={700} color={C.text}>
               Transforms
-            </text>
-            <text fontSize={12} color={C.textMuted}>
+            </view>
+            <view fontSize={12} color={C.textMuted}>
               translate, rotate, scale, and hover:scale without changing layout
-            </text>
+            </view>
           </view>
           <view
             display="flex"
@@ -512,9 +512,9 @@ export function LayoutPage() {
 
         <view display="flex" flexDir="col" gap={12}>
           <view display="flex" flexDir="row" items="center" gap={20}>
-            <text fontSize={14} fontWeight={700} color={C.text}>
+            <view fontSize={14} fontWeight={700} color={C.text}>
               Dynamic gap / padding
-            </text>
+            </view>
             <view display="flex" flexDir="row" items="center" gap={8}>
               <button
                 onClick={() => setGap((g) => Math.max(2, g - 2))}
@@ -625,12 +625,12 @@ export function LayoutPage() {
 
         <view display="flex" flexDir="col" gap={12}>
           <view display="flex" flexDir="col" gap={4}>
-            <text fontSize={14} fontWeight={700} color={C.text}>
+            <view fontSize={14} fontWeight={700} color={C.text}>
               Buttons
-            </text>
-            <text fontSize={12} color={C.textMuted}>
+            </view>
+            <view fontSize={12} color={C.textMuted}>
               Various button configurations and property combinations
-            </text>
+            </view>
           </view>
 
           <view display="flex" flexDir="col" gap={12}>
