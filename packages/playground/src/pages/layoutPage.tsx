@@ -67,7 +67,7 @@ function TextAlignDemo() {
         textAlign={align}
       >
         The quick brown{' '}
-        <text bg={C.dangerDim} p={4} rounded={5} fontWeight={700} fontSize={16}>
+        <text bg={C.accent} p={3} rounded={5} fontWeight={700} fontSize={16}>
           fox
         </text>{' '}
         jumps over the lazy dog. Pack my box with five dozen liquor jugs.
@@ -1082,6 +1082,7 @@ function InlineFlowDemo() {
         bg={C.surface2}
         rounded={8}
         border={1}
+        textAlign="center"
         borderColor={C.border}
         fontSize={14}
         color={C.text}
