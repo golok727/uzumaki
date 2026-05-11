@@ -69,6 +69,13 @@ impl ElementNode {
         Self::new(ElementKind::Image, ElementData::Image(Box::new(state)))
     }
 
+    /// Synthetic wrapper used by the construct phase to host a run of
+    /// inline children. A plain View element; anonymity is tracked on
+    /// `Node::is_anonymous`.
+    pub fn new_anonymous() -> Self {
+        Self::new(ElementKind::View, ElementData::None)
+    }
+
     pub fn is_text_input(&self) -> bool {
         self.data.is_text_input()
     }

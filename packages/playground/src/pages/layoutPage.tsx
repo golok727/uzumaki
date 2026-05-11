@@ -1042,6 +1042,10 @@ export function LayoutPage() {
 
         <Divider />
 
+        <InlineFlowDemo />
+
+        <Divider />
+
         <TextAlignDemo />
 
         <Divider />
@@ -1051,6 +1055,76 @@ export function LayoutPage() {
         <Divider />
 
         <AbsolutePositioningDemo />
+      </view>
+    </view>
+  );
+}
+
+function InlineFlowDemo() {
+  return (
+    <view display="flex" flexDir="col" gap={12}>
+      <view display="flex" flexDir="col" gap={4}>
+        <text fontSize={14} fontWeight={700} color={C.text}>
+          Inline flow (text + text elements)
+        </text>
+        <text fontSize={12} color={C.textMuted}>
+          Bare text and consecutive text elements should sit on one line. Drag
+          to select across them.
+        </text>
+      </view>
+
+      <view
+        selectable
+        p={16}
+        bg={C.surface2}
+        rounded={8}
+        border={1}
+        borderColor={C.border}
+        fontSize={14}
+        color={C.text}
+      >
+        Hello{' '}
+        <text color={C.accentHi} fontWeight={700}>
+          world
+        </text>
+        <text color={C.textMuted}> from </text>
+        <text color={C.successHi} fontWeight={700}>
+          uzumaki
+        </text>
+        !
+      </view>
+
+      <view
+        selectable
+        p={16}
+        bg={C.surface2}
+        rounded={8}
+        border={1}
+        borderColor={C.border}
+        display="flex"
+        flexDir="col"
+        gap={8}
+        fontSize={13}
+        color={C.text}
+      >
+        <view>
+          inline run: <text color={C.accentHi}>red</text>{' '}
+          <text color={C.primaryHi}>green</text>{' '}
+          <text color={C.successHi}>blue</text> end.
+        </view>
+        <view>
+          mixed siblings:
+          <text color={C.warningHi} fontWeight={700}>
+            {' '}
+            tag-A{' '}
+          </text>
+          plain
+          <text color={C.accentHi} fontWeight={700}>
+            {' '}
+            tag-B{' '}
+          </text>
+          plain again.
+        </view>
       </view>
     </view>
   );

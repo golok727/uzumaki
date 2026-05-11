@@ -108,6 +108,18 @@ pub struct Node {
     /// runs. Reading `node.final_layout` avoids the
     /// `layout_engine.layout(node_id)` two-level lookup on the paint hot path.
     pub final_layout: taffy::Layout,
+    /// Layout-tree parent. Equals `parent` for normal nodes; for the original
+    /// inline children that were wrapped, points at the synthetic anonymous
+    /// inline wrapper instead. Set by the construct phase each frame.
+    pub layout_parent: Option<UzNodeId>,
+    /// Layout-tree children. When `Some`, layout/paint walk this list instead
+    /// of `children`. Inserted by the construct phase to splice anonymous
+    /// inline wrappers around runs of inline-level children.
+    pub layout_children: Option<Vec<UzNodeId>>,
+    /// Marks this node as a synthetic wrapper produced by the construct
+    /// phase. Anonymous nodes are torn down and rebuilt every frame and must
+    /// be hidden from user-facing tree traversals.
+    pub is_anonymous: bool,
 }
 
 impl Node {
@@ -122,6 +134,9 @@ impl Node {
             scroll_state: ScrollState::new(),
             text_layout: None,
             final_layout: taffy::Layout::new(),
+            layout_parent: None,
+            layout_children: None,
+            is_anonymous: false,
         }
     }
 }
@@ -213,6 +228,17 @@ impl Node {
         self.as_element()
             .map(|e| e.is_focussable())
             .unwrap_or(false)
+    }
+
+    /// Whether this node participates in an inline formatting context as a
+    /// child (bare text node, or `<text>` element). Block-level elements
+    /// (View, Button, Input, Image, Checkbox) are not inline.
+    pub fn is_inline_level(&self) -> bool {
+        match &self.data {
+            NodeData::Text(_) => true,
+            NodeData::Element(el) => matches!(el.kind, crate::element::ElementKind::Text),
+            NodeData::Root => false,
+        }
     }
 }
 

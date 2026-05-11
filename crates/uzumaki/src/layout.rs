@@ -111,7 +111,11 @@ impl LayoutEngine {
         );
 
         let mut children = Vec::new();
-        for &child_id in &node.children {
+        let layout_children: &[UzNodeId] = node
+            .layout_children
+            .as_deref()
+            .unwrap_or(node.children.as_slice());
+        for &child_id in layout_children {
             if let Some(taffy_child) =
                 self.build_node(nodes, child_id, Some(&style), hit_state, focused_node)
             {

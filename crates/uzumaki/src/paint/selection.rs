@@ -56,9 +56,11 @@ impl UIState {
             run.total_graphemes += gc;
         }
 
-        let child_count = self.nodes[node_id].children.len();
-        for i in 0..child_count {
-            let cid = self.nodes[node_id].children[i];
+        let layout_children = self.nodes[node_id]
+            .layout_children
+            .clone()
+            .unwrap_or_else(|| self.nodes[node_id].children.clone());
+        for cid in layout_children {
             self.visit_text_select(cid, Some(&style), current_run);
         }
     }

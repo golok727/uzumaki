@@ -675,6 +675,7 @@ impl UIState {
     }
 
     pub fn compute_layout(&mut self, width: f32, height: f32, text_renderer: &mut TextRenderer) {
+        self.resolve_layout_children();
         self.layout_engine.compute_layout(
             &self.nodes,
             self.root,
@@ -719,7 +720,10 @@ impl UIState {
         text_renderer: &mut TextRenderer,
     ) {
         let computed = self.computed_style(node_id, parent_style);
-        let children = self.nodes[node_id].children.clone();
+        let children = self.nodes[node_id]
+            .layout_children
+            .clone()
+            .unwrap_or_else(|| self.nodes[node_id].children.clone());
 
         let is_input = self.nodes[node_id].is_text_input();
         let text = (!is_input)

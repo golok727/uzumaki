@@ -143,7 +143,10 @@ impl<'a> Painter<'a> {
             scene.push_clip_layer(Fill::NonZero, transform, &Rect::new(0.0, 0.0, w, h));
         }
 
-        let children = self.dom.nodes[node_id].children.clone();
+        let children = self.dom.nodes[node_id]
+            .layout_children
+            .clone()
+            .unwrap_or_else(|| self.dom.nodes[node_id].children.clone());
         for child_id in children {
             self.render_node(
                 child_id,
