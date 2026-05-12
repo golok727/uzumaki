@@ -693,15 +693,18 @@ impl UzStyle {
         }
     }
 
-    pub fn inherit_from(&mut self, parent: &Self) {
-        /*Fixme: this is a work around  */
-        let overflow_wrap = self.text.overflow_wrap;
-        let word_break = self.text.word_break;
+    pub fn inherit_from(&mut self, parent: &Self, authored: &UzStyleRefinement) {
+        self.text.inherit_from(&parent.text, &authored.text);
 
-        self.text = parent.text.clone();
-        self.text.overflow_wrap = overflow_wrap;
-        self.text.word_break = word_break;
-        self.text_selectable = parent.text_selectable;
+        if authored.visibility.is_none() {
+            self.visibility = parent.visibility;
+        }
+        if authored.text_selectable.is_none() {
+            self.text_selectable = parent.text_selectable;
+        }
+        if authored.cursor.is_none() {
+            self.cursor = parent.cursor;
+        }
     }
 
     /// todo find a better place
@@ -1023,6 +1026,33 @@ impl UzStyle {
         if bw.right > 0.0 {
             fill(scene, Rect::new(x + w - bw.right as f64, y, x + w, y + h));
         }
+    }
+}
+
+impl TextStyle {
+    pub fn inherit_from(&mut self, parent: &Self, authored: &TextStyleRefinement) {
+        macro_rules! inherit {
+            ($($field:ident),* $(,)?) => {
+                $(
+                    if authored.$field.is_none() {
+                        self.$field.clone_from(&parent.$field);
+                    }
+                )*
+            };
+        }
+
+        inherit!(
+            font_size,
+            font_family,
+            color,
+            line_height,
+            font_weight,
+            letter_spacing,
+            word_spacing,
+            overflow_wrap,
+            word_break,
+            text_align,
+        );
     }
 }
 

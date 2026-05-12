@@ -184,13 +184,18 @@ impl Node {
         &self.computed_style
     }
 
-    pub fn compute_styles<F>(&mut self, hover: bool, active: bool, focus: bool, continuation: F)
-    where
-        F: FnOnce(&mut UzStyle),
-    {
+    pub fn compute_styles(
+        &mut self,
+        hover: bool,
+        active: bool,
+        focus: bool,
+        parent_style: Option<&UzStyle>,
+    ) {
         let mut style = self.default_style.clone();
 
-        continuation(&mut style);
+        if let Some(parent_style) = parent_style {
+            style.inherit_from(parent_style, &self.interactivity.base_style);
+        }
 
         style.refine(&self.interactivity.base_style);
 

@@ -158,8 +158,8 @@ impl UIState {
     }
 
     /// Resolve the effective cursor for `node_id`.
-    /// Precedence at the hit node: explicit style -> behavior default -> selectable
-    /// text fallback. Otherwise walk ancestors honoring only explicit overrides.
+    /// Precedence: inherited/authored style -> behavior default -> selectable
+    /// text fallback.
     pub fn resolve_cursor(&self, node_id: UzNodeId) -> UzCursorIcon {
         let Some(node) = self.nodes.get(node_id) else {
             return UzCursorIcon::Default;
@@ -179,22 +179,6 @@ impl UIState {
             return UzCursorIcon::Text;
         }
 
-        // Walk ancestors. An explicit `cursor` style wins, but if any ancestor
-        // is a text-selectable scope (`selectable` view) we should also show
-        // the text cursor — otherwise an inner non-selectable `<text>` inside
-        // a selectable view never gets the I-beam.
-        let mut cur = node.parent;
-        while let Some(id) = cur {
-            let n = &self.nodes[id];
-            let style = n.computed_style();
-            if let Some(c) = style.cursor {
-                return c;
-            }
-            if n.is_text_selectable() {
-                return UzCursorIcon::Text;
-            }
-            cur = n.parent;
-        }
         UzCursorIcon::Default
     }
 
@@ -682,11 +666,7 @@ impl UIState {
         let active = self.hit_state.is_active(node_id);
         let focus = self.focused_node == Some(node_id);
 
-        self.nodes[node_id].compute_styles(hover, active, focus, |style| {
-            if let Some(parent_style) = &parent_style {
-                style.inherit_from(parent_style);
-            }
-        });
+        self.nodes[node_id].compute_styles(hover, active, focus, parent_style.as_ref());
 
         let computed = self.nodes[node_id].computed_style().clone();
         let children = self.nodes[node_id].children.clone();
