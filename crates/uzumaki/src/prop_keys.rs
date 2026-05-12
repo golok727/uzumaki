@@ -1,4 +1,61 @@
+use std::borrow::Cow;
 use std::str::FromStr;
+
+use serde::Deserialize;
+
+#[derive(Clone, Debug, Deserialize)]
+#[serde(untagged)]
+pub(crate) enum AttrValue<'a> {
+    Bool(bool),
+    Number(f64),
+    #[serde(borrow)]
+    String(Cow<'a, str>),
+}
+
+impl AttrValue<'_> {
+    pub fn as_str(&self) -> Option<&str> {
+        match self {
+            Self::String(value) => Some(value.as_ref()),
+            _ => None,
+        }
+    }
+
+    pub fn parse_bool(&self) -> Option<bool> {
+        match self {
+            Self::Bool(value) => Some(*value),
+            Self::String(value) => Some(crate::parse::parse_bool(value)),
+            _ => None,
+        }
+    }
+
+    pub fn parse_f32(&self, rem_base: f32) -> Option<f32> {
+        match self {
+            Self::Number(value) if value.is_finite() => Some(*value as f32),
+            Self::String(value) => crate::parse::parse_px_scalar(value, rem_base),
+            _ => None,
+        }
+    }
+
+    pub fn parse_length(&self, rem_base: f32) -> Option<crate::style::Length> {
+        match self {
+            Self::Number(value) if value.is_finite() => {
+                Some(crate::style::Length::Px(*value as f32))
+            }
+            Self::String(value) => crate::parse::parse_length(value, rem_base),
+            _ => None,
+        }
+    }
+
+    pub fn parse_definite_length(&self, rem_base: f32) -> Option<crate::style::DefiniteLength> {
+        match self {
+            Self::Number(value) if value.is_finite() => {
+                Some(crate::style::DefiniteLength::Px(*value as f32))
+            }
+            Self::String(value) => crate::parse::parse_definite_length(value, rem_base),
+            _ => None,
+        }
+    }
+}
 
 #[derive(Copy, Clone, Debug, Eq, PartialEq)]
 pub(crate) enum StyleVariant {

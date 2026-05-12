@@ -3,7 +3,8 @@ use std::sync::Arc;
 use crate::cursor::UzCursorIcon;
 use crate::input::InputState;
 use crate::node::UzNodeId;
-use crate::parse::{parse_bool, parse_max_length};
+use crate::parse::parse_max_length;
+use crate::prop_keys::AttrValue;
 use crate::text::TextBrush;
 use parley::{ContentWidths, Layout as ParleyLayout};
 use serde_json::{Value, json};
@@ -103,12 +104,15 @@ impl ElementNode {
         self.is_focussable = focussable;
     }
 
-    pub fn set_str_attr(&mut self, name: &str, value: &str) -> bool {
+    pub(crate) fn set_attr(&mut self, name: &str, value: AttrValue<'_>) -> bool {
         if name == "focusable" {
-            self.set_focussable(parse_bool(value));
-            return true;
+            if let Some(value) = value.parse_bool() {
+                self.set_focussable(value);
+                return true;
+            }
+            return false;
         }
-        self.data.set_str_attr(name, value)
+        self.data.set_attr(name, value)
     }
 
     pub fn clear_attr(&mut self, name: &str) -> bool {
@@ -338,39 +342,65 @@ impl ElementData {
         }
     }
 
-    pub fn set_str_attr(&mut self, name: &str, value: &str) -> bool {
+    pub(crate) fn set_attr(&mut self, name: &str, value: AttrValue<'_>) -> bool {
         match self {
             Self::TextInput(input) => match name {
                 "value" => {
+                    let Some(value) = value.as_str() else {
+                        return false;
+                    };
                     input.set_value(value);
                     true
                 }
                 "placeholder" => {
+                    let Some(value) = value.as_str() else {
+                        return false;
+                    };
                     input.placeholder = value.to_string();
                     true
                 }
                 "maxLength" => {
-                    let n = value.parse::<f32>().unwrap_or(-1.0);
+                    let n = match value {
+                        AttrValue::Number(value) if value.is_finite() => Some(value as f32),
+                        AttrValue::Number(_) => None,
+                        AttrValue::String(value) => value.parse::<f32>().ok(),
+                        AttrValue::Bool(_) => None,
+                    };
+                    let Some(n) = n else {
+                        return false;
+                    };
                     input.max_length = parse_max_length(n);
                     true
                 }
                 "disabled" => {
-                    input.disabled = parse_bool(value);
+                    let Some(value) = value.parse_bool() else {
+                        return false;
+                    };
+                    input.disabled = value;
                     true
                 }
                 "multiline" => {
-                    input.multiline = parse_bool(value);
+                    let Some(value) = value.parse_bool() else {
+                        return false;
+                    };
+                    input.multiline = value;
                     true
                 }
                 "secure" => {
-                    input.secure = parse_bool(value);
+                    let Some(value) = value.parse_bool() else {
+                        return false;
+                    };
+                    input.secure = value;
                     true
                 }
                 _ => false,
             },
             Self::CheckboxInput(checked) => match name {
                 "checked" => {
-                    *checked = parse_bool(value);
+                    let Some(value) = value.parse_bool() else {
+                        return false;
+                    };
+                    *checked = value;
                     true
                 }
                 _ => false,

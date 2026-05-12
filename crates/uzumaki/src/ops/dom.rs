@@ -5,6 +5,7 @@ use std::rc::{Rc, Weak};
 
 use crate::app::{AppState, NODE_EXTERNAL_BYTES, SharedAppState, with_state};
 use crate::node::{Node, NodeData, UzNodeId};
+use crate::prop_keys::AttrValue;
 use crate::style::UzStyle;
 
 fn window_not_found() -> deno_error::JsErrorBox {
@@ -531,7 +532,7 @@ fn set_attribute(state: &mut OpState, window_id: u32, node_id: u32, name: &str, 
     let app_state = state.borrow::<SharedAppState>().clone();
     with_state(&app_state, |s| {
         if let Some(entry) = s.windows.get_mut(&window_id) {
-            entry.set_attribute(nid, name, value);
+            entry.set_attribute(nid, name, AttrValue::String(value.into()));
         }
     });
 }

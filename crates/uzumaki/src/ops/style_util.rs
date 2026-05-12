@@ -2,14 +2,14 @@ use serde_json::{Value, json};
 
 use crate::app::WindowEntry;
 use crate::node::{Node, UzNodeId};
-use crate::prop_keys::{AttributeKind, StyleProp, StyleVariant};
+use crate::prop_keys::{AttrValue, AttributeKind, StyleProp, StyleVariant};
 use crate::style::*;
 use crate::{SharedString, cursor};
 
 use crate::parse::*;
 
 impl WindowEntry {
-    pub fn set_attribute(&mut self, node_id: UzNodeId, name: &str, value: &str) {
+    pub(crate) fn set_attribute(&mut self, node_id: UzNodeId, name: &str, value: AttrValue<'_>) {
         let kind = AttributeKind::parse(name);
         let Some(node) = self.dom.nodes.get_mut(node_id) else {
             return;
@@ -18,11 +18,11 @@ impl WindowEntry {
         match kind {
             AttributeKind::Element(name) => {
                 if let Some(el) = node.as_element_mut() {
-                    el.set_str_attr(name, value);
+                    el.set_attr(name, value);
                 }
             }
             AttributeKind::Style(prop, variant) => {
-                set_style_str(node, prop, variant, value, self.rem_base)
+                set_style_attr(node, prop, variant, value, self.rem_base)
             }
         };
 
@@ -79,20 +79,22 @@ impl WindowEntry {
     }
 }
 
-fn set_style_str(
+fn set_style_attr(
     node: &mut Node,
     prop: StyleProp,
     variant: StyleVariant,
-    value: &str,
+    value: AttrValue<'_>,
     rem_base: f32,
 ) {
     if variant != StyleVariant::Base {
-        return set_variant_style_str(node, prop, variant, value, rem_base);
+        return set_variant_style_attr(node, prop, variant, value, rem_base);
     }
 
     match prop {
         StyleProp::Scroll | StyleProp::ScrollX | StyleProp::ScrollY | StyleProp::TextSelect => {
-            set_f32_style_prop(node, prop, if parse_bool(value) { 1.0 } else { 0.0 })
+            if let Some(value) = value.parse_bool() {
+                set_bool_style_prop(node, prop, value);
+            }
         }
         StyleProp::W
         | StyleProp::H
@@ -102,12 +104,12 @@ fn set_style_str(
         | StyleProp::Right
         | StyleProp::Bottom
         | StyleProp::Left => {
-            if let Some(length) = parse_length(value, rem_base) {
+            if let Some(length) = value.parse_length(rem_base) {
                 set_length_style_prop(&mut node.style, prop, length)
             }
         }
         StyleProp::Gap => {
-            if let Some(length) = parse_definite_length(value, rem_base) {
+            if let Some(length) = value.parse_definite_length(rem_base) {
                 set_gap_style_prop(&mut node.style, length)
             }
         }
@@ -116,7 +118,9 @@ fn set_style_str(
         | StyleProp::BorderColor
         | StyleProp::ScrollbarColor
         | StyleProp::ScrollbarHoverColor => {
-            if let Some(color) = parse_color(value) {
+            if let Some(value) = value.as_str()
+                && let Some(color) = parse_color(value)
+            {
                 set_color_style_prop(node, prop, color)
             }
         }
@@ -129,56 +133,83 @@ fn set_style_str(
         | StyleProp::WordBreak
         | StyleProp::TextAlign
         | StyleProp::Position => {
-            if set_enum_style_prop_from_str(&mut node.style, prop, value) {
+            if let Some(value) = value.as_str()
+                && set_enum_style_prop_from_str(&mut node.style, prop, value)
+            {
                 remember_inherited_enum(node, prop);
             }
         }
         StyleProp::Cursor => {
-            node.style.cursor = cursor::UzCursorIcon::parse(value);
-        }
-        StyleProp::FontWeight => {
-            if let Some(weight) = parse_font_weight_str(value) {
-                set_font_weight(node, weight)
-            } else {
-                clear_style_prop(node, prop, variant)
+            if let Some(value) = value.as_str() {
+                node.style.cursor = cursor::UzCursorIcon::parse(value);
             }
         }
-        StyleProp::FontFamily => set_font_family(node, value),
+        StyleProp::FontWeight => match value {
+            AttrValue::Number(value) if value.is_finite() => {
+                if let Some(weight) = parse_font_weight_number(value as f32) {
+                    set_font_weight(node, weight)
+                } else {
+                    clear_style_prop(node, prop, variant)
+                }
+            }
+            AttrValue::String(value) => {
+                if let Some(weight) = parse_font_weight_str(&value) {
+                    set_font_weight(node, weight)
+                } else {
+                    clear_style_prop(node, prop, variant)
+                }
+            }
+            AttrValue::Number(_) => clear_style_prop(node, prop, variant),
+            AttrValue::Bool(_) => clear_style_prop(node, prop, variant),
+        },
+        StyleProp::FontFamily => {
+            if let Some(value) = value.as_str() {
+                set_font_family(node, value);
+            }
+        }
 
-        StyleProp::Visibility => set_style_number(
-            node,
-            prop,
-            variant,
-            if value == "visible" { 1.0 } else { 0.0 },
-        ),
+        StyleProp::Visibility => match value {
+            AttrValue::Bool(value) => {
+                set_style_number(node, prop, variant, if value { 1.0 } else { 0.0 })
+            }
+            AttrValue::String(value) => set_style_number(
+                node,
+                prop,
+                variant,
+                if value == "visible" { 1.0 } else { 0.0 },
+            ),
+            AttrValue::Number(_) => {}
+        },
         StyleProp::Flex => {
-            if !set_flex_string(&mut node.style, value) {
-                let v = parse_px_scalar(value, rem_base).unwrap_or_default();
+            if let Some(value) = value.as_str()
+                && set_flex_string(&mut node.style, value)
+            {
+                return;
+            }
+            if let Some(v) = value.parse_f32(rem_base) {
                 set_f32_style_prop(node, prop, v); // flex={v} flex = true, flex_grow = v
             }
         }
         _ => {
-            let v = parse_px_scalar(value, rem_base).unwrap_or_default(); // parse with unit
-            set_f32_style_prop(node, prop, v);
+            if let Some(v) = value.parse_f32(rem_base) {
+                set_f32_style_prop(node, prop, v);
+            }
         }
     }
 }
 
-fn set_variant_style_str(
+fn set_variant_style_attr(
     node: &mut Node,
     prop: StyleProp,
     variant: StyleVariant,
-    value: &str,
+    value: AttrValue<'_>,
     rem_base: f32,
 ) {
     match prop {
         StyleProp::Scroll | StyleProp::ScrollX | StyleProp::ScrollY | StyleProp::TextSelect => {
-            set_variant_number(
-                node,
-                prop,
-                variant,
-                if parse_bool(value) { 1.0 } else { 0.0 },
-            )
+            if let Some(value) = value.parse_bool() {
+                set_variant_bool(node, prop, variant, value);
+            }
         }
         StyleProp::W
         | StyleProp::H
@@ -188,14 +219,14 @@ fn set_variant_style_str(
         | StyleProp::Right
         | StyleProp::Bottom
         | StyleProp::Left => {
-            if let Some(length) = parse_length(value, rem_base) {
+            if let Some(length) = value.parse_length(rem_base) {
                 set_variant_length(node, prop, variant, length)
             } else {
                 clear_style_prop(node, prop, variant)
             }
         }
         StyleProp::Gap => {
-            if let Some(length) = parse_definite_length(value, rem_base) {
+            if let Some(length) = value.parse_definite_length(rem_base) {
                 set_variant_gap(node, variant, length)
             } else {
                 clear_style_prop(node, prop, variant)
@@ -206,7 +237,9 @@ fn set_variant_style_str(
         | StyleProp::BorderColor
         | StyleProp::ScrollbarColor
         | StyleProp::ScrollbarHoverColor => {
-            if let Some(color) = parse_color(value) {
+            if let Some(value) = value.as_str()
+                && let Some(color) = parse_color(value)
+            {
                 set_variant_color(node, prop, variant, color)
             }
         }
@@ -219,26 +252,54 @@ fn set_variant_style_str(
         | StyleProp::WordBreak
         | StyleProp::TextAlign
         | StyleProp::Position => {
-            set_variant_enum_from_str(node, prop, variant, value);
-        }
-        StyleProp::Cursor => {
-            get_or_init_variant_style(node, variant).cursor = cursor::UzCursorIcon::parse(value);
-        }
-        StyleProp::FontWeight => {
-            if let Some(weight) = parse_font_weight_str(value) {
-                set_variant_font_weight(node, variant, weight)
+            if let Some(value) = value.as_str() {
+                set_variant_enum_from_str(node, prop, variant, value);
             }
         }
-        StyleProp::FontFamily => set_variant_font_family(node, variant, value),
-        StyleProp::Visibility => set_variant_number(
-            node,
-            prop,
-            variant,
-            if value == "visible" { 1.0 } else { 0.0 },
-        ),
+        StyleProp::Cursor => {
+            if let Some(value) = value.as_str() {
+                get_or_init_variant_style(node, variant).cursor =
+                    cursor::UzCursorIcon::parse(value);
+            }
+        }
+        StyleProp::FontWeight => match value {
+            AttrValue::Number(value) if value.is_finite() => {
+                if let Some(weight) = parse_font_weight_number(value as f32) {
+                    set_variant_font_weight(node, variant, weight)
+                }
+            }
+            AttrValue::String(value) => {
+                if let Some(weight) = parse_font_weight_str(&value) {
+                    set_variant_font_weight(node, variant, weight)
+                }
+            }
+            AttrValue::Number(_) => {}
+            AttrValue::Bool(_) => {}
+        },
+        StyleProp::FontFamily => {
+            if let Some(value) = value.as_str() {
+                set_variant_font_family(node, variant, value);
+            }
+        }
+        StyleProp::Visibility => match value {
+            AttrValue::Bool(value) => {
+                set_variant_number(node, prop, variant, if value { 1.0 } else { 0.0 })
+            }
+            AttrValue::String(value) => set_variant_number(
+                node,
+                prop,
+                variant,
+                if value == "visible" { 1.0 } else { 0.0 },
+            ),
+            AttrValue::Number(_) => {}
+        },
         StyleProp::Flex => {
-            if !set_variant_flex_string(node, variant, value) {
-                let v = parse_px_scalar(value, rem_base).unwrap_or_default();
+            if let Some(value) = value.as_str()
+                && set_variant_flex_string(node, variant, value)
+            {
+                return;
+            }
+            if let Some(v) = value.parse_f32(rem_base) {
                 set_variant_number(node, prop, variant, v)
             }
         }
@@ -249,12 +310,14 @@ fn set_variant_style_str(
         | StyleProp::Scale
         | StyleProp::ScaleX
         | StyleProp::ScaleY => {
-            let v = parse_px_scalar(value, rem_base).unwrap_or_default();
-            set_variant_number(node, prop, variant, v)
+            if let Some(v) = value.parse_f32(rem_base) {
+                set_variant_number(node, prop, variant, v)
+            }
         }
         _ => {
-            let v = parse_px_scalar(value, rem_base).unwrap_or_default();
-            set_variant_number(node, prop, variant, v)
+            if let Some(v) = value.parse_f32(rem_base) {
+                set_variant_number(node, prop, variant, v)
+            }
         }
     }
 }
@@ -866,10 +929,10 @@ fn parse_font_weight_number(value: f32) -> Option<FontWeight> {
     }
 }
 
-fn set_f32_style_prop(node: &mut Node, prop: StyleProp, v: f32) {
+fn set_bool_style_prop(node: &mut Node, prop: StyleProp, value: bool) {
     match prop {
         StyleProp::Scroll => {
-            if v > 0.5 {
+            if value {
                 node.style.overflow_x = Overflow::Auto;
                 node.style.overflow_y = Overflow::Auto;
             } else {
@@ -879,7 +942,7 @@ fn set_f32_style_prop(node: &mut Node, prop: StyleProp, v: f32) {
             }
         }
         StyleProp::ScrollX => {
-            if v > 0.5 {
+            if value {
                 node.style.overflow_x = Overflow::Auto;
             } else {
                 node.style.overflow_x = Overflow::Visible;
@@ -889,7 +952,7 @@ fn set_f32_style_prop(node: &mut Node, prop: StyleProp, v: f32) {
             }
         }
         StyleProp::ScrollY => {
-            if v > 0.5 {
+            if value {
                 node.style.overflow_y = Overflow::Auto;
             } else {
                 node.style.overflow_y = Overflow::Visible;
@@ -899,13 +962,19 @@ fn set_f32_style_prop(node: &mut Node, prop: StyleProp, v: f32) {
             }
         }
         StyleProp::TextSelect => {
-            let text_selectable = (v > 0.5).into();
+            let text_selectable = value.into();
             node.set_text_selectable(text_selectable);
             node.style_variants.base_style.text_selectable = Some(text_selectable);
         }
         _ => {}
     }
+}
 
+fn set_variant_bool(node: &mut Node, prop: StyleProp, variant: StyleVariant, value: bool) {
+    set_variant_number(node, prop, variant, if value { 1.0 } else { 0.0 });
+}
+
+fn set_f32_style_prop(node: &mut Node, prop: StyleProp, v: f32) {
     match prop {
         StyleProp::TranslateX => {
             node.style.transform.translate_x = v;
@@ -1365,9 +1434,9 @@ mod tests {
     use crate::element::ElementNode;
 
     use super::{
-        Display, FlexDirection, FontWeight, Node, Overflow, StyleVariant, UzStyle,
-        parse_font_weight_number, parse_font_weight_str, set_f32_style_prop, set_flex_string,
-        set_variant_flex_string, set_variant_number,
+        AttrValue, Display, FlexDirection, FontWeight, Node, Overflow, StyleVariant, UzStyle,
+        parse_font_weight_number, parse_font_weight_str, set_bool_style_prop, set_flex_string,
+        set_style_attr, set_variant_bool, set_variant_flex_string,
     };
 
     #[test]
@@ -1425,7 +1494,7 @@ mod tests {
     fn scroll_sets_both_axes_to_auto() {
         let mut node = Node::new(UzStyle::default(), ElementNode::new_view());
 
-        set_f32_style_prop(&mut node, super::StyleProp::Scroll, 1.0);
+        set_bool_style_prop(&mut node, super::StyleProp::Scroll, true);
 
         assert_eq!(node.style.overflow_x, Overflow::Auto);
         assert_eq!(node.style.overflow_y, Overflow::Auto);
@@ -1437,11 +1506,11 @@ mod tests {
     fn variant_scroll_sets_both_axes_to_auto() {
         let mut node = Node::new(UzStyle::default(), ElementNode::new_view());
 
-        set_variant_number(
+        set_variant_bool(
             &mut node,
             super::StyleProp::Scroll,
             StyleVariant::Hover,
-            1.0,
+            true,
         );
 
         let hover = node.style_variants.hover_style.as_ref().unwrap();
@@ -1453,11 +1522,11 @@ mod tests {
     fn string_scroll_true_sets_both_axes_to_auto() {
         let mut node = Node::new(UzStyle::default(), ElementNode::new_view());
 
-        set_style_str(
+        set_style_attr(
             &mut node,
             super::StyleProp::Scroll,
             StyleVariant::Base,
-            "true",
+            AttrValue::String("true".into()),
             16.0,
         );
 
@@ -1473,11 +1542,11 @@ mod tests {
         node.scroll_state.scroll_offset_x = 10.0;
         node.scroll_state.scroll_offset_y = 20.0;
 
-        set_style_str(
+        set_style_attr(
             &mut node,
             super::StyleProp::Scroll,
             StyleVariant::Base,
-            "false",
+            AttrValue::String("false".into()),
             16.0,
         );
 

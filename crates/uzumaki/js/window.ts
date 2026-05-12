@@ -87,7 +87,7 @@ export class Window {
     if (rootStyles) {
       const root = this.root;
       for (const [key, value] of Object.entries(rootStyles)) {
-        if (value != null) root.setAttribute(key, value);
+        if (value != null) root.setAttribute(key, value as never);
       }
     }
 
