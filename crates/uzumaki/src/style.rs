@@ -626,8 +626,9 @@ pub struct UzStyle {
     /// Whether text within this element is selectable.
     /// None = inherit from parent (default). Some(true) = selectable, Some(false) = not.
     pub text_selectable: TextSelectable,
-    // TODO: move these out of UzStyle.
     pub cursor: Option<UzCursorIcon>,
+
+    // TODO: move these out of UzStyle.
     #[refineable]
     pub transform: TransformStyle,
     #[refineable]

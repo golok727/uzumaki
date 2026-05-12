@@ -43,7 +43,6 @@ impl UIState {
             return;
         }
 
-        // todo figure out a way to get this
         let parent_display = self.nodes[node_id].computed_style().display;
 
         let mut has_inline_nodes = false;
