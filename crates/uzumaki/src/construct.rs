@@ -20,23 +20,16 @@ impl UIState {
     }
 
     fn tear_down_anonymous_nodes(&mut self) {
-        let anon_ids: Vec<UzNodeId> = self
-            .nodes
-            .iter()
-            .filter(|(_, n)| n.flags.is_anonymous())
-            .map(|(id, _)| id)
-            .collect();
-
-        for id in &anon_ids {
-            self.nodes.remove(*id);
-        }
+        self.nodes.retain(|_, node| !node.flags.is_anonymous());
 
         for (_, node) in self.nodes.iter_mut() {
             node.layout_children = None;
             node.layout_parent = node.parent;
+
             if let Some(element) = node.as_element_mut() {
                 element.inline_layout = None;
             }
+
             node.flags.reset_construction_flags();
         }
     }
@@ -50,17 +43,24 @@ impl UIState {
             return;
         }
 
-        // todo computed style or something ?
+        // todo figure out a way to get this
         let parent_display = self.nodes[node_id].interactivity.computed_style.display;
-        let kinds: Vec<bool> = children
-            .iter()
-            .map(|&c| self.nodes.get(c).is_some_and(|n| n.is_inline_level()))
-            .collect();
 
-        let any_inline = kinds.iter().any(|&v| v);
-        let any_block = kinds.iter().any(|&v| !v);
+        let mut has_inline_nodes = false;
+        let mut has_block_nodes = false;
 
-        if !any_inline {
+        for &cid in &children {
+            let is_inline = self.nodes.get(cid).is_some_and(|n| n.is_inline_level());
+
+            has_inline_nodes |= is_inline;
+            has_block_nodes |= !is_inline;
+
+            if has_inline_nodes && has_block_nodes {
+                break;
+            }
+        }
+
+        if !has_inline_nodes {
             // Pure block container: layout_children == children.
             for &cid in &children {
                 if let Some(child) = self.nodes.get_mut(cid) {
@@ -85,7 +85,7 @@ impl UIState {
             return;
         }
 
-        if !any_block && parent_display != Display::Flex {
+        if !has_block_nodes && parent_display != Display::Flex {
             self.set_inline_layout(node_id, self.collect_inline_layout(&children));
             self.nodes[node_id].layout_children = Some(Vec::new());
             self.nodes[node_id].flags.insert(NodeFlags::INLINE_ROOT);
@@ -104,11 +104,15 @@ impl UIState {
         let mut layout_children: Vec<UzNodeId> = Vec::with_capacity(children.len());
         let mut open_wrapper: Option<UzNodeId> = None;
 
-        for (i, &cid) in children.iter().enumerate() {
+        for cid in children {
+            let Some(node) = self.nodes.get(cid) else {
+                continue;
+            };
+
             let should_wrap = if parent_display == Display::Flex {
-                self.nodes.get(cid).is_some_and(|n| n.is_text_node())
+                node.is_text_node()
             } else {
-                kinds[i]
+                node.is_inline_level()
             };
 
             if should_wrap {
