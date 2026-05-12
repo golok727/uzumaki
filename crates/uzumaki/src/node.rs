@@ -153,9 +153,12 @@ impl Node {
         Self {
             parent: None,
             children: Vec::new(),
-            default_style,
+            default_style: default_style.clone(),
             data: data.into(),
-            interactivity: Interactivity::default(),
+            interactivity: Interactivity {
+                computed_style: default_style,
+                ..Default::default()
+            },
             hitbox_id: None,
             scroll_state: ScrollState::new(),
             final_layout: taffy::Layout::new(),

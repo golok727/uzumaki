@@ -2,7 +2,7 @@ use crate::cursor::UzCursorIcon;
 use crate::node::UzNodeId;
 
 use crate::prop_keys::StyleVariant;
-use crate::style::{Bounds, ScrollbarStyle, TextSelectable, UzStyleRefinement};
+use crate::style::{Bounds, ScrollbarStyle, TextSelectable, UzStyle, UzStyleRefinement};
 use vello::kurbo::{Affine, Point};
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
@@ -171,6 +171,7 @@ pub struct Interactivity {
 
     pub text_selectable: TextSelectable,
 
+    pub computed_style: UzStyle, // a cache ?
     pub base_style: Box<UzStyleRefinement>,
     pub hover_style: Option<Box<UzStyleRefinement>>,
     pub active_style: Option<Box<UzStyleRefinement>>,

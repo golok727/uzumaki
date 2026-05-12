@@ -6,7 +6,7 @@
 
 use crate::element::{ElementNode, InlineTextEntry, TextLayout};
 use crate::node::{Node, NodeData, NodeFlags, UzNodeId};
-use crate::style::Display;
+use crate::style::{Display, UzStyle};
 use crate::ui::UIState;
 
 impl UIState {
@@ -50,7 +50,8 @@ impl UIState {
             return;
         }
 
-        let parent_display = self.nodes[node_id].style.display;
+        // todo computed style or something ?
+        let parent_display = self.nodes[node_id].interactivity.computed_style.display;
         let kinds: Vec<bool> = children
             .iter()
             .map(|&c| self.nodes.get(c).is_some_and(|n| n.is_inline_level()))
@@ -148,8 +149,13 @@ impl UIState {
     }
 
     fn create_anonymous_block(&mut self, parent_id: UzNodeId) -> UzNodeId {
-        let style = anonymous_block_style(&self.nodes[parent_id].style);
-        let mut node = Node::new(style, NodeData::AnonymousBlock(ElementNode::new_view()));
+        let mut node = Node::new(
+            UzStyle {
+                display: Display::Block,
+                ..Default::default()
+            },
+            NodeData::AnonymousBlock(ElementNode::new_view()),
+        );
         node.flags.insert(NodeFlags::ANONYMOUS);
         node.flags.insert(NodeFlags::INLINE_ROOT);
         node.layout_parent = Some(parent_id);
@@ -206,15 +212,6 @@ impl UIState {
                 self.collect_inline_text_into(&node.children, inline);
             }
         }
-    }
-}
-
-fn anonymous_block_style(parent: &crate::style::UzStyle) -> crate::style::UzStyle {
-    use crate::style::UzStyle;
-    UzStyle {
-        display: Display::Block,
-        text: parent.text.clone(),
-        ..UzStyle::default()
     }
 }
 
