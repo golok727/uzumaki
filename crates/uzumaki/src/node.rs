@@ -1,10 +1,12 @@
 use std::ops::{Deref, DerefMut};
 
+use refineable::Refineable;
+
 use crate::cursor::UzCursorIcon;
 use crate::element::{ElementNode, ImageNode, TextContent};
 use crate::input::InputState;
-use crate::interactivity::{HitboxId, StyleVariants};
-use crate::style::{TextSelectable, UzStyle};
+use crate::interactivity::{HitboxId, Interactivity, StyleSlot};
+use crate::style::{Outline, TextSelectable, UzStyle, UzStyleRefinement};
 
 pub type UzNodeId = usize;
 
@@ -123,19 +125,21 @@ pub struct Node {
 
     pub children: Vec<UzNodeId>,
 
+    default_style: UzStyle,
+
     pub data: NodeData,
 
-    /// The base style for this element. Converted to taffy for layout.
-    pub style: UzStyle,
-    /// Hover/active/focus style refinements.
-    pub style_variants: StyleVariants,
-    /// Hitbox assigned during the latest paint pass. None if not painted yet.
+    pub flags: NodeFlags,
+
+    pub interactivity: Interactivity,
+
     pub hitbox_id: Option<HitboxId>,
-    /// Per-node scroll offsets for content that can scroll on either axis.
+    // nit: we can just use a point
     pub scroll_state: ScrollState,
-    /// Cached taffy layout for this node, copied here after `compute_layout`
-    /// runs. Reading `node.final_layout` avoids the
-    /// `layout_engine.layout(node_id)` two-level lookup on the paint hot path.
+
+    // cache the computed style for a frame
+    computed_style: UzStyle,
+
     pub final_layout: taffy::Layout,
     /// Layout-tree parent. Equals `parent` for normal nodes; for the original
     /// inline children that were wrapped, points at the synthetic anonymous
@@ -145,17 +149,18 @@ pub struct Node {
     /// of `children`. Inserted by the construct phase to splice anonymous
     /// inline wrappers around runs of inline-level children.
     pub layout_children: Option<Vec<UzNodeId>>,
-    pub flags: NodeFlags,
 }
 
 impl Node {
-    pub fn new(style: UzStyle, data: impl Into<NodeData>) -> Self {
+    pub fn new(default_style: UzStyle, data: impl Into<NodeData>) -> Self {
+        // todo should we keep a base style to derive from ?
         Self {
             parent: None,
             children: Vec::new(),
+            default_style: default_style.clone(),
+            computed_style: default_style,
             data: data.into(),
-            style,
-            style_variants: StyleVariants::new(),
+            interactivity: Interactivity::default(),
             hitbox_id: None,
             scroll_state: ScrollState::new(),
             final_layout: taffy::Layout::new(),
@@ -167,17 +172,60 @@ impl Node {
 }
 
 impl Node {
+    pub fn base_style(&mut self) -> &mut UzStyleRefinement {
+        self.style_slot(StyleSlot::Base)
+    }
+
+    pub(crate) fn style_slot(&mut self, variant: StyleSlot) -> &mut UzStyleRefinement {
+        self.interactivity.style_for(variant)
+    }
+
+    pub fn computed_style(&self) -> &UzStyle {
+        &self.computed_style
+    }
+
+    pub fn compute_styles(
+        &mut self,
+        hover: bool,
+        active: bool,
+        focus: bool,
+        parent_style: Option<&UzStyle>,
+    ) {
+        let mut style = self.default_style.clone();
+
+        if let Some(parent_style) = parent_style {
+            style.inherit_from(parent_style, &self.interactivity.base_style);
+        }
+
+        style.refine(&self.interactivity.base_style);
+
+        if hover && let Some(refinement) = &self.interactivity.hover_style {
+            style.refine(refinement);
+        }
+        if active && let Some(refinement) = &self.interactivity.active_style {
+            style.refine(refinement);
+        }
+        if focus && let Some(refinement) = &self.interactivity.focus_style {
+            style.refine(refinement);
+        }
+        if focus && style.outline.is_none() {
+            style.outline = Some(Outline::FOCUS_RING);
+        }
+
+        self.computed_style = style;
+    }
+
     #[inline]
     pub fn text_selectable(&self) -> TextSelectable {
-        self.style.text_selectable
+        self.computed_style().text_selectable
     }
 
     pub fn is_text_selectable(&self) -> bool {
-        self.style.text_selectable.selectable()
+        self.computed_style().text_selectable.selectable()
     }
 
     pub fn set_text_selectable(&mut self, text_selectable: TextSelectable) {
-        self.style.text_selectable = text_selectable
+        self.style_slot(StyleSlot::Base).text_selectable = Some(text_selectable);
     }
 
     pub fn as_text_input(&self) -> Option<&InputState> {
@@ -449,20 +497,6 @@ impl NodeData {
     }
 
     pub fn as_element_mut(&mut self) -> Option<&mut ElementNode> {
-        match self {
-            Self::AnonymousBlock(element) | Self::Element(element) => Some(element),
-            Self::Root | Self::Text(_) => None,
-        }
-    }
-
-    pub fn as_element_kind(&self) -> Option<&ElementNode> {
-        match self {
-            Self::AnonymousBlock(element) | Self::Element(element) => Some(element),
-            Self::Root | Self::Text(_) => None,
-        }
-    }
-
-    pub fn as_element_kind_mut(&mut self) -> Option<&mut ElementNode> {
         match self {
             Self::AnonymousBlock(element) | Self::Element(element) => Some(element),
             Self::Root | Self::Text(_) => None,

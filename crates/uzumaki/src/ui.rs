@@ -158,19 +158,15 @@ impl UIState {
     }
 
     /// Resolve the effective cursor for `node_id`.
-    /// Precedence at the hit node: explicit style -> behavior default -> selectable
-    /// text fallback. Otherwise walk ancestors honoring only explicit overrides.
+    /// Precedence: inherited/authored style -> behavior default -> selectable
+    /// text fallback.
     pub fn resolve_cursor(&self, node_id: UzNodeId) -> UzCursorIcon {
         let Some(node) = self.nodes.get(node_id) else {
             return UzCursorIcon::Default;
         };
 
-        let style = node.style_variants.compute_style(
-            &node.style,
-            node_id,
-            &self.hit_state,
-            self.focused_node == Some(node_id),
-        );
+        let style = node.computed_style();
+
         if let Some(c) = style.cursor {
             return c;
         }
@@ -183,27 +179,6 @@ impl UIState {
             return UzCursorIcon::Text;
         }
 
-        // Walk ancestors. An explicit `cursor` style wins, but if any ancestor
-        // is a text-selectable scope (`selectable` view) we should also show
-        // the text cursor — otherwise an inner non-selectable `<text>` inside
-        // a selectable view never gets the I-beam.
-        let mut cur = node.parent;
-        while let Some(id) = cur {
-            let n = &self.nodes[id];
-            let style = n.style_variants.compute_style(
-                &n.style,
-                id,
-                &self.hit_state,
-                self.focused_node == Some(id),
-            );
-            if let Some(c) = style.cursor {
-                return c;
-            }
-            if n.is_text_selectable() {
-                return UzCursorIcon::Text;
-            }
-            cur = n.parent;
-        }
         UzCursorIcon::Default
     }
 
@@ -272,12 +247,6 @@ impl UIState {
             .expect("checkbox should be an element")
             .set_focussable(true);
         node_id
-    }
-
-    /// Update a node's style. Layout state is rebuilt on the next frame.
-    pub fn set_style(&mut self, node_id: UzNodeId, style: UzStyle) {
-        let node = &mut self.nodes[node_id];
-        node.style = style;
     }
 
     pub fn set_root(&mut self, node_id: UzNodeId) {
@@ -423,8 +392,8 @@ impl UIState {
                 true_viewport,
                 scroller_ref.final_layout.content_size.width,
                 scroller_ref.final_layout.size.width,
-                scroller_ref.style.overflow_x.is_scrollable(),
-                scroller_ref.style.scrollbar.width,
+                scroller_ref.computed_style().overflow_x.is_scrollable(),
+                scroller_ref.computed_style().scrollbar.width,
             ),
             ScrollAxis::X => true_viewport,
         };
@@ -457,8 +426,8 @@ impl UIState {
         loop {
             let node = nodes.get(ancestor)?;
             let scrollable = match axis {
-                ScrollAxis::Y => node.style.overflow_y.is_scrollable(),
-                ScrollAxis::X => node.style.overflow_x.is_scrollable(),
+                ScrollAxis::Y => node.computed_style().overflow_y.is_scrollable(),
+                ScrollAxis::X => node.computed_style().overflow_x.is_scrollable(),
             };
             if scrollable {
                 return Some(ancestor);
@@ -676,16 +645,10 @@ impl UIState {
     }
 
     pub fn compute_layout(&mut self, width: f32, height: f32, text_renderer: &mut TextRenderer) {
+        self.compute_styles();
         self.resolve_layout_children();
-        self.layout_engine.compute_layout(
-            &self.nodes,
-            self.root,
-            &self.hit_state,
-            self.focused_node,
-            width,
-            height,
-            text_renderer,
-        );
+        self.layout_engine
+            .compute_layout(&self.nodes, self.root, width, height, text_renderer);
         self.copy_final_layouts();
         self.refresh_text_layouts(text_renderer);
         if let Some((nid, opts)) = self.pending_scroll_node_into_view.take() {
@@ -693,9 +656,27 @@ impl UIState {
         }
     }
 
-    /// Copy taffy's layout result onto each node so the paint pass can read
-    /// `node.final_layout` directly without going through the layout engine's
-    /// id → taffy_id → slab indirection.
+    fn compute_styles(&mut self) {
+        let Some(root) = self.root else { return };
+        self.compute_styles_at(root, None);
+    }
+
+    fn compute_styles_at(&mut self, node_id: UzNodeId, parent_style: Option<UzStyle>) {
+        let hover = self.hit_state.is_hovered(node_id);
+        let active = self.hit_state.is_active(node_id);
+        let focus = self.focused_node == Some(node_id);
+
+        self.nodes[node_id].compute_styles(hover, active, focus, parent_style.as_ref());
+
+        let computed = self.nodes[node_id].computed_style().clone();
+        let children = self.nodes[node_id].children.clone();
+        for child_id in children {
+            if self.nodes.contains(child_id) {
+                self.compute_styles_at(child_id, Some(computed.clone()));
+            }
+        }
+    }
+
     fn copy_final_layouts(&mut self) {
         for (node_id, node) in self.nodes.iter_mut() {
             node.final_layout = self
@@ -711,16 +692,10 @@ impl UIState {
     /// hit-test then reuse element inline layouts instead of rebuilding.
     fn refresh_text_layouts(&mut self, text_renderer: &mut TextRenderer) {
         let Some(root) = self.root else { return };
-        self.refresh_text_layouts_at(root, None, text_renderer);
+        self.refresh_text_layouts_at(root, text_renderer);
     }
 
-    fn refresh_text_layouts_at(
-        &mut self,
-        node_id: UzNodeId,
-        parent_style: Option<&UzStyle>,
-        text_renderer: &mut TextRenderer,
-    ) {
-        let computed = self.computed_style(node_id, parent_style);
+    fn refresh_text_layouts_at(&mut self, node_id: UzNodeId, text_renderer: &mut TextRenderer) {
         let children = self.nodes[node_id]
             .layout_children
             .clone()
@@ -740,10 +715,11 @@ impl UIState {
             .as_ref()
             .map(|i| i.text.clone());
         if let Some(text) = inline_text {
-            let width = text_layout_width(&self.nodes[node_id].final_layout, &computed);
+            let computed = self.nodes[node_id].computed_style();
+            let width = text_layout_width(&self.nodes[node_id].final_layout, computed);
             let mut segments = Vec::new();
             for cid in &inline_children {
-                self.collect_inline_segments(*cid, Some(&computed), &mut segments);
+                self.collect_inline_segments(*cid, &mut segments);
             }
             let layout = if segments.is_empty() {
                 text_renderer.build_layout(&text, &computed.text, width)
@@ -760,7 +736,8 @@ impl UIState {
                 .get_text_content()
                 .map(|t| t.content.clone())
         {
-            let width = text_layout_width(&self.nodes[node_id].final_layout, &computed);
+            let computed = self.nodes[node_id].computed_style();
+            let width = text_layout_width(&self.nodes[node_id].final_layout, computed);
             let layout = text_renderer.build_layout(&text, &computed.text, width);
             if let Some(element) = self.nodes[node_id].as_element_mut() {
                 let inline_layout = element
@@ -770,45 +747,33 @@ impl UIState {
                 inline_layout.entries.clear();
                 inline_layout.layout = layout;
             }
-        } else {
-            if let Some(element) = self.nodes[node_id].as_element_mut() {
-                element.inline_layout = None;
-            }
+        } else if let Some(element) = self.nodes[node_id].as_element_mut() {
+            element.inline_layout = None;
         }
 
         for cid in children {
-            self.refresh_text_layouts_at(cid, Some(&computed), text_renderer);
+            self.refresh_text_layouts_at(cid, text_renderer);
         }
     }
 
     fn collect_inline_segments(
         &self,
         node_id: UzNodeId,
-        parent_style: Option<&UzStyle>,
         segments: &mut Vec<(UzNodeId, String, TextStyle)>,
     ) {
-        let computed = self.computed_style(node_id, parent_style);
         if let Some(text) = self.nodes[node_id].get_text_content() {
-            segments.push((node_id, text.content.clone(), computed.text));
+            segments.push((
+                node_id,
+                text.content.clone(),
+                self.nodes[node_id].computed_style().text.clone(),
+            ));
             return;
         }
         if self.nodes[node_id].is_inline_level() {
             for &cid in &self.nodes[node_id].children {
-                self.collect_inline_segments(cid, Some(&computed), segments);
+                self.collect_inline_segments(cid, segments);
             }
         }
-    }
-
-    pub(crate) fn computed_style(&self, node_id: UzNodeId, parent: Option<&UzStyle>) -> UzStyle {
-        let node = &self.nodes[node_id];
-        let parent = parent.unwrap_or(&node.style);
-        node.style_variants.compute_style_inherited(
-            &node.style,
-            parent,
-            node_id,
-            &self.hit_state,
-            self.focused_node == Some(node_id),
-        )
     }
 
     /// Run hit test at the given mouse position and update hit_state.
@@ -994,7 +959,8 @@ mod tests {
         let child = dom.create_text_element("pointer".into(), Default::default());
 
         dom.append_child(parent, child);
-        dom.nodes[parent].style.cursor = Some(UzCursorIcon::Pointer);
+        dom.nodes[parent].base_style().cursor = Some(UzCursorIcon::Pointer);
+        // todo we need to compute the styles
 
         assert_eq!(dom.resolve_cursor(child), UzCursorIcon::Pointer);
     }

@@ -55,7 +55,6 @@ impl<'a> Painter<'a> {
             0.0,
             Affine::scale(self.scale),
             Affine::IDENTITY,
-            None,
             scene,
             &text_selections,
         );
@@ -69,7 +68,6 @@ impl<'a> Painter<'a> {
         parent_y: f64,
         parent_paint_transform: Affine,
         parent_hit_transform: Affine,
-        parent_style: Option<&UzStyle>,
         scene: &mut Scene,
         text_selections: &HashMap<UzNodeId, (usize, usize)>,
     ) {
@@ -78,7 +76,7 @@ impl<'a> Painter<'a> {
         };
         let layout = LayoutSnapshot::from(&node_ref.final_layout);
 
-        let computed_style = self.dom.computed_style(node_id, parent_style);
+        let computed_style = node_ref.computed_style().clone();
 
         if computed_style.visibility == Visibility::Hidden
             || computed_style.display == crate::style::Display::None
@@ -154,7 +152,6 @@ impl<'a> Painter<'a> {
                 y - offset_y,
                 child_paint_transform,
                 child_hit_transform,
-                Some(&computed_style),
                 scene,
                 text_selections,
             );
@@ -243,6 +240,7 @@ impl<'a> Painter<'a> {
         {
             let sel = self.compute_inline_selection(node_id);
             if !inline.entries.is_empty() {
+                // todo we should properly render inline box not just text
                 let colors = inline
                     .entries
                     .iter()
@@ -251,19 +249,7 @@ impl<'a> Painter<'a> {
                             .dom
                             .nodes
                             .get(entry.node_id)
-                            .map(|node| {
-                                node.style_variants
-                                    .compute_style_inherited(
-                                        &node.style,
-                                        style,
-                                        entry.node_id,
-                                        &self.dom.hit_state,
-                                        self.dom.focused_node == Some(entry.node_id),
-                                    )
-                                    .text
-                                    .color
-                                    .to_vello()
-                            })
+                            .map(|node| node.computed_style().text.color.to_vello())
                             .unwrap_or_else(|| style.text.color.to_vello());
                         (entry.node_id, color)
                     })

@@ -2,10 +2,9 @@ use slab::Slab;
 
 use crate::{
     element::{ImageMeasureInfo, TextContent},
-    interactivity::HitTestState,
     node::{Node, UzNodeId},
     paint::render,
-    style::{TextStyle, UzStyle},
+    style::TextStyle,
     text::TextRenderer,
 };
 
@@ -61,15 +60,13 @@ impl LayoutEngine {
         &mut self,
         nodes: &Slab<Node>,
         root: Option<UzNodeId>,
-        hit_state: &HitTestState,
-        focused_node: Option<UzNodeId>,
         width: f32,
         height: f32,
         text_renderer: &mut TextRenderer,
     ) {
         self.clear();
         let Some(root) = root else { return };
-        let Some(root_taffy) = self.build_node(nodes, root, None, hit_state, focused_node) else {
+        let Some(root_taffy) = self.build_node(nodes, root) else {
             return;
         };
         self.root = Some(root_taffy);
@@ -93,23 +90,9 @@ impl LayoutEngine {
             .unwrap();
     }
 
-    fn build_node(
-        &mut self,
-        nodes: &Slab<Node>,
-        node_id: UzNodeId,
-        parent_style: Option<&UzStyle>,
-        hit_state: &HitTestState,
-        focused_node: Option<UzNodeId>,
-    ) -> Option<taffy::NodeId> {
+    fn build_node(&mut self, nodes: &Slab<Node>, node_id: UzNodeId) -> Option<taffy::NodeId> {
         let node = nodes.get(node_id)?;
-        let parent = parent_style.unwrap_or(&node.style);
-        let style = node.style_variants.compute_style_inherited(
-            &node.style,
-            parent,
-            node_id,
-            hit_state,
-            focused_node == Some(node_id),
-        );
+        let style = node.computed_style();
 
         let mut children = Vec::new();
         let layout_children: &[UzNodeId] = node
@@ -117,9 +100,7 @@ impl LayoutEngine {
             .as_deref()
             .unwrap_or(node.children.as_slice());
         for &child_id in layout_children {
-            if let Some(taffy_child) =
-                self.build_node(nodes, child_id, Some(&style), hit_state, focused_node)
-            {
+            if let Some(taffy_child) = self.build_node(nodes, child_id) {
                 children.push(taffy_child);
             }
         }
