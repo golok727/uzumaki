@@ -42,14 +42,6 @@ impl AttrValue<'_> {
 }
 
 #[derive(Copy, Clone, Debug, Eq, PartialEq)]
-pub(crate) enum StyleVariant {
-    Base,
-    Hover,
-    Active,
-    Focus,
-}
-
-#[derive(Copy, Clone, Debug, Eq, PartialEq)]
 pub(crate) enum StyleProp {
     W,
     H,

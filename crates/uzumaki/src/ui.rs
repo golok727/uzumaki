@@ -274,12 +274,6 @@ impl UIState {
         node_id
     }
 
-    /// Update a node's style. Layout state is rebuilt on the next frame.
-    pub fn set_style(&mut self, node_id: UzNodeId, style: UzStyle) {
-        let node = &mut self.nodes[node_id];
-        node.style = style;
-    }
-
     pub fn set_root(&mut self, node_id: UzNodeId) {
         self.root = Some(node_id);
     }

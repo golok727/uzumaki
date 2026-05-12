@@ -6,8 +6,6 @@ use vello::peniko::Color as VelloColor;
 
 use crate::SharedString;
 use crate::cursor::UzCursorIcon;
-use crate::element::ElementNode;
-use crate::node::Node;
 use crate::text::TextBrush;
 
 #[derive(Clone, Copy, Debug, PartialEq)]
@@ -446,6 +444,7 @@ impl TextSelectable {
         (!matches!(self, Self::Inherit)).then_some(self == &Self::True)
     }
 
+    #[inline]
     pub fn selectable(&self) -> bool {
         self == &Self::True
     }
@@ -676,31 +675,7 @@ impl UzStyle {
         self.text_selectable = parent.text_selectable;
     }
 
-    pub fn default_for_node(node: &Node) -> Self {
-        // todo find a beter way
-        fn default_for_element_node(node: &ElementNode) -> UzStyle {
-            match &node.data {
-                crate::element::ElementData::Text(_) => UzStyle::default_for_element("text"),
-                crate::element::ElementData::TextInput(_) => UzStyle::default_for_element("input"),
-                crate::element::ElementData::CheckboxInput(_) => {
-                    UzStyle::default_for_element("checkbox")
-                }
-                _ => Default::default(),
-            }
-        }
-
-        match &node.data {
-            crate::node::NodeData::Root => Default::default(),
-            crate::node::NodeData::Text(_) => Self::default_for_element("text"),
-            crate::node::NodeData::Element(element_node) => default_for_element_node(element_node),
-            crate::node::NodeData::AnonymousBlock(element_node) => {
-                // todo idk
-                default_for_element_node(element_node)
-            }
-        }
-    }
-
-    /// todo remove
+    /// todo find a better place
     pub fn default_for_element(element_type: &str) -> Self {
         match element_type {
             "view" => Self {

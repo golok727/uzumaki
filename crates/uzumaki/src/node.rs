@@ -5,8 +5,8 @@ use refineable::Refineable;
 use crate::cursor::UzCursorIcon;
 use crate::element::{ElementNode, ImageNode, TextContent};
 use crate::input::InputState;
-use crate::interactivity::{HitboxId, Interactivity, StyleVariants};
-use crate::style::{TextSelectable, UzStyle};
+use crate::interactivity::{HitboxId, Interactivity, StyleVariantKind};
+use crate::style::{TextSelectable, UzStyle, UzStyleRefinement};
 
 pub type UzNodeId = usize;
 
@@ -125,14 +125,12 @@ pub struct Node {
 
     pub children: Vec<UzNodeId>,
 
+    default_style: UzStyle,
     pub data: NodeData,
 
     pub flags: NodeFlags,
 
     pub interactivity: Interactivity,
-    // todo remove both
-    pub style: UzStyle,
-    pub style_variants: StyleVariants,
 
     pub hitbox_id: Option<HitboxId>,
     // nit: we can just use a point
@@ -150,14 +148,14 @@ pub struct Node {
 }
 
 impl Node {
-    pub fn new(style: UzStyle, data: impl Into<NodeData>) -> Self {
+    pub fn new(default_style: UzStyle, data: impl Into<NodeData>) -> Self {
+        // todo should we keep a base style to derive from ?
         Self {
             parent: None,
             children: Vec::new(),
+            default_style,
             data: data.into(),
             interactivity: Interactivity::default(),
-            style,
-            style_variants: StyleVariants::new(),
             hitbox_id: None,
             scroll_state: ScrollState::new(),
             final_layout: taffy::Layout::new(),
@@ -169,9 +167,13 @@ impl Node {
 }
 
 impl Node {
-    pub fn primary_styles(&self, hover: bool, active: bool, focus: bool) -> UzStyle {
-        // todo inherit from parent ?
-        let mut style = UzStyle::default_for_node(self);
+    pub fn style_for(&mut self, variant: StyleVariantKind) -> &mut UzStyleRefinement {
+        self.interactivity.style_for(variant)
+    }
+
+    pub fn computed_styles(&self, hover: bool, active: bool, focus: bool) -> UzStyle {
+        // todo inherit from parent
+        let mut style = self.default_style.clone();
 
         style.refine(&self.interactivity.base_style);
 
@@ -185,20 +187,22 @@ impl Node {
             style.refine(refinement);
         }
 
+        // todo we need to enable the outline style if there is focus but no explicit outline was set
+
         style
     }
 
     #[inline]
     pub fn text_selectable(&self) -> TextSelectable {
-        self.style.text_selectable
+        self.interactivity.text_selectable
     }
 
     pub fn is_text_selectable(&self) -> bool {
-        self.style.text_selectable.selectable()
+        self.interactivity.text_selectable.selectable()
     }
 
     pub fn set_text_selectable(&mut self, text_selectable: TextSelectable) {
-        self.style.text_selectable = text_selectable
+        self.interactivity.text_selectable = text_selectable
     }
 
     pub fn as_text_input(&self) -> Option<&InputState> {
