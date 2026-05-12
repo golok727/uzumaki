@@ -2,6 +2,8 @@ use std::{ops::Deref, str::FromStr};
 
 use serde::Deserialize;
 
+use crate::interactivity::StyleVariantKind;
+
 #[derive(Clone, Debug, Deserialize)]
 pub(crate) struct AttrValue<'a>(pub &'a str);
 
@@ -119,7 +121,7 @@ pub(crate) enum StyleProp {
 
 #[derive(Copy, Clone, Debug, Eq, PartialEq)]
 pub(crate) enum AttributeKind<'a> {
-    Style(StyleProp, StyleVariant),
+    Style(StyleProp, StyleVariantKind),
     Element(&'a str),
 }
 
@@ -128,23 +130,23 @@ impl<'a> AttributeKind<'a> {
         if let Some(rest) = name.strip_prefix("hover:")
             && let Ok(prop) = rest.parse::<StyleProp>()
         {
-            return Self::Style(prop, StyleVariant::Hover);
+            return Self::Style(prop, StyleVariantKind::Hover);
         }
 
         if let Some(rest) = name.strip_prefix("active:")
             && let Ok(prop) = rest.parse::<StyleProp>()
         {
-            return Self::Style(prop, StyleVariant::Active);
+            return Self::Style(prop, StyleVariantKind::Active);
         }
 
         if let Some(rest) = name.strip_prefix("focus:")
             && let Ok(prop) = rest.parse::<StyleProp>()
         {
-            return Self::Style(prop, StyleVariant::Focus);
+            return Self::Style(prop, StyleVariantKind::Focus);
         }
 
         if let Ok(prop) = name.parse::<StyleProp>() {
-            return Self::Style(prop, StyleVariant::Base);
+            return Self::Style(prop, StyleVariantKind::Base);
         }
 
         Self::Element(name)
