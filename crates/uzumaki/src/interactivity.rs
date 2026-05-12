@@ -1,7 +1,6 @@
 use crate::cursor::UzCursorIcon;
 use crate::node::UzNodeId;
 
-use crate::prop_keys::StyleVariant;
 use crate::style::{Bounds, ScrollbarStyle, TextSelectable, UzStyle, UzStyleRefinement};
 use vello::kurbo::{Affine, Point};
 
