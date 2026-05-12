@@ -368,6 +368,20 @@ impl FontWeight {
             Self::Black => parley::FontWeight::BLACK,
         }
     }
+
+    pub fn as_f16(weight: FontWeight) -> u16 {
+        match weight {
+            FontWeight::Thin => 100,
+            FontWeight::ExtraLight => 200,
+            FontWeight::Light => 300,
+            FontWeight::Regular => 400,
+            FontWeight::Medium => 500,
+            FontWeight::SemiBold => 600,
+            FontWeight::Bold => 700,
+            FontWeight::ExtraBold => 800,
+            FontWeight::Black => 900,
+        }
+    }
 }
 
 pub use parley::{OverflowWrap, WordBreak};

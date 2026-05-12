@@ -78,7 +78,273 @@ fn set_node_style(
     variant: StyleVariantKind,
     value: AttrValue<'_>,
 ) {
-    todo!()
+    const REM_BASE: f32 = 16.0;
+
+    let Some(node) = dom.nodes.get_mut(node_id) else {
+        return;
+    };
+
+    match prop {
+        StyleProp::W
+        | StyleProp::H
+        | StyleProp::MinW
+        | StyleProp::MinH
+        | StyleProp::Top
+        | StyleProp::Right
+        | StyleProp::Bottom
+        | StyleProp::Left => {
+            if let Some(length) = value.parse_length(REM_BASE) {
+                set_variant_length(node, prop, variant, length);
+            }
+        }
+        StyleProp::P => {
+            if let Some(value) = value.parse_f32(REM_BASE) {
+                let style = node.style_for(variant);
+                style.padding.top = Some(value);
+                style.padding.right = Some(value);
+                style.padding.bottom = Some(value);
+                style.padding.left = Some(value);
+            }
+        }
+        StyleProp::Px => {
+            if let Some(value) = value.parse_f32(REM_BASE) {
+                let style = node.style_for(variant);
+                style.padding.left = Some(value);
+                style.padding.right = Some(value);
+            }
+        }
+        StyleProp::Py => {
+            if let Some(value) = value.parse_f32(REM_BASE) {
+                let style = node.style_for(variant);
+                style.padding.top = Some(value);
+                style.padding.bottom = Some(value);
+            }
+        }
+        StyleProp::Pt => node.style_for(variant).padding.top = value.parse_f32(REM_BASE),
+        StyleProp::Pb => node.style_for(variant).padding.bottom = value.parse_f32(REM_BASE),
+        StyleProp::Pl => node.style_for(variant).padding.left = value.parse_f32(REM_BASE),
+        StyleProp::Pr => node.style_for(variant).padding.right = value.parse_f32(REM_BASE),
+        StyleProp::M => {
+            if let Some(value) = value.parse_f32(REM_BASE) {
+                let style = node.style_for(variant);
+                style.margin.top = Some(value);
+                style.margin.right = Some(value);
+                style.margin.bottom = Some(value);
+                style.margin.left = Some(value);
+            }
+        }
+        StyleProp::Mx => {
+            if let Some(value) = value.parse_f32(REM_BASE) {
+                let style = node.style_for(variant);
+                style.margin.left = Some(value);
+                style.margin.right = Some(value);
+            }
+        }
+        StyleProp::My => {
+            if let Some(value) = value.parse_f32(REM_BASE) {
+                let style = node.style_for(variant);
+                style.margin.top = Some(value);
+                style.margin.bottom = Some(value);
+            }
+        }
+        StyleProp::Mt => node.style_for(variant).margin.top = value.parse_f32(REM_BASE),
+        StyleProp::Mb => node.style_for(variant).margin.bottom = value.parse_f32(REM_BASE),
+        StyleProp::Ml => node.style_for(variant).margin.left = value.parse_f32(REM_BASE),
+        StyleProp::Mr => node.style_for(variant).margin.right = value.parse_f32(REM_BASE),
+        StyleProp::Flex => {
+            if set_variant_flex_string(node, variant, value.as_str()) {
+                return;
+            }
+            let parsed_f32 = value.parse_f32(REM_BASE);
+            let parsed_bool = value.parse_bool();
+            let style = node.style_for(variant);
+            if let Some(value) = parsed_f32 {
+                style.display = Some(Display::Flex);
+                style.flex_grow = Some(value);
+            } else if parsed_bool {
+                style.display = Some(Display::Flex);
+            } else {
+                style.display = Some(Display::Block);
+                style.flex_grow = Some(0.0);
+            }
+        }
+        StyleProp::FlexDir
+        | StyleProp::FlexWrap
+        | StyleProp::Items
+        | StyleProp::Justify
+        | StyleProp::Display
+        | StyleProp::WordBreak
+        | StyleProp::TextAlign
+        | StyleProp::TextWrap
+        | StyleProp::Position => {
+            set_variant_enum_from_str(node, prop, variant, value.as_str());
+        }
+        StyleProp::FlexGrow => node.style_for(variant).flex_grow = value.parse_f32(REM_BASE),
+        StyleProp::FlexShrink => node.style_for(variant).flex_shrink = value.parse_f32(REM_BASE),
+        StyleProp::Gap => {
+            if let Some(length) = value.parse_definite_length(REM_BASE) {
+                set_variant_gap(node, variant, length);
+            }
+        }
+        StyleProp::Bg
+        | StyleProp::Color
+        | StyleProp::BorderColor
+        | StyleProp::OutlineColor
+        | StyleProp::ScrollbarColor
+        | StyleProp::ScrollbarHoverColor
+        | StyleProp::ScrollbarActiveColor => {
+            if let Some(color) = crate::parse::parse_color(value.as_str()) {
+                set_variant_color(node, prop, variant, color);
+            }
+        }
+        StyleProp::FontSize => node.style_for(variant).text.font_size = value.parse_f32(REM_BASE),
+        StyleProp::FontWeight => {
+            if let Some(weight) = parse_font_weight_str(value.as_str()) {
+                node.style_for(variant).text.font_weight = Some(weight);
+            }
+        }
+        StyleProp::FontFamily => {
+            let value = value.as_str().trim();
+            if !value.is_empty() {
+                node.style_for(variant).text.font_family = Some(value.into());
+            }
+        }
+        StyleProp::Rounded => {
+            if let Some(value) = value.parse_f32(REM_BASE) {
+                let style = node.style_for(variant);
+                style.corner_radii.top_left = Some(value);
+                style.corner_radii.top_right = Some(value);
+                style.corner_radii.bottom_right = Some(value);
+                style.corner_radii.bottom_left = Some(value);
+            }
+        }
+        StyleProp::RoundedTL => {
+            node.style_for(variant).corner_radii.top_left = value.parse_f32(REM_BASE)
+        }
+        StyleProp::RoundedTR => {
+            node.style_for(variant).corner_radii.top_right = value.parse_f32(REM_BASE)
+        }
+        StyleProp::RoundedBR => {
+            node.style_for(variant).corner_radii.bottom_right = value.parse_f32(REM_BASE)
+        }
+        StyleProp::RoundedBL => {
+            node.style_for(variant).corner_radii.bottom_left = value.parse_f32(REM_BASE)
+        }
+        StyleProp::Border => {
+            if let Some(value) = value.parse_f32(REM_BASE) {
+                let style = node.style_for(variant);
+                style.border_widths.top = Some(value);
+                style.border_widths.right = Some(value);
+                style.border_widths.bottom = Some(value);
+                style.border_widths.left = Some(value);
+            }
+        }
+        StyleProp::BorderTop => {
+            node.style_for(variant).border_widths.top = value.parse_f32(REM_BASE)
+        }
+        StyleProp::BorderRight => {
+            node.style_for(variant).border_widths.right = value.parse_f32(REM_BASE)
+        }
+        StyleProp::BorderBottom => {
+            node.style_for(variant).border_widths.bottom = value.parse_f32(REM_BASE)
+        }
+        StyleProp::BorderLeft => {
+            node.style_for(variant).border_widths.left = value.parse_f32(REM_BASE)
+        }
+        StyleProp::Outline => {
+            if let Some(value) = value.parse_f32(REM_BASE) {
+                let style = node.style_for(variant);
+                let outline = style.outline.get_or_insert(Outline::FOCUS_RING);
+                outline.width = value;
+            }
+        }
+        StyleProp::OutlineOffset => {
+            if let Some(value) = value.parse_f32(REM_BASE) {
+                let style = node.style_for(variant);
+                let outline = style.outline.get_or_insert(Outline::FOCUS_RING);
+                outline.offset = value;
+            }
+        }
+        StyleProp::Opacity => node.style_for(variant).opacity = value.parse_f32(REM_BASE),
+        StyleProp::Cursor => {
+            if let Some(cursor) = UzCursorIcon::parse(value.as_str()) {
+                node.style_for(variant).cursor = Some(cursor);
+            }
+        }
+        StyleProp::Visibility => {
+            if let Some(visibility) = parse_visibility(value.as_str()) {
+                node.style_for(variant).visibility = Some(visibility);
+            }
+        }
+        StyleProp::Scroll => {
+            let parsed_bool = value.parse_bool();
+            let style = node.style_for(variant);
+            let overflow = if parsed_bool {
+                Overflow::Auto
+            } else {
+                Overflow::Visible
+            };
+            style.overflow_x = Some(overflow);
+            style.overflow_y = Some(overflow);
+            if !parsed_bool {
+                node.scroll_state = Default::default();
+            }
+        }
+        StyleProp::ScrollX => {
+            let parsed_bool = value.parse_bool();
+            let style = node.style_for(variant);
+            style.overflow_x = Some(if parsed_bool {
+                Overflow::Auto
+            } else {
+                Overflow::Visible
+            });
+            if !parsed_bool {
+                node.scroll_state.scroll_offset_x = 0.0;
+            }
+        }
+        StyleProp::ScrollY => {
+            let parsed_bool = value.parse_bool();
+            let style = node.style_for(variant);
+            style.overflow_y = Some(if parsed_bool {
+                Overflow::Auto
+            } else {
+                Overflow::Visible
+            });
+            if !parsed_bool {
+                node.scroll_state.scroll_offset_y = 0.0;
+            }
+        }
+        StyleProp::ScrollbarWidth => {
+            node.style_for(variant).scrollbar.width = value.parse_f32(REM_BASE)
+        }
+        StyleProp::ScrollbarRadius => {
+            node.style_for(variant).scrollbar.radius = value.parse_f32(REM_BASE)
+        }
+        StyleProp::TextSelect => {
+            let text_selectable: TextSelectable = value.parse_bool().into();
+            let style = node.style_for(variant);
+            style.text_selectable = Some(text_selectable);
+            if variant == StyleVariantKind::Base {
+                node.set_text_selectable(text_selectable);
+            }
+        }
+        StyleProp::TranslateX => {
+            node.style_for(variant).transform.translate_x = value.parse_f32(REM_BASE)
+        }
+        StyleProp::TranslateY => {
+            node.style_for(variant).transform.translate_y = value.parse_f32(REM_BASE)
+        }
+        StyleProp::Rotate => node.style_for(variant).transform.rotate = value.parse_f32(REM_BASE),
+        StyleProp::Scale => {
+            if let Some(value) = value.parse_f32(REM_BASE) {
+                let style = node.style_for(variant);
+                style.transform.scale_x = Some(value);
+                style.transform.scale_y = Some(value);
+            }
+        }
+        StyleProp::ScaleX => node.style_for(variant).transform.scale_x = value.parse_f32(REM_BASE),
+        StyleProp::ScaleY => node.style_for(variant).transform.scale_y = value.parse_f32(REM_BASE),
+    }
 }
 
 fn clear_node_style(
@@ -87,7 +353,29 @@ fn clear_node_style(
     prop: StyleProp,
     variant: StyleVariantKind,
 ) {
-    todo!()
+    let Some(node) = dom.nodes.get_mut(node_id) else {
+        return;
+    };
+
+    clear_variant_prop(node, prop, variant);
+
+    match prop {
+        StyleProp::Scroll => node.scroll_state = Default::default(),
+        StyleProp::ScrollX => node.scroll_state.scroll_offset_x = 0.0,
+        StyleProp::ScrollY => node.scroll_state.scroll_offset_y = 0.0,
+        StyleProp::TextSelect if variant == StyleVariantKind::Base => {
+            node.set_text_selectable(TextSelectable::Inherit);
+        }
+        _ => {}
+    }
+}
+
+fn parse_visibility(value: &str) -> Option<Visibility> {
+    match value.trim() {
+        "visible" | "show" => Some(Visibility::Visible),
+        "hidden" | "hide" => Some(Visibility::Hidden),
+        _ => None,
+    }
 }
 
 fn set_variant_color(node: &mut Node, prop: StyleProp, variant: StyleVariantKind, color: Color) {
@@ -129,16 +417,6 @@ fn set_variant_gap(node: &mut Node, variant: StyleVariantKind, length: DefiniteL
     let r = node.style_for(variant);
     r.gap.width = Some(length);
     r.gap.height = Some(length);
-}
-
-fn text_wrap_value(value: &str) -> Option<i32> {
-    match value.trim() {
-        "wrap" => Some(0),
-        "nowrap" | "none" => Some(1),
-        "anywhere" => Some(2),
-        "break-word" => Some(3),
-        _ => None,
-    }
 }
 
 fn set_variant_enum_from_str(
@@ -196,11 +474,23 @@ fn set_variant_enum_from_str(
                 _ => return false,
             });
         }
-        StyleProp::TextWrap => {
-            let Some(value) = text_wrap_value(value) else {
-                return false;
-            };
-        }
+        StyleProp::TextWrap => match value {
+            "wrap" => {
+                r.text.overflow_wrap = Some(OverflowWrap::Normal);
+                r.text.word_break = Some(WordBreak::Normal);
+            }
+            "nowrap" | "none" => {
+                r.text.overflow_wrap = Some(OverflowWrap::Normal);
+                r.text.word_break = Some(WordBreak::KeepAll);
+            }
+            "anywhere" => {
+                r.text.overflow_wrap = Some(OverflowWrap::Anywhere);
+            }
+            "break-word" => {
+                r.text.overflow_wrap = Some(OverflowWrap::BreakWord);
+            }
+            _ => return false,
+        },
         StyleProp::WordBreak => {
             r.text.word_break = Some(match value {
                 "normal" => WordBreak::Normal,
