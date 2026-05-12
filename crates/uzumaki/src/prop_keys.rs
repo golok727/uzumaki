@@ -85,18 +85,6 @@ pub(crate) enum StyleProp {
 }
 
 #[derive(Copy, Clone, Debug, Eq, PartialEq)]
-pub(crate) enum ElementProp {
-    Value,
-    Placeholder,
-    Disabled,
-    MaxLength,
-    Multiline,
-    Secure,
-    Checked,
-    Focusable,
-}
-
-#[derive(Copy, Clone, Debug, Eq, PartialEq)]
 pub(crate) enum AttributeKind<'a> {
     Style(StyleProp, StyleVariant),
     Element(&'a str),
@@ -207,25 +195,6 @@ impl FromStr for StyleProp {
             "scale" => Self::Scale,
             "scaleX" => Self::ScaleX,
             "scaleY" => Self::ScaleY,
-            _ => return Err(()),
-        })
-    }
-}
-
-// we should move these to Core*Element
-impl FromStr for ElementProp {
-    type Err = ();
-
-    fn from_str(value: &str) -> Result<Self, Self::Err> {
-        Ok(match value {
-            "value" => Self::Value,
-            "placeholder" => Self::Placeholder,
-            "disabled" => Self::Disabled,
-            "maxLength" => Self::MaxLength,
-            "multiline" => Self::Multiline,
-            "secure" => Self::Secure,
-            "checked" => Self::Checked,
-            "focusable" => Self::Focusable,
             _ => return Err(()),
         })
     }

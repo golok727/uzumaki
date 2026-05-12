@@ -70,9 +70,7 @@ declare module 'uzumaki' {
     removeChild(child: CoreNode): void;
     remove(): void;
     removeChildren(): void;
-    setStrAttribute(name: string, value: string): void;
-    setNumberAttribute(name: string, value: number): void;
-    setBoolAttribute(name: string, value: boolean): void;
+    setAttribute(name: string, value: string): void;
     removeAttribute(name: string): void;
     getAttribute(name: string): unknown;
   }

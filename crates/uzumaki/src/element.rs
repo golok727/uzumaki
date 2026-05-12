@@ -3,8 +3,10 @@ use std::sync::Arc;
 use crate::cursor::UzCursorIcon;
 use crate::input::InputState;
 use crate::node::UzNodeId;
+use crate::parse::{parse_bool, parse_max_length};
 use crate::text::TextBrush;
 use parley::{ContentWidths, Layout as ParleyLayout};
+use serde_json::{Value, json};
 use vello::peniko::Blob;
 
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
@@ -99,6 +101,29 @@ impl ElementNode {
 
     pub fn set_focussable(&mut self, focussable: bool) {
         self.is_focussable = focussable;
+    }
+
+    pub fn set_str_attr(&mut self, name: &str, value: &str) -> bool {
+        if name == "focusable" {
+            self.set_focussable(parse_bool(value));
+            return true;
+        }
+        self.data.set_str_attr(name, value)
+    }
+
+    pub fn clear_attr(&mut self, name: &str) -> bool {
+        if name == "focusable" {
+            self.set_focussable(false);
+            return true;
+        }
+        self.data.clear_attr(name)
+    }
+
+    pub fn get_attr(&self, name: &str) -> Option<Value> {
+        if name == "focusable" {
+            return Some(json!(self.is_focussable()));
+        }
+        self.data.get_attr(name)
     }
 }
 
@@ -310,6 +335,106 @@ impl ElementData {
         match self {
             Self::Image(image) => Some(image),
             _ => None,
+        }
+    }
+
+    pub fn set_str_attr(&mut self, name: &str, value: &str) -> bool {
+        match self {
+            Self::TextInput(input) => match name {
+                "value" => {
+                    input.set_value(value);
+                    true
+                }
+                "placeholder" => {
+                    input.placeholder = value.to_string();
+                    true
+                }
+                "maxLength" => {
+                    let n = value.parse::<f32>().unwrap_or(-1.0);
+                    input.max_length = parse_max_length(n);
+                    true
+                }
+                "disabled" => {
+                    input.disabled = parse_bool(value);
+                    true
+                }
+                "multiline" => {
+                    input.multiline = parse_bool(value);
+                    true
+                }
+                "secure" => {
+                    input.secure = parse_bool(value);
+                    true
+                }
+                _ => false,
+            },
+            Self::CheckboxInput(checked) => match name {
+                "checked" => {
+                    *checked = parse_bool(value);
+                    true
+                }
+                _ => false,
+            },
+            Self::Text(_) | Self::Image(_) | Self::None => false,
+        }
+    }
+
+    pub fn clear_attr(&mut self, name: &str) -> bool {
+        match self {
+            Self::TextInput(input) => match name {
+                "value" => {
+                    input.set_value("");
+                    true
+                }
+                "placeholder" => {
+                    input.placeholder.clear();
+                    true
+                }
+                "maxLength" => {
+                    input.max_length = None;
+                    true
+                }
+                "disabled" => {
+                    input.disabled = false;
+                    true
+                }
+                "multiline" => {
+                    input.multiline = false;
+                    true
+                }
+                "secure" => {
+                    input.secure = false;
+                    true
+                }
+                _ => false,
+            },
+            Self::CheckboxInput(checked) => match name {
+                "checked" => {
+                    *checked = false;
+                    true
+                }
+                _ => false,
+            },
+            Self::Text(_) | Self::Image(_) | Self::None => false,
+        }
+    }
+
+    pub fn get_attr(&self, name: &str) -> Option<Value> {
+        match self {
+            Self::TextInput(input) => match name {
+                "value" => Some(json!(input.text())),
+                "placeholder" => Some(json!(input.placeholder)),
+                "disabled" => Some(json!(input.disabled)),
+                "maxLength" => Some(input.max_length.map_or(Value::Null, |m| json!(m))),
+                "multiline" => Some(json!(input.multiline)),
+                "secure" => Some(json!(input.secure)),
+                _ => None,
+            },
+            Self::CheckboxInput(checked) => match name {
+                "checked" => Some(json!(checked)),
+                _ => None,
+            },
+            Self::Text(_) | Self::Image(_) | Self::None => None,
         }
     }
 }

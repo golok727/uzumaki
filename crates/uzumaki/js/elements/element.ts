@@ -86,13 +86,7 @@ export class Element<M extends UzEventMap = UzEventMap> extends UzNode {
       this.removeAttribute(name);
       return;
     }
-    if (typeof value === 'boolean') {
-      this._native.setBoolAttribute(name, value);
-    } else if (typeof value === 'number') {
-      this._native.setNumberAttribute(name, value);
-    } else {
-      this._native.setStrAttribute(name, String(value));
-    }
+    this._native.setAttribute(name, String(value));
   }
 
   setAttributes(attributes: Record<string, unknown>): void {

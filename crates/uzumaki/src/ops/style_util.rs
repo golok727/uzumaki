@@ -2,86 +2,27 @@ use serde_json::{Value, json};
 
 use crate::app::WindowEntry;
 use crate::node::{Node, UzNodeId};
-use crate::prop_keys::{AttributeKind, ElementProp, StyleProp, StyleVariant};
+use crate::prop_keys::{AttributeKind, StyleProp, StyleVariant};
 use crate::style::*;
 use crate::{SharedString, cursor};
 
 use crate::parse::*;
 
-// TODO
-// - attribute parser  and (simplify code)
-//
-//
-//
-//
-//
 impl WindowEntry {
-    pub fn set_str_attribute(&mut self, node_id: UzNodeId, name: &str, value: &str) {
+    pub fn set_attribute(&mut self, node_id: UzNodeId, name: &str, value: &str) {
         let kind = AttributeKind::parse(name);
+        let Some(node) = self.dom.nodes.get_mut(node_id) else {
+            return;
+        };
 
         match kind {
             AttributeKind::Element(name) => {
-                let Ok(ep) = name.parse::<ElementProp>() else {
-                    return;
-                };
-                let Some(node) = self.dom.nodes.get_mut(node_id) else {
-                    return;
-                };
-                set_element_str(node, ep, value, self.rem_base)
+                if let Some(el) = node.as_element_mut() {
+                    el.set_str_attr(name, value);
+                }
             }
             AttributeKind::Style(prop, variant) => {
-                let Some(node) = self.dom.nodes.get_mut(node_id) else {
-                    return;
-                };
                 set_style_str(node, prop, variant, value, self.rem_base)
-            }
-        };
-
-        self.apply_side_effects(node_id, &kind);
-    }
-
-    pub fn set_number_attribute(&mut self, node_id: UzNodeId, name: &str, value: f64) {
-        let kind = AttributeKind::parse(name);
-
-        match kind {
-            AttributeKind::Element(name) => {
-                let Ok(ep) = name.parse::<ElementProp>() else {
-                    return;
-                };
-                let Some(node) = self.dom.nodes.get_mut(node_id) else {
-                    return;
-                };
-                set_element_number(node, ep, value as f32)
-            }
-            AttributeKind::Style(prop, variant) => {
-                let Some(node) = self.dom.nodes.get_mut(node_id) else {
-                    return;
-                };
-                set_style_number(node, prop, variant, value as f32)
-            }
-        };
-
-        self.apply_side_effects(node_id, &kind);
-    }
-
-    pub fn set_bool_attribute(&mut self, node_id: UzNodeId, name: &str, value: bool) {
-        let kind = AttributeKind::parse(name);
-
-        match kind {
-            AttributeKind::Element(name) => {
-                let Ok(ep) = name.parse::<ElementProp>() else {
-                    return;
-                };
-                let Some(node) = self.dom.nodes.get_mut(node_id) else {
-                    return;
-                };
-                set_element_bool(node, ep, value)
-            }
-            AttributeKind::Style(prop, variant) => {
-                let Some(node) = self.dom.nodes.get_mut(node_id) else {
-                    return;
-                };
-                set_style_number(node, prop, variant, if value { 1.0 } else { 0.0 })
             }
         };
 
@@ -90,23 +31,17 @@ impl WindowEntry {
 
     pub fn clear_attribute(&mut self, node_id: UzNodeId, name: &str) {
         let kind = AttributeKind::parse(name);
+        let Some(node) = self.dom.nodes.get_mut(node_id) else {
+            return;
+        };
 
         match kind {
             AttributeKind::Element(name) => {
-                let Ok(ep) = name.parse::<ElementProp>() else {
-                    return;
-                };
-                let Some(node) = self.dom.nodes.get_mut(node_id) else {
-                    return;
-                };
-                clear_element_prop(node, ep)
+                if let Some(el) = node.as_element_mut() {
+                    el.clear_attr(name);
+                }
             }
-            AttributeKind::Style(prop, variant) => {
-                let Some(node) = self.dom.nodes.get_mut(node_id) else {
-                    return;
-                };
-                clear_style_prop(node, prop, variant)
-            }
+            AttributeKind::Style(prop, variant) => clear_style_prop(node, prop, variant),
         };
 
         self.apply_side_effects(node_id, &kind);
@@ -120,12 +55,10 @@ impl WindowEntry {
         };
 
         match kind {
-            AttributeKind::Element(name) => {
-                let Ok(ep) = name.parse::<ElementProp>() else {
-                    return Value::Null;
-                };
-                get_element_prop(node, ep)
-            }
+            AttributeKind::Element(name) => node
+                .as_element()
+                .and_then(|el| el.get_attr(name))
+                .unwrap_or(Value::Null),
             AttributeKind::Style(prop, _variant) => get_style_prop(node, prop),
         }
     }
@@ -146,164 +79,6 @@ impl WindowEntry {
     }
 }
 
-fn set_element_str(node: &mut Node, prop: ElementProp, value: &str, _rem_base: f32) {
-    match prop {
-        ElementProp::Value => {
-            if let Some(input) = node.as_text_input_mut() {
-                input.set_value(value);
-            }
-        }
-        ElementProp::Placeholder => {
-            if let Some(input) = node.as_text_input_mut() {
-                input.placeholder = value.to_string();
-            }
-        }
-        ElementProp::MaxLength => {
-            if let Some(input) = node.as_text_input_mut() {
-                input.max_length = parse_max_length(value.parse::<f32>().unwrap_or(-1.0));
-            }
-        }
-        ElementProp::Disabled
-        | ElementProp::Multiline
-        | ElementProp::Secure
-        | ElementProp::Checked
-        | ElementProp::Focusable => {
-            set_element_bool(node, prop, parse_bool(value));
-        }
-    }
-}
-
-fn set_element_number(node: &mut Node, prop: ElementProp, value: f32) {
-    match prop {
-        ElementProp::MaxLength => {
-            if let Some(input) = node.as_text_input_mut() {
-                input.max_length = parse_max_length(value);
-            }
-        }
-        ElementProp::Disabled
-        | ElementProp::Multiline
-        | ElementProp::Secure
-        | ElementProp::Checked
-        | ElementProp::Focusable => {
-            set_element_bool(node, prop, value > 0.5);
-        }
-        _ => {}
-    }
-}
-
-fn set_element_bool(node: &mut Node, prop: ElementProp, value: bool) {
-    match prop {
-        ElementProp::Disabled => {
-            if let Some(input) = node.as_text_input_mut() {
-                input.disabled = value;
-            }
-        }
-        ElementProp::Multiline => {
-            if let Some(input) = node.as_text_input_mut() {
-                input.multiline = value;
-            }
-        }
-        ElementProp::Secure => {
-            if let Some(input) = node.as_text_input_mut() {
-                input.secure = value;
-            }
-        }
-        ElementProp::Checked => {
-            if let Some(checked) = node.as_checkbox_input_mut() {
-                *checked = value;
-            }
-        }
-        ElementProp::Focusable => {
-            if let Some(element) = node.as_element_mut() {
-                element.set_focussable(value);
-            }
-        }
-        _ => {}
-    }
-}
-
-fn clear_element_prop(node: &mut Node, prop: ElementProp) {
-    match prop {
-        ElementProp::Value => {
-            if let Some(input) = node.as_text_input_mut() {
-                input.set_value("");
-            }
-        }
-        ElementProp::Placeholder => {
-            if let Some(input) = node.as_text_input_mut() {
-                input.placeholder.clear();
-            }
-        }
-        ElementProp::Disabled => {
-            if let Some(input) = node.as_text_input_mut() {
-                input.disabled = false;
-            }
-        }
-        ElementProp::MaxLength => {
-            if let Some(input) = node.as_text_input_mut() {
-                input.max_length = None;
-            }
-        }
-        ElementProp::Multiline => {
-            if let Some(input) = node.as_text_input_mut() {
-                input.multiline = false;
-            }
-        }
-        ElementProp::Secure => {
-            if let Some(input) = node.as_text_input_mut() {
-                input.secure = false;
-            }
-        }
-        ElementProp::Checked => {
-            if let Some(checked) = node.as_checkbox_input_mut() {
-                *checked = false;
-            }
-        }
-        ElementProp::Focusable => {
-            if let Some(element) = node.as_element_mut() {
-                element.set_focussable(false);
-            }
-        }
-    }
-}
-
-fn get_element_prop(node: &Node, prop: ElementProp) -> Value {
-    match prop {
-        ElementProp::Value => node
-            .as_text_input()
-            .map(|v| json!(v.text()))
-            .unwrap_or(Value::Null),
-        ElementProp::Placeholder => node
-            .as_text_input()
-            .map(|v| json!(v.placeholder))
-            .unwrap_or(Value::Null),
-        ElementProp::Disabled => node
-            .as_text_input()
-            .map(|v| json!(v.disabled))
-            .unwrap_or(Value::Null),
-        ElementProp::MaxLength => node
-            .as_text_input()
-            .map(|v| v.max_length.map_or(Value::Null, |max| json!(max)))
-            .unwrap_or(Value::Null),
-        ElementProp::Multiline => node
-            .as_text_input()
-            .map(|v| json!(v.multiline))
-            .unwrap_or(Value::Null),
-        ElementProp::Secure => node
-            .as_text_input()
-            .map(|v| json!(v.secure))
-            .unwrap_or(Value::Null),
-        ElementProp::Checked => node
-            .as_checkbox_input()
-            .map(|v| json!(v))
-            .unwrap_or(Value::Null),
-        ElementProp::Focusable => node
-            .as_element()
-            .map(|v| json!(v.is_focussable()))
-            .unwrap_or(Value::Null),
-    }
-}
-
 fn set_style_str(
     node: &mut Node,
     prop: StyleProp,
@@ -316,6 +91,9 @@ fn set_style_str(
     }
 
     match prop {
+        StyleProp::Scroll | StyleProp::ScrollX | StyleProp::ScrollY | StyleProp::TextSelect => {
+            set_f32_style_prop(node, prop, if parse_bool(value) { 1.0 } else { 0.0 })
+        }
         StyleProp::W
         | StyleProp::H
         | StyleProp::MinW
@@ -394,6 +172,14 @@ fn set_variant_style_str(
     rem_base: f32,
 ) {
     match prop {
+        StyleProp::Scroll | StyleProp::ScrollX | StyleProp::ScrollY | StyleProp::TextSelect => {
+            set_variant_number(
+                node,
+                prop,
+                variant,
+                if parse_bool(value) { 1.0 } else { 0.0 },
+            )
+        }
         StyleProp::W
         | StyleProp::H
         | StyleProp::MinW
@@ -1661,5 +1447,43 @@ mod tests {
         let hover = node.style_variants.hover_style.as_ref().unwrap();
         assert_eq!(hover.overflow_x, Some(Overflow::Auto));
         assert_eq!(hover.overflow_y, Some(Overflow::Auto));
+    }
+
+    #[test]
+    fn string_scroll_true_sets_both_axes_to_auto() {
+        let mut node = Node::new(UzStyle::default(), ElementNode::new_view());
+
+        set_style_str(
+            &mut node,
+            super::StyleProp::Scroll,
+            StyleVariant::Base,
+            "true",
+            16.0,
+        );
+
+        assert_eq!(node.style.overflow_x, Overflow::Auto);
+        assert_eq!(node.style.overflow_y, Overflow::Auto);
+    }
+
+    #[test]
+    fn string_scroll_false_clears_both_axes() {
+        let mut node = Node::new(UzStyle::default(), ElementNode::new_view());
+        node.style.overflow_x = Overflow::Auto;
+        node.style.overflow_y = Overflow::Auto;
+        node.scroll_state.scroll_offset_x = 10.0;
+        node.scroll_state.scroll_offset_y = 20.0;
+
+        set_style_str(
+            &mut node,
+            super::StyleProp::Scroll,
+            StyleVariant::Base,
+            "false",
+            16.0,
+        );
+
+        assert_eq!(node.style.overflow_x, Overflow::Visible);
+        assert_eq!(node.style.overflow_y, Overflow::Visible);
+        assert_eq!(node.scroll_state.scroll_offset_x, 0.0);
+        assert_eq!(node.scroll_state.scroll_offset_y, 0.0);
     }
 }
