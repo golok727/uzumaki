@@ -243,6 +243,7 @@ impl<'a> Painter<'a> {
         {
             let sel = self.compute_inline_selection(node_id);
             if !inline.entries.is_empty() {
+                // todo we should properly render inline box not just text
                 let colors = inline
                     .entries
                     .iter()
@@ -251,19 +252,7 @@ impl<'a> Painter<'a> {
                             .dom
                             .nodes
                             .get(entry.node_id)
-                            .map(|node| {
-                                node.style_variants
-                                    .compute_style_inherited(
-                                        &node.style,
-                                        style,
-                                        entry.node_id,
-                                        &self.dom.hit_state,
-                                        self.dom.focused_node == Some(entry.node_id),
-                                    )
-                                    .text
-                                    .color
-                                    .to_vello()
-                            })
+                            .map(|node| node.computed_style().text.color.to_vello())
                             .unwrap_or_else(|| style.text.color.to_vello());
                         (entry.node_id, color)
                     })

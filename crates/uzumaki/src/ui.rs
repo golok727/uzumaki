@@ -165,12 +165,8 @@ impl UIState {
             return UzCursorIcon::Default;
         };
 
-        let style = node.style_variants.compute_style(
-            &node.style,
-            node_id,
-            &self.hit_state,
-            self.focused_node == Some(node_id),
-        );
+        let style = node.computed_style();
+
         if let Some(c) = style.cursor {
             return c;
         }
@@ -190,12 +186,7 @@ impl UIState {
         let mut cur = node.parent;
         while let Some(id) = cur {
             let n = &self.nodes[id];
-            let style = n.style_variants.compute_style(
-                &n.style,
-                id,
-                &self.hit_state,
-                self.focused_node == Some(id),
-            );
+            let style = n.computed_style();
             if let Some(c) = style.cursor {
                 return c;
             }
@@ -417,8 +408,8 @@ impl UIState {
                 true_viewport,
                 scroller_ref.final_layout.content_size.width,
                 scroller_ref.final_layout.size.width,
-                scroller_ref.style.overflow_x.is_scrollable(),
-                scroller_ref.style.scrollbar.width,
+                scroller_ref.computed_style().overflow_x.is_scrollable(),
+                scroller_ref.computed_style().scrollbar.width,
             ),
             ScrollAxis::X => true_viewport,
         };
@@ -451,8 +442,8 @@ impl UIState {
         loop {
             let node = nodes.get(ancestor)?;
             let scrollable = match axis {
-                ScrollAxis::Y => node.style.overflow_y.is_scrollable(),
-                ScrollAxis::X => node.style.overflow_x.is_scrollable(),
+                ScrollAxis::Y => node.computed_style().overflow_y.is_scrollable(),
+                ScrollAxis::X => node.computed_style().overflow_x.is_scrollable(),
             };
             if scrollable {
                 return Some(ancestor);
@@ -687,9 +678,6 @@ impl UIState {
         }
     }
 
-    /// Copy taffy's layout result onto each node so the paint pass can read
-    /// `node.final_layout` directly without going through the layout engine's
-    /// id → taffy_id → slab indirection.
     fn copy_final_layouts(&mut self) {
         for (node_id, node) in self.nodes.iter_mut() {
             node.final_layout = self
@@ -988,7 +976,8 @@ mod tests {
         let child = dom.create_text_element("pointer".into(), Default::default());
 
         dom.append_child(parent, child);
-        dom.nodes[parent].style.cursor = Some(UzCursorIcon::Pointer);
+        dom.nodes[parent].base_style().cursor = Some(UzCursorIcon::Pointer);
+        // todo we need to compute the styles
 
         assert_eq!(dom.resolve_cursor(child), UzCursorIcon::Pointer);
     }

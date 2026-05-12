@@ -126,6 +126,7 @@ pub struct Node {
     pub children: Vec<UzNodeId>,
 
     default_style: UzStyle,
+
     pub data: NodeData,
 
     pub flags: NodeFlags,
@@ -135,6 +136,9 @@ pub struct Node {
     pub hitbox_id: Option<HitboxId>,
     // nit: we can just use a point
     pub scroll_state: ScrollState,
+
+    // cache the computed style for a frame
+    computed_style: UzStyle,
 
     pub final_layout: taffy::Layout,
     /// Layout-tree parent. Equals `parent` for normal nodes; for the original
@@ -154,11 +158,9 @@ impl Node {
             parent: None,
             children: Vec::new(),
             default_style: default_style.clone(),
+            computed_style: default_style,
             data: data.into(),
-            interactivity: Interactivity {
-                computed_style: default_style,
-                ..Default::default()
-            },
+            interactivity: Interactivity::default(),
             hitbox_id: None,
             scroll_state: ScrollState::new(),
             final_layout: taffy::Layout::new(),
@@ -170,12 +172,22 @@ impl Node {
 }
 
 impl Node {
+    pub fn base_style(&mut self) -> &mut UzStyleRefinement {
+        self.style_for(StyleVariantKind::Base)
+    }
+
     pub fn style_for(&mut self, variant: StyleVariantKind) -> &mut UzStyleRefinement {
         self.interactivity.style_for(variant)
     }
 
-    pub fn computed_styles(&self, hover: bool, active: bool, focus: bool) -> UzStyle {
-        // todo inherit from parent
+    pub fn computed_style(&self) -> &UzStyle {
+        &self.computed_style
+    }
+
+    pub fn compute_styles<F>(&mut self, hover: bool, active: bool, focus: bool, continuation: F)
+    where
+        F: FnOnce(&mut UzStyle),
+    {
         let mut style = self.default_style.clone();
 
         style.refine(&self.interactivity.base_style);
@@ -190,9 +202,9 @@ impl Node {
             style.refine(refinement);
         }
 
-        // todo we need to enable the outline style if there is focus but no explicit outline was set
+        continuation(&mut style);
 
-        style
+        self.computed_style = style;
     }
 
     #[inline]

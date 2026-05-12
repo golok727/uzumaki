@@ -44,7 +44,7 @@ impl UIState {
         }
 
         // todo figure out a way to get this
-        let parent_display = self.nodes[node_id].interactivity.computed_style.display;
+        let parent_display = self.nodes[node_id].computed_style().display;
 
         let mut has_inline_nodes = false;
         let mut has_block_nodes = false;

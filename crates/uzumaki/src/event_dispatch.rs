@@ -115,11 +115,12 @@ pub struct FocusedInputLayoutMeta {
 pub fn input_layout_meta(dom: &UIState, focused_id: UzNodeId) -> Option<FocusedInputLayoutMeta> {
     let node = dom.nodes.get(focused_id)?;
     let is = node.as_text_input()?;
-    let input_padding = node.style.padding.left;
-    let top_pad = node.style.padding.top;
-    let text_style = node.style.text.clone();
+    let input_padding = node.final_layout.padding.left;
+    let top_pad = node.final_layout.padding.top;
+    let text_style = node.computed_style().text.clone();
     let hb = node.hitbox_id.and_then(|hid| dom.hitbox_store.get(hid))?;
     let layout = &node.final_layout;
+    let padding = node.final_layout.padding;
     Some(FocusedInputLayoutMeta {
         taffy_x: hb.bounds.x,
         taffy_y: hb.bounds.y,
@@ -127,7 +128,7 @@ pub fn input_layout_meta(dom: &UIState, focused_id: UzNodeId) -> Option<FocusedI
         top_pad,
         multiline: is.multiline,
         text_style,
-        input_width: (layout.size.width - node.style.padding.horizontal()).max(0.0),
+        input_width: (layout.size.width - (padding.left + padding.right)).max(0.0),
         input_height: layout.size.height,
     })
 }
@@ -352,8 +353,8 @@ pub fn handle_cursor_moved(
                 let is = node.as_text_input()?;
                 let scroll_offset_x = node.scroll_state.scroll_offset_x;
                 let scroll_offset_y = node.scroll_state.scroll_offset_y;
-                let input_padding = node.style.padding.left as f64;
-                let top_pad = node.style.padding.top;
+                let input_padding = node.final_layout.padding.left as f64;
+                let top_pad = node.final_layout.padding.top;
                 let hb = node
                     .hitbox_id
                     .and_then(|hid| dom.hitbox_store.get(hid))?
@@ -495,8 +496,8 @@ fn hit_text_in_run(
         });
     }
 
-    let relative_x = (mx - bounds.x) as f32 - node.style.padding.left;
-    let relative_y = (my - bounds.y) as f32 - node.style.padding.top;
+    let relative_x = (mx - bounds.x) as f32 - node.final_layout.padding.left;
+    let relative_y = (my - bounds.y) as f32 - node.final_layout.padding.top;
     let (global_offset, affinity) = if let Some(layout) = node
         .as_element()
         .and_then(|element| element.inline_layout.as_ref())
@@ -507,7 +508,7 @@ fn hit_text_in_run(
         let text = node.get_text_content()?;
         text_renderer.hit_to_text_position(
             &text.content,
-            &node.style.text,
+            &node.computed_style().text,
             Some(bounds.width as f32),
             relative_x,
             relative_y,
@@ -574,8 +575,8 @@ fn text_range_at_point(
         return Some((endpoint, endpoint));
     }
 
-    let rel_x = (mx - bounds.x) as f32 - layout_node.style.padding.left;
-    let rel_y = (my - bounds.y) as f32 - layout_node.style.padding.top;
+    let rel_x = (mx - bounds.x) as f32 - layout_node.final_layout.padding.left;
+    let rel_y = (my - bounds.y) as f32 - layout_node.final_layout.padding.top;
     let (global_start, global_end) = if let Some(layout) = layout_node
         .as_element()
         .and_then(|element| element.inline_layout.as_ref())
@@ -590,7 +591,7 @@ fn text_range_at_point(
         let text = layout_node.get_text_content()?;
         text_renderer.line_byte_range_at_point(
             &text.content,
-            &layout_node.style.text,
+            &layout_node.computed_style().text,
             Some(bounds.width as f32),
             rel_x,
             rel_y,
@@ -599,7 +600,7 @@ fn text_range_at_point(
         let text = layout_node.get_text_content()?;
         text_renderer.word_byte_range_at_point(
             &text.content,
-            &layout_node.style.text,
+            &layout_node.computed_style().text,
             Some(bounds.width as f32),
             rel_x,
             rel_y,
@@ -781,8 +782,8 @@ pub fn handle_mouse_input(
                         let is = node.as_text_input().unwrap();
                         let scroll_offset_x = node.scroll_state.scroll_offset_x;
                         let scroll_offset_y = node.scroll_state.scroll_offset_y;
-                        let input_padding = node.style.padding.left as f64;
-                        let top_pad = node.style.padding.top;
+                        let input_padding = node.final_layout.padding.left as f64;
+                        let top_pad = node.final_layout.padding.top;
                         let hb = node
                             .hitbox_id
                             .and_then(|hid| dom.hitbox_store.get(hid))
