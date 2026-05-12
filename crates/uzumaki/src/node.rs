@@ -1,9 +1,11 @@
 use std::ops::{Deref, DerefMut};
 
+use refineable::Refineable;
+
 use crate::cursor::UzCursorIcon;
 use crate::element::{ElementNode, ImageNode, TextContent};
 use crate::input::InputState;
-use crate::interactivity::{HitboxId, StyleVariants};
+use crate::interactivity::{HitboxId, Interactivity, StyleVariants};
 use crate::style::{TextSelectable, UzStyle};
 
 pub type UzNodeId = usize;
@@ -125,17 +127,17 @@ pub struct Node {
 
     pub data: NodeData,
 
-    /// The base style for this element. Converted to taffy for layout.
+    pub flags: NodeFlags,
+
+    pub interactivity: Interactivity,
+    // todo remove both
     pub style: UzStyle,
-    /// Hover/active/focus style refinements.
     pub style_variants: StyleVariants,
-    /// Hitbox assigned during the latest paint pass. None if not painted yet.
+
     pub hitbox_id: Option<HitboxId>,
-    /// Per-node scroll offsets for content that can scroll on either axis.
+    // nit: we can just use a point
     pub scroll_state: ScrollState,
-    /// Cached taffy layout for this node, copied here after `compute_layout`
-    /// runs. Reading `node.final_layout` avoids the
-    /// `layout_engine.layout(node_id)` two-level lookup on the paint hot path.
+
     pub final_layout: taffy::Layout,
     /// Layout-tree parent. Equals `parent` for normal nodes; for the original
     /// inline children that were wrapped, points at the synthetic anonymous
@@ -145,7 +147,6 @@ pub struct Node {
     /// of `children`. Inserted by the construct phase to splice anonymous
     /// inline wrappers around runs of inline-level children.
     pub layout_children: Option<Vec<UzNodeId>>,
-    pub flags: NodeFlags,
 }
 
 impl Node {
@@ -154,6 +155,7 @@ impl Node {
             parent: None,
             children: Vec::new(),
             data: data.into(),
+            interactivity: Interactivity::default(),
             style,
             style_variants: StyleVariants::new(),
             hitbox_id: None,
@@ -167,6 +169,25 @@ impl Node {
 }
 
 impl Node {
+    pub fn primary_styles(&self, hover: bool, active: bool, focus: bool) -> UzStyle {
+        // todo inherit from parent ?
+        let mut style = UzStyle::default_for_node(self);
+
+        style.refine(&self.interactivity.base_style);
+
+        if hover && let Some(refinement) = &self.interactivity.hover_style {
+            style.refine(refinement);
+        }
+        if active && let Some(refinement) = &self.interactivity.active_style {
+            style.refine(refinement);
+        }
+        if focus && let Some(refinement) = &self.interactivity.focus_style {
+            style.refine(refinement);
+        }
+
+        style
+    }
+
     #[inline]
     pub fn text_selectable(&self) -> TextSelectable {
         self.style.text_selectable
@@ -449,20 +470,6 @@ impl NodeData {
     }
 
     pub fn as_element_mut(&mut self) -> Option<&mut ElementNode> {
-        match self {
-            Self::AnonymousBlock(element) | Self::Element(element) => Some(element),
-            Self::Root | Self::Text(_) => None,
-        }
-    }
-
-    pub fn as_element_kind(&self) -> Option<&ElementNode> {
-        match self {
-            Self::AnonymousBlock(element) | Self::Element(element) => Some(element),
-            Self::Root | Self::Text(_) => None,
-        }
-    }
-
-    pub fn as_element_kind_mut(&mut self) -> Option<&mut ElementNode> {
         match self {
             Self::AnonymousBlock(element) | Self::Element(element) => Some(element),
             Self::Root | Self::Text(_) => None,

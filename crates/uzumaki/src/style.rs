@@ -6,6 +6,8 @@ use vello::peniko::Color as VelloColor;
 
 use crate::SharedString;
 use crate::cursor::UzCursorIcon;
+use crate::element::ElementNode;
+use crate::node::Node;
 use crate::text::TextBrush;
 
 #[derive(Clone, Copy, Debug, PartialEq)]
@@ -589,22 +591,19 @@ pub struct UzStyle {
     pub box_shadow: Option<BoxShadow>,
     pub outline: Option<Outline>,
 
-    pub cursor: Option<UzCursorIcon>,
-
     // Text (inherited)
     #[refineable]
     pub text: TextStyle,
 
-    #[refineable]
-    pub transform: TransformStyle,
-
-    #[refineable]
-    pub scrollbar: ScrollbarStyle,
-
     /// Whether text within this element is selectable.
     /// None = inherit from parent (default). Some(true) = selectable, Some(false) = not.
-    /// toro move to style
     pub text_selectable: TextSelectable,
+    // TODO: move these out of UzStyle.
+    pub cursor: Option<UzCursorIcon>,
+    #[refineable]
+    pub transform: TransformStyle,
+    #[refineable]
+    pub scrollbar: ScrollbarStyle,
 }
 
 impl Default for UzStyle {
@@ -677,6 +676,31 @@ impl UzStyle {
         self.text_selectable = parent.text_selectable;
     }
 
+    pub fn default_for_node(node: &Node) -> Self {
+        // todo find a beter way
+        fn default_for_element_node(node: &ElementNode) -> UzStyle {
+            match &node.data {
+                crate::element::ElementData::Text(_) => UzStyle::default_for_element("text"),
+                crate::element::ElementData::TextInput(_) => UzStyle::default_for_element("input"),
+                crate::element::ElementData::CheckboxInput(_) => {
+                    UzStyle::default_for_element("checkbox")
+                }
+                _ => Default::default(),
+            }
+        }
+
+        match &node.data {
+            crate::node::NodeData::Root => Default::default(),
+            crate::node::NodeData::Text(_) => Self::default_for_element("text"),
+            crate::node::NodeData::Element(element_node) => default_for_element_node(element_node),
+            crate::node::NodeData::AnonymousBlock(element_node) => {
+                // todo idk
+                default_for_element_node(element_node)
+            }
+        }
+    }
+
+    /// todo remove
     pub fn default_for_element(element_type: &str) -> Self {
         match element_type {
             "view" => Self {

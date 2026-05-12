@@ -1,6 +1,7 @@
+use crate::cursor::UzCursorIcon;
 use crate::node::UzNodeId;
 
-use crate::style::{Bounds, UzStyle, UzStyleRefinement};
+use crate::style::{Bounds, ScrollbarStyle, TextSelectable, UzStyle, UzStyleRefinement};
 use refineable::Refineable;
 use vello::kurbo::{Affine, Point};
 
@@ -154,6 +155,19 @@ fn transformed_axis_aligned_bounds(bounds: Bounds, transform: Affine) -> Bounds 
     }
 
     Bounds::new(min_x, min_y, max_x - min_x, max_y - min_y)
+}
+
+#[derive(Default)]
+pub struct Interactivity {
+    pub cursor: Option<UzCursorIcon>,
+    pub text_selectable: TextSelectable,
+
+    pub base_style: Box<UzStyleRefinement>,
+    pub hover_style: Option<Box<UzStyleRefinement>>,
+    pub active_style: Option<Box<UzStyleRefinement>>,
+    pub focus_style: Option<Box<UzStyleRefinement>>,
+
+    pub scrollbar: ScrollbarStyle,
 }
 
 /// Holds the style states for an interactive element.
