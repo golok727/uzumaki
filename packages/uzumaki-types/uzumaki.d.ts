@@ -39,7 +39,7 @@ declare module 'uzumaki' {
     closable?: boolean;
     minimizable?: boolean;
     maximizable?: boolean;
-    rootStyles?: Record<string, unknown>;
+    rootStyles?: Record<string, string | number | boolean>;
   }
   interface AppPath {
     readonly resourceDir: string;
@@ -269,8 +269,8 @@ declare module 'uzumaki' {
     ): void;
     emit<K extends keyof M>(name: K, event: M[K]): boolean;
     focus(): void;
-    setAttribute(name: string, value: unknown): void;
-    setAttributes(attributes: Record<string, unknown>): void;
+    setAttribute(name: string, value: string | number | boolean): void;
+    setAttributes(attributes: Record<string, number | string | boolean>): void;
     removeAttribute(name: string): void;
     getAttribute(name: string): unknown;
     destroy(): void;
