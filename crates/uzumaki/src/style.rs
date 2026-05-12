@@ -369,6 +369,21 @@ impl FontWeight {
         }
     }
 
+    pub fn from_f16(value: u16) -> Option<Self> {
+        match value {
+            100 => Some(Self::Thin),
+            200 => Some(Self::ExtraLight),
+            300 => Some(Self::Light),
+            400 => Some(Self::Regular),
+            500 => Some(Self::Medium),
+            600 => Some(Self::SemiBold),
+            700 => Some(Self::Bold),
+            800 => Some(Self::ExtraBold),
+            900 => Some(Self::Black),
+            _ => None,
+        }
+    }
+
     pub fn as_f16(weight: FontWeight) -> u16 {
         match weight {
             FontWeight::Thin => 100,
