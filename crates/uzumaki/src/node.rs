@@ -176,7 +176,7 @@ impl Node {
         self.style_for(StyleVariantKind::Base)
     }
 
-    pub fn style_for(&mut self, variant: StyleVariantKind) -> &mut UzStyleRefinement {
+    pub(crate) fn style_for(&mut self, variant: StyleVariantKind) -> &mut UzStyleRefinement {
         self.interactivity.style_for(variant)
     }
 
@@ -190,6 +190,8 @@ impl Node {
     {
         let mut style = self.default_style.clone();
 
+        continuation(&mut style);
+
         style.refine(&self.interactivity.base_style);
 
         if hover && let Some(refinement) = &self.interactivity.hover_style {
@@ -201,8 +203,6 @@ impl Node {
         if focus && let Some(refinement) = &self.interactivity.focus_style {
             style.refine(refinement);
         }
-
-        continuation(&mut style);
 
         self.computed_style = style;
     }

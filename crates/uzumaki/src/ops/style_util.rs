@@ -1,4 +1,4 @@
-use serde_json::{Value, json};
+use serde_json::Value;
 
 use crate::app::WindowEntry;
 use crate::cursor::UzCursorIcon;
@@ -644,20 +644,6 @@ fn clear_style_prop(node: &mut Node, prop: StyleProp, variant: StyleVariantKind)
     }
 }
 
-fn set_length_style_prop(style: &mut UzStyle, prop: StyleProp, length: Length) {
-    match prop {
-        StyleProp::W => style.size.width = length,
-        StyleProp::H => style.size.height = length,
-        StyleProp::MinW => style.min_size.width = length,
-        StyleProp::MinH => style.min_size.height = length,
-        StyleProp::Top => style.inset.top = length,
-        StyleProp::Right => style.inset.right = length,
-        StyleProp::Bottom => style.inset.bottom = length,
-        StyleProp::Left => style.inset.left = length,
-        _ => {}
-    }
-}
-
 fn parse_font_weight_str(value: &str) -> Option<FontWeight> {
     match value.trim().to_ascii_lowercase().as_str() {
         "thin" => Some(FontWeight::Thin),
@@ -671,36 +657,6 @@ fn parse_font_weight_str(value: &str) -> Option<FontWeight> {
         "black" | "heavy" => Some(FontWeight::Black),
         value => value.parse::<u16>().ok().and_then(FontWeight::from_f16),
     }
-}
-
-fn set_flex_string(style: &mut UzStyle, value: &str) -> bool {
-    let dir = match value.trim() {
-        "row" => FlexDirection::Row,
-        "col" | "column" => FlexDirection::Column,
-        "row-reverse" => FlexDirection::RowReverse,
-        "col-reverse" | "column-reverse" => FlexDirection::ColumnReverse,
-        _ => return false,
-    };
-    style.display = Display::Flex;
-    style.flex_direction = dir;
-    true
-}
-
-fn length_to_json(length: Length) -> Value {
-    match length {
-        Length::Auto => json!("auto"),
-        Length::Px(value) => json!(value),
-        Length::Percent(value) => json!(format!("{}%", value * 100.0)),
-    }
-}
-
-fn color_to_json(color: Color) -> Value {
-    json!({
-        "r": color.r,
-        "g": color.g,
-        "b": color.b,
-        "a": color.a,
-    })
 }
 
 #[cfg(test)]

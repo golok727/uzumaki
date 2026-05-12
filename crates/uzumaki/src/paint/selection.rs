@@ -11,17 +11,14 @@ impl UIState {
     pub fn build_text_select_runs(&mut self) {
         self.selectable_text_runs.clear();
         let Some(root) = self.root else { return };
-        self.visit_text_select(root, None, None);
+        self.visit_text_select(root, None);
     }
 
-    fn visit_text_select(
-        &mut self,
-        node_id: UzNodeId,
-        parent_style: Option<&crate::style::UzStyle>,
-        run_idx: Option<usize>,
-    ) {
-        let style = self.computed_style(node_id, parent_style);
-        let resolved_text_sel = style.text_selectable.selectable();
+    fn visit_text_select(&mut self, node_id: UzNodeId, run_idx: Option<usize>) {
+        let resolved_text_sel = self.nodes[node_id]
+            .computed_style()
+            .text_selectable
+            .selectable();
 
         // A node that explicitly enables textSelect when the parent scope
         // doesn't have it starts a new selection scope.
@@ -96,7 +93,7 @@ impl UIState {
             .clone()
             .unwrap_or_else(|| self.nodes[node_id].children.clone());
         for cid in layout_children {
-            self.visit_text_select(cid, Some(&style), current_run);
+            self.visit_text_select(cid, current_run);
         }
     }
 

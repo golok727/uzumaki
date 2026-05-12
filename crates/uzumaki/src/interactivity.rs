@@ -184,7 +184,7 @@ impl Interactivity {
         self.text_selectable.selectable()
     }
 
-    pub fn style_for(&mut self, variant: StyleVariantKind) -> &mut UzStyleRefinement {
+    pub(crate) fn style_for(&mut self, variant: StyleVariantKind) -> &mut UzStyleRefinement {
         match variant {
             StyleVariantKind::Hover => self
                 .hover_style

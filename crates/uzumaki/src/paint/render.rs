@@ -55,7 +55,6 @@ impl<'a> Painter<'a> {
             0.0,
             Affine::scale(self.scale),
             Affine::IDENTITY,
-            None,
             scene,
             &text_selections,
         );
@@ -69,7 +68,6 @@ impl<'a> Painter<'a> {
         parent_y: f64,
         parent_paint_transform: Affine,
         parent_hit_transform: Affine,
-        parent_style: Option<&UzStyle>,
         scene: &mut Scene,
         text_selections: &HashMap<UzNodeId, (usize, usize)>,
     ) {
@@ -78,7 +76,7 @@ impl<'a> Painter<'a> {
         };
         let layout = LayoutSnapshot::from(&node_ref.final_layout);
 
-        let computed_style = self.dom.computed_style(node_id, parent_style);
+        let computed_style = node_ref.computed_style().clone();
 
         if computed_style.visibility == Visibility::Hidden
             || computed_style.display == crate::style::Display::None
@@ -154,7 +152,6 @@ impl<'a> Painter<'a> {
                 y - offset_y,
                 child_paint_transform,
                 child_hit_transform,
-                Some(&computed_style),
                 scene,
                 text_selections,
             );
