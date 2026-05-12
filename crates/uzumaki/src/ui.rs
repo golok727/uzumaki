@@ -716,7 +716,7 @@ impl UIState {
             .map(|i| i.text.clone());
         if let Some(text) = inline_text {
             let computed = self.nodes[node_id].computed_style();
-            let width = text_layout_width(&self.nodes[node_id].final_layout, &computed);
+            let width = text_layout_width(&self.nodes[node_id].final_layout, computed);
             let mut segments = Vec::new();
             for cid in &inline_children {
                 self.collect_inline_segments(*cid, &mut segments);
@@ -737,7 +737,7 @@ impl UIState {
                 .map(|t| t.content.clone())
         {
             let computed = self.nodes[node_id].computed_style();
-            let width = text_layout_width(&self.nodes[node_id].final_layout, &computed);
+            let width = text_layout_width(&self.nodes[node_id].final_layout, computed);
             let layout = text_renderer.build_layout(&text, &computed.text, width);
             if let Some(element) = self.nodes[node_id].as_element_mut() {
                 let inline_layout = element
@@ -747,10 +747,8 @@ impl UIState {
                 inline_layout.entries.clear();
                 inline_layout.layout = layout;
             }
-        } else {
-            if let Some(element) = self.nodes[node_id].as_element_mut() {
-                element.inline_layout = None;
-            }
+        } else if let Some(element) = self.nodes[node_id].as_element_mut() {
+            element.inline_layout = None;
         }
 
         for cid in children {
