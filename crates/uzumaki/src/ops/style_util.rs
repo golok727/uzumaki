@@ -17,12 +17,13 @@ use crate::parse::*;
 //
 impl WindowEntry {
     pub fn set_str_attribute(&mut self, node_id: UzNodeId, name: &str, value: &str) {
-        let Some(kind) = name.parse::<AttributeKind>().ok() else {
-            return;
-        };
+        let kind = AttributeKind::parse(name);
 
         match kind {
-            AttributeKind::Element(ep) => {
+            AttributeKind::Element(name) => {
+                let Ok(ep) = name.parse::<ElementProp>() else {
+                    return;
+                };
                 let Some(node) = self.dom.nodes.get_mut(node_id) else {
                     return;
                 };
@@ -40,12 +41,13 @@ impl WindowEntry {
     }
 
     pub fn set_number_attribute(&mut self, node_id: UzNodeId, name: &str, value: f64) {
-        let Some(kind) = name.parse::<AttributeKind>().ok() else {
-            return;
-        };
+        let kind = AttributeKind::parse(name);
 
         match kind {
-            AttributeKind::Element(ep) => {
+            AttributeKind::Element(name) => {
+                let Ok(ep) = name.parse::<ElementProp>() else {
+                    return;
+                };
                 let Some(node) = self.dom.nodes.get_mut(node_id) else {
                     return;
                 };
@@ -63,12 +65,13 @@ impl WindowEntry {
     }
 
     pub fn set_bool_attribute(&mut self, node_id: UzNodeId, name: &str, value: bool) {
-        let Some(kind) = name.parse::<AttributeKind>().ok() else {
-            return;
-        };
+        let kind = AttributeKind::parse(name);
 
         match kind {
-            AttributeKind::Element(ep) => {
+            AttributeKind::Element(name) => {
+                let Ok(ep) = name.parse::<ElementProp>() else {
+                    return;
+                };
                 let Some(node) = self.dom.nodes.get_mut(node_id) else {
                     return;
                 };
@@ -86,12 +89,13 @@ impl WindowEntry {
     }
 
     pub fn clear_attribute(&mut self, node_id: UzNodeId, name: &str) {
-        let Some(kind) = name.parse::<AttributeKind>().ok() else {
-            return;
-        };
+        let kind = AttributeKind::parse(name);
 
         match kind {
-            AttributeKind::Element(ep) => {
+            AttributeKind::Element(name) => {
+                let Ok(ep) = name.parse::<ElementProp>() else {
+                    return;
+                };
                 let Some(node) = self.dom.nodes.get_mut(node_id) else {
                     return;
                 };
@@ -109,21 +113,24 @@ impl WindowEntry {
     }
 
     pub fn get_attribute(&self, node_id: UzNodeId, name: &str) -> Value {
-        let Ok(kind) = name.parse::<AttributeKind>() else {
-            return Value::Null;
-        };
+        let kind = AttributeKind::parse(name);
 
         let Some(node) = self.dom.nodes.get(node_id) else {
             return Value::Null;
         };
 
         match kind {
-            AttributeKind::Element(ep) => get_element_prop(node, ep),
+            AttributeKind::Element(name) => {
+                let Ok(ep) = name.parse::<ElementProp>() else {
+                    return Value::Null;
+                };
+                get_element_prop(node, ep)
+            }
             AttributeKind::Style(prop, _variant) => get_style_prop(node, prop),
         }
     }
 
-    fn apply_side_effects(&mut self, _node_id: UzNodeId, kind: &AttributeKind) {
+    fn apply_side_effects(&mut self, _node_id: UzNodeId, kind: &AttributeKind<'_>) {
         if matches!(kind, AttributeKind::Style(StyleProp::Cursor, _)) {
             self.update_cursor();
         }

@@ -97,38 +97,36 @@ pub(crate) enum ElementProp {
 }
 
 #[derive(Copy, Clone, Debug, Eq, PartialEq)]
-pub(crate) enum AttributeKind {
+pub(crate) enum AttributeKind<'a> {
     Style(StyleProp, StyleVariant),
-    Element(ElementProp),
+    Element(&'a str),
 }
 
-impl FromStr for AttributeKind {
-    type Err = ();
-
-    fn from_str(value: &str) -> Result<Self, Self::Err> {
-        if let Ok(ep) = value.parse::<ElementProp>() {
-            return Ok(AttributeKind::Element(ep));
+impl<'a> AttributeKind<'a> {
+    pub fn parse(name: &'a str) -> Self {
+        if let Some(rest) = name.strip_prefix("hover:")
+            && let Ok(prop) = rest.parse::<StyleProp>()
+        {
+            return Self::Style(prop, StyleVariant::Hover);
         }
 
-        if let Some(rest) = value.strip_prefix("hover:") {
-            return rest
-                .parse::<StyleProp>()
-                .map(|p| AttributeKind::Style(p, StyleVariant::Hover));
-        }
-        if let Some(rest) = value.strip_prefix("active:") {
-            return rest
-                .parse::<StyleProp>()
-                .map(|p| AttributeKind::Style(p, StyleVariant::Active));
-        }
-        if let Some(rest) = value.strip_prefix("focus:") {
-            return rest
-                .parse::<StyleProp>()
-                .map(|p| AttributeKind::Style(p, StyleVariant::Focus));
+        if let Some(rest) = name.strip_prefix("active:")
+            && let Ok(prop) = rest.parse::<StyleProp>()
+        {
+            return Self::Style(prop, StyleVariant::Active);
         }
 
-        value
-            .parse::<StyleProp>()
-            .map(|p| AttributeKind::Style(p, StyleVariant::Base))
+        if let Some(rest) = name.strip_prefix("focus:")
+            && let Ok(prop) = rest.parse::<StyleProp>()
+        {
+            return Self::Style(prop, StyleVariant::Focus);
+        }
+
+        if let Ok(prop) = name.parse::<StyleProp>() {
+            return Self::Style(prop, StyleVariant::Base);
+        }
+
+        Self::Element(name)
     }
 }
 
