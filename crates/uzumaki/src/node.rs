@@ -5,7 +5,7 @@ use refineable::Refineable;
 use crate::cursor::UzCursorIcon;
 use crate::element::{ElementNode, ImageNode, TextContent};
 use crate::input::InputState;
-use crate::interactivity::{HitboxId, Interactivity, StyleVariantKind};
+use crate::interactivity::{HitboxId, Interactivity, StyleSlot};
 use crate::style::{Outline, TextSelectable, UzStyle, UzStyleRefinement};
 
 pub type UzNodeId = usize;
@@ -173,10 +173,10 @@ impl Node {
 
 impl Node {
     pub fn base_style(&mut self) -> &mut UzStyleRefinement {
-        self.style_for(StyleVariantKind::Base)
+        self.style_slot(StyleSlot::Base)
     }
 
-    pub(crate) fn style_for(&mut self, variant: StyleVariantKind) -> &mut UzStyleRefinement {
+    pub(crate) fn style_slot(&mut self, variant: StyleSlot) -> &mut UzStyleRefinement {
         self.interactivity.style_for(variant)
     }
 
@@ -217,15 +217,15 @@ impl Node {
 
     #[inline]
     pub fn text_selectable(&self) -> TextSelectable {
-        self.interactivity.text_selectable
+        self.computed_style().text_selectable
     }
 
     pub fn is_text_selectable(&self) -> bool {
-        self.interactivity.text_selectable.selectable()
+        self.computed_style().text_selectable.selectable()
     }
 
     pub fn set_text_selectable(&mut self, text_selectable: TextSelectable) {
-        self.interactivity.text_selectable = text_selectable
+        self.style_slot(StyleSlot::Base).text_selectable = Some(text_selectable);
     }
 
     pub fn as_text_input(&self) -> Option<&InputState> {

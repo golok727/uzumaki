@@ -2,7 +2,7 @@ use std::{ops::Deref, str::FromStr};
 
 use serde::Deserialize;
 
-use crate::interactivity::StyleVariantKind;
+use crate::interactivity::StyleSlot;
 
 #[derive(Clone, Debug, Deserialize)]
 pub(crate) struct AttrValue<'a>(pub &'a str);
@@ -121,7 +121,7 @@ pub(crate) enum StyleProp {
 
 #[derive(Copy, Clone, Debug, Eq, PartialEq)]
 pub(crate) enum AttributeKind<'a> {
-    Style(StyleProp, StyleVariantKind),
+    Style(StyleProp, StyleSlot),
     Element(&'a str),
 }
 
@@ -130,23 +130,23 @@ impl<'a> AttributeKind<'a> {
         if let Some(rest) = name.strip_prefix("hover:")
             && let Ok(prop) = rest.parse::<StyleProp>()
         {
-            return Self::Style(prop, StyleVariantKind::Hover);
+            return Self::Style(prop, StyleSlot::Hover);
         }
 
         if let Some(rest) = name.strip_prefix("active:")
             && let Ok(prop) = rest.parse::<StyleProp>()
         {
-            return Self::Style(prop, StyleVariantKind::Active);
+            return Self::Style(prop, StyleSlot::Active);
         }
 
         if let Some(rest) = name.strip_prefix("focus:")
             && let Ok(prop) = rest.parse::<StyleProp>()
         {
-            return Self::Style(prop, StyleVariantKind::Focus);
+            return Self::Style(prop, StyleSlot::Focus);
         }
 
         if let Ok(prop) = name.parse::<StyleProp>() {
-            return Self::Style(prop, StyleVariantKind::Base);
+            return Self::Style(prop, StyleSlot::Base);
         }
 
         Self::Element(name)

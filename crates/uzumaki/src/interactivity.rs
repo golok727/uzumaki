@@ -1,7 +1,7 @@
 use crate::cursor::UzCursorIcon;
 use crate::node::UzNodeId;
 
-use crate::style::{Bounds, ScrollbarStyle, TextSelectable, UzStyleRefinement};
+use crate::style::{Bounds, ScrollbarStyle, UzStyleRefinement};
 use vello::kurbo::{Affine, Point};
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
@@ -157,7 +157,7 @@ fn transformed_axis_aligned_bounds(bounds: Bounds, transform: Affine) -> Bounds 
 }
 
 #[derive(Copy, Clone, Debug, Eq, PartialEq)]
-pub(crate) enum StyleVariantKind {
+pub(crate) enum StyleSlot {
     Base,
     Hover,
     Active,
@@ -168,34 +168,28 @@ pub(crate) enum StyleVariantKind {
 pub struct Interactivity {
     pub cursor: Option<UzCursorIcon>,
 
-    pub text_selectable: TextSelectable,
-
     pub base_style: Box<UzStyleRefinement>,
     pub hover_style: Option<Box<UzStyleRefinement>>,
     pub active_style: Option<Box<UzStyleRefinement>>,
     pub focus_style: Option<Box<UzStyleRefinement>>,
 
+    // not used yet
     pub scrollbar: ScrollbarStyle,
 }
 
 impl Interactivity {
-    #[inline]
-    pub fn is_text_selectable(&self) -> bool {
-        self.text_selectable.selectable()
-    }
-
-    pub(crate) fn style_for(&mut self, variant: StyleVariantKind) -> &mut UzStyleRefinement {
+    pub(crate) fn style_for(&mut self, variant: StyleSlot) -> &mut UzStyleRefinement {
         match variant {
-            StyleVariantKind::Hover => self
+            StyleSlot::Hover => self
                 .hover_style
                 .get_or_insert_with(|| Box::new(UzStyleRefinement::default())),
-            StyleVariantKind::Active => self
+            StyleSlot::Active => self
                 .active_style
                 .get_or_insert_with(|| Box::new(UzStyleRefinement::default())),
-            StyleVariantKind::Focus => self
+            StyleSlot::Focus => self
                 .focus_style
                 .get_or_insert_with(|| Box::new(UzStyleRefinement::default())),
-            StyleVariantKind::Base => &mut self.base_style,
+            StyleSlot::Base => &mut self.base_style,
         }
     }
 }

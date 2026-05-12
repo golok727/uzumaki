@@ -335,6 +335,7 @@ export function InputsPage() {
                   ref={otpRefs[i]}
                   value={digit}
                   maxLength={1}
+                  placeholder="-"
                   onValueChange={(v) => {
                     const next = v.slice(-1);
                     setOtp((prev) => {
