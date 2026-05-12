@@ -6,7 +6,7 @@ use crate::cursor::UzCursorIcon;
 use crate::element::{ElementNode, ImageNode, TextContent};
 use crate::input::InputState;
 use crate::interactivity::{HitboxId, Interactivity, StyleVariantKind};
-use crate::style::{TextSelectable, UzStyle, UzStyleRefinement};
+use crate::style::{Outline, TextSelectable, UzStyle, UzStyleRefinement};
 
 pub type UzNodeId = usize;
 
@@ -202,6 +202,9 @@ impl Node {
         }
         if focus && let Some(refinement) = &self.interactivity.focus_style {
             style.refine(refinement);
+        }
+        if focus && style.outline.is_none() {
+            style.outline = Some(Outline::FOCUS_RING);
         }
 
         self.computed_style = style;
