@@ -106,12 +106,10 @@ impl ElementNode {
 
     pub(crate) fn set_attr(&mut self, name: &str, value: AttrValue<'_>) -> bool {
         if name == "focusable" {
-            if let Some(value) = value.parse_bool() {
-                self.set_focussable(value);
-                return true;
-            }
-            return false;
+            let value = value.parse_bool();
+            self.set_focussable(value);
         }
+
         self.data.set_attr(name, value)
     }
 
@@ -346,26 +344,15 @@ impl ElementData {
         match self {
             Self::TextInput(input) => match name {
                 "value" => {
-                    let Some(value) = value.as_str() else {
-                        return false;
-                    };
-                    input.set_value(value);
+                    input.set_value(&value);
                     true
                 }
                 "placeholder" => {
-                    let Some(value) = value.as_str() else {
-                        return false;
-                    };
                     input.placeholder = value.to_string();
                     true
                 }
                 "maxLength" => {
-                    let n = match value {
-                        AttrValue::Number(value) if value.is_finite() => Some(value as f32),
-                        AttrValue::Number(_) => None,
-                        AttrValue::String(value) => value.parse::<f32>().ok(),
-                        AttrValue::Bool(_) => None,
-                    };
+                    let n = value.parse::<f32>().ok();
                     let Some(n) = n else {
                         return false;
                     };
@@ -373,33 +360,22 @@ impl ElementData {
                     true
                 }
                 "disabled" => {
-                    let Some(value) = value.parse_bool() else {
-                        return false;
-                    };
-                    input.disabled = value;
+                    input.disabled = value.parse_bool();
                     true
                 }
                 "multiline" => {
-                    let Some(value) = value.parse_bool() else {
-                        return false;
-                    };
-                    input.multiline = value;
+                    input.multiline = value.parse_bool();
                     true
                 }
                 "secure" => {
-                    let Some(value) = value.parse_bool() else {
-                        return false;
-                    };
-                    input.secure = value;
+                    input.secure = value.parse_bool();
                     true
                 }
                 _ => false,
             },
             Self::CheckboxInput(checked) => match name {
                 "checked" => {
-                    let Some(value) = value.parse_bool() else {
-                        return false;
-                    };
+                    let value = value.parse_bool();
                     *checked = value;
                     true
                 }
