@@ -1,12 +1,12 @@
 use std::collections::HashMap;
 
+use slab::Slab;
 use vello::Scene;
 use vello::kurbo::{Affine, Rect};
 use vello::peniko::{Color as VelloColor, Fill};
 
-use crate::element::ImageMeasureInfo;
 use crate::layout::NodeContext;
-use crate::node::{ScrollAxis, UzNodeId};
+use crate::node::{Node, ScrollAxis, UzNodeId};
 use crate::paint::{
     ScrollThumbRect,
     checkbox::CheckboxRenderInfo,
@@ -801,6 +801,7 @@ struct ScrollbarPaint {
 
 pub(crate) fn measure(
     text_renderer: &mut TextRenderer,
+    nodes: &Slab<Node>,
     known_dimensions: taffy::Size<Option<f32>>,
     available_space: taffy::Size<taffy::AvailableSpace>,
     node_context: Option<&mut NodeContext>,
@@ -813,8 +814,12 @@ pub(crate) fn measure(
     let Some(ctx) = node_context else {
         return default_size;
     };
+    let Some(node) = nodes.get(ctx.node_id) else {
+        return default_size;
+    };
+    let style = node.computed_style();
 
-    if ctx.is_input {
+    if node.is_text_input() {
         return taffy::Size {
             width: known_dimensions
                 .width
@@ -822,18 +827,19 @@ pub(crate) fn measure(
                 .unwrap_or(200.0),
             height: known_dimensions
                 .height
-                .unwrap_or((ctx.text_style.font_size * ctx.text_style.line_height).round()),
+                .unwrap_or((style.text.font_size * style.text.line_height).round()),
         };
     }
 
-    if let Some(text) = ctx
-        .inline_text
-        .as_ref()
-        .or(ctx.text.as_ref().map(|t| &t.content))
+    if let Some(text) = node
+        .as_element()
+        .and_then(|element| element.inline_layout.as_ref())
+        .map(|inline| inline.text.as_str())
+        .or_else(|| node.get_text_content().map(|text| text.content.as_str()))
     {
         let (measured_width, measured_height) = text_renderer.measure_text(
             text,
-            &ctx.text_style,
+            &style.text,
             known_dimensions
                 .width
                 .or_else(|| available_as_option(available_space.width)),
@@ -847,23 +853,23 @@ pub(crate) fn measure(
         };
     }
 
-    if let Some(ImageMeasureInfo { width, height }) = &ctx.image {
-        if *width <= 0.0 || *height <= 0.0 {
+    if let Some((width, height)) = node.as_image().and_then(|image| image.data.natural_size()) {
+        if width <= 0.0 || height <= 0.0 {
             return default_size;
         }
-        let aspect_ratio = *width / *height;
+        let aspect_ratio = width / height;
         let measured_width = known_dimensions.width.unwrap_or({
             if let Some(known_height) = known_dimensions.height {
                 known_height * aspect_ratio
             } else {
-                *width
+                width
             }
         });
         let measured_height = known_dimensions.height.unwrap_or_else(|| {
             if let Some(known_width) = known_dimensions.width {
                 known_width / aspect_ratio
             } else {
-                *height
+                height
             }
         });
         return taffy::Size {
@@ -885,29 +891,41 @@ fn available_as_option(space: taffy::AvailableSpace) -> Option<f32> {
 
 #[cfg(test)]
 mod tests {
-    use super::measure;
-    use crate::element::ImageMeasureInfo;
-    use crate::layout::NodeContext;
-    use crate::style::TextStyle;
-    use crate::text::TextRenderer;
+    use std::sync::Arc;
 
-    fn image_context(width: f32, height: f32) -> NodeContext {
-        NodeContext {
-            dom_id: 0,
-            text: None,
-            inline_text: None,
-            text_style: TextStyle::default(),
-            is_input: false,
-            image: Some(ImageMeasureInfo { width, height }),
-        }
+    use super::measure;
+    use crate::element::{ElementNode, ImageData, ImageNode, RasterImageData};
+    use crate::layout::NodeContext;
+    use crate::node::Node;
+    use crate::style::UzStyle;
+    use crate::text::TextRenderer;
+    use slab::Slab;
+
+    fn image_nodes(width: u32, height: u32) -> (Slab<Node>, NodeContext) {
+        let mut nodes = Slab::new();
+        let image = ImageNode {
+            data: ImageData::Raster(RasterImageData::new(width, height, Arc::new(Vec::new()))),
+        };
+        let node_id = nodes.insert(Node::new(UzStyle::default(), ElementNode::new_image(image)));
+        (nodes, NodeContext { node_id })
+    }
+
+    fn empty_image_nodes() -> (Slab<Node>, NodeContext) {
+        let mut nodes = Slab::new();
+        let node_id = nodes.insert(Node::new(
+            UzStyle::default(),
+            ElementNode::new_image(ImageNode::default()),
+        ));
+        (nodes, NodeContext { node_id })
     }
 
     #[test]
     fn image_measure_uses_natural_size_when_unconstrained() {
         let mut renderer = TextRenderer::new();
-        let mut ctx = image_context(320.0, 180.0);
+        let (nodes, mut ctx) = image_nodes(320, 180);
         let size = measure(
             &mut renderer,
+            &nodes,
             taffy::Size {
                 width: None,
                 height: None,
@@ -925,9 +943,10 @@ mod tests {
     #[test]
     fn image_measure_preserves_aspect_ratio_with_width_only() {
         let mut renderer = TextRenderer::new();
-        let mut ctx = image_context(400.0, 200.0);
+        let (nodes, mut ctx) = image_nodes(400, 200);
         let size = measure(
             &mut renderer,
+            &nodes,
             taffy::Size {
                 width: Some(160.0),
                 height: None,
@@ -945,9 +964,10 @@ mod tests {
     #[test]
     fn image_measure_preserves_aspect_ratio_with_height_only() {
         let mut renderer = TextRenderer::new();
-        let mut ctx = image_context(200.0, 400.0);
+        let (nodes, mut ctx) = image_nodes(200, 400);
         let size = measure(
             &mut renderer,
+            &nodes,
             taffy::Size {
                 width: None,
                 height: Some(100.0),
@@ -965,9 +985,10 @@ mod tests {
     #[test]
     fn image_measure_uses_explicit_box_when_both_dimensions_are_known() {
         let mut renderer = TextRenderer::new();
-        let mut ctx = image_context(320.0, 180.0);
+        let (nodes, mut ctx) = image_nodes(320, 180);
         let size = measure(
             &mut renderer,
+            &nodes,
             taffy::Size {
                 width: Some(512.0),
                 height: Some(128.0),
@@ -985,16 +1006,10 @@ mod tests {
     #[test]
     fn image_measure_without_bitmap_returns_default_size() {
         let mut renderer = TextRenderer::new();
-        let mut ctx = NodeContext {
-            dom_id: 0,
-            text: None,
-            inline_text: None,
-            text_style: TextStyle::default(),
-            is_input: false,
-            image: None,
-        };
+        let (nodes, mut ctx) = empty_image_nodes();
         let size = measure(
             &mut renderer,
+            &nodes,
             taffy::Size {
                 width: None,
                 height: None,
