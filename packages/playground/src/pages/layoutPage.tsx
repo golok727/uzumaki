@@ -119,6 +119,7 @@ function TextAlignDemo() {
           bg={C.surface2}
           rounded={8}
           border={1}
+          selectable
           borderColor={C.border}
           fontSize={14}
           color={C.text}
@@ -147,6 +148,7 @@ function TextAlignDemo() {
           bg={C.surface2}
           rounded={8}
           border={1}
+          selectable
           borderColor={C.border}
           fontSize={14}
           color={C.text}
@@ -175,6 +177,7 @@ function TextAlignDemo() {
           p={14}
           bg={C.surface2}
           rounded={8}
+          selectable
           border={1}
           borderColor={C.border}
           fontSize={14}
