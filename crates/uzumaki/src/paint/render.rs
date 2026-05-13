@@ -85,6 +85,7 @@ impl<'a> Painter<'a> {
         }
 
         let border_box = layout.border_box_bounds();
+        let content_box = layout.content_box_bounds();
         let x = parent_x + layout.location.x as f64;
         let y = parent_y + layout.location.y as f64;
         let w = border_box.width;
@@ -139,7 +140,7 @@ impl<'a> Painter<'a> {
         let child_hit_transform = hit_transform * scroll_translate;
 
         if needs_clip {
-            scene.push_clip_layer(Fill::NonZero, transform, &Rect::new(0.0, 0.0, w, h));
+            scene.push_clip_layer(Fill::NonZero, transform, &content_box.to_rect());
         }
 
         let children = self.dom.nodes[node_id].layout_children.borrow().clone();
@@ -549,8 +550,8 @@ impl<'a> Painter<'a> {
             return None;
         }
 
-        let visible_w = layout.axis_size(ScrollAxis::X) as f64;
-        let visible_h = layout.axis_size(ScrollAxis::Y) as f64;
+        let visible_w = layout.axis_content_box_size(ScrollAxis::X) as f64;
+        let visible_h = layout.axis_content_box_size(ScrollAxis::Y) as f64;
         let content_w = layout.axis_scroll_content_size(ScrollAxis::X) as f64;
         let content_h = layout.axis_scroll_content_size(ScrollAxis::Y) as f64;
         let max_x = layout.axis_scroll_overflow(ScrollAxis::X) as f64;

@@ -428,8 +428,6 @@ pub struct TransformStyle {
     pub scale_y: f32,
 }
 
-pub const SCROLLBAR_SIDE_MARGIN: f32 = 4.0;
-
 /// Styling for the scrollbar painted on scrollable views and multiline inputs.
 /// Defaults match the legacy hardcoded look (4px overlay thumb, white@90/140
 /// alpha, transparent track, pill-shaped via auto-radius).
@@ -458,7 +456,7 @@ impl Default for ScrollbarStyle {
 
 impl ScrollbarStyle {
     pub fn gutter_width(self) -> f32 {
-        (self.width + SCROLLBAR_SIDE_MARGIN).max(0.0)
+        self.width.max(0.0)
     }
 }
 

@@ -381,7 +381,7 @@ impl UIState {
             .and_then(|r| self.nodes.get(r))
             .map(|n| n.final_layout.axis_size(axis))
             .unwrap_or(f32::MAX);
-        let scroller_extent = scroller_ref.final_layout.axis_size(axis);
+        let scroller_extent = scroller_ref.final_layout.axis_content_box_size(axis);
         let clipped_end = (scroller_abs + scroller_extent).min(root_extent);
         let true_viewport = (clipped_end - scroller_abs).max(0.0);
         let viewport_extent = true_viewport;
@@ -875,7 +875,7 @@ impl UIState {
 }
 
 fn text_layout_width(layout: &taffy::Layout) -> Option<f32> {
-    Some(layout.content_box_width().max(0.0))
+    Some(layout.axis_content_box_size(ScrollAxis::X).max(0.0))
 }
 
 #[cfg(test)]

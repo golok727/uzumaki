@@ -18,6 +18,7 @@ pub trait TaffyLayoutExt {
     fn content_box_bounds(&self) -> Bounds;
     fn axis_location(&self, axis: ScrollAxis) -> f32;
     fn axis_size(&self, axis: ScrollAxis) -> f32;
+    fn axis_content_box_size(&self, axis: ScrollAxis) -> f32;
     fn axis_scroll_overflow(&self, axis: ScrollAxis) -> f32;
     fn axis_scroll_content_size(&self, axis: ScrollAxis) -> f32;
 }
@@ -31,8 +32,8 @@ impl TaffyLayoutExt for taffy::Layout {
         Bounds::new(
             (self.border.left + self.padding.left) as f64,
             (self.border.top + self.padding.top) as f64,
-            self.content_box_width().max(0.0) as f64,
-            self.content_box_height().max(0.0) as f64,
+            (self.content_box_width() - self.scrollbar_size.width).max(0.0) as f64,
+            (self.content_box_height() - self.scrollbar_size.height).max(0.0) as f64,
         )
     }
 
@@ -50,6 +51,13 @@ impl TaffyLayoutExt for taffy::Layout {
         }
     }
 
+    fn axis_content_box_size(&self, axis: ScrollAxis) -> f32 {
+        match axis {
+            ScrollAxis::X => self.content_box_bounds().width as f32,
+            ScrollAxis::Y => self.content_box_bounds().height as f32,
+        }
+    }
+
     fn axis_scroll_overflow(&self, axis: ScrollAxis) -> f32 {
         match axis {
             ScrollAxis::X => self.scroll_width(),
@@ -58,7 +66,7 @@ impl TaffyLayoutExt for taffy::Layout {
     }
 
     fn axis_scroll_content_size(&self, axis: ScrollAxis) -> f32 {
-        self.axis_size(axis) + self.axis_scroll_overflow(axis)
+        self.axis_content_box_size(axis) + self.axis_scroll_overflow(axis)
     }
 }
 
