@@ -14,7 +14,7 @@ use crate::paint::{
     input::InputRenderInfo,
     scroll::{self, ScrollAxisInfo, ThumbGeometry},
 };
-use crate::style::{Bounds, ScrollbarStyle, UzStyle, Visibility};
+use crate::style::{Bounds, Overflow, ScrollbarStyle, UzStyle, Visibility};
 use crate::text::{
     TextRenderer, apply_text_style_to_editor, secure_cursor_geometry, secure_selection_geometry,
 };
@@ -85,7 +85,6 @@ impl<'a> Painter<'a> {
         }
 
         let border_box = layout.border_box_bounds();
-        let content_box = layout.content_box_bounds();
         let x = parent_x + layout.location.x as f64;
         let y = parent_y + layout.location.y as f64;
         let w = border_box.width;
@@ -126,9 +125,15 @@ impl<'a> Painter<'a> {
             || computed_style.overflow_x.clips()
             || computed_style.overflow_y.clips();
 
-        let (offset_x, offset_y, mouse_in_view, view_thumbs) = match view_scroll {
-            Some(v) => (v.offset_x, v.offset_y, v.mouse_in_view, v.thumbs),
-            None => (0.0, 0.0, false, Vec::new()),
+        let (content_box, offset_x, offset_y, mouse_in_view, view_thumbs) = match view_scroll {
+            Some(v) => (
+                v.content_box,
+                v.offset_x,
+                v.offset_y,
+                v.mouse_in_view,
+                v.thumbs,
+            ),
+            None => (layout.content_box_bounds(), 0.0, 0.0, false, Vec::new()),
         };
 
         let scroll_translate = if offset_x != 0.0 || offset_y != 0.0 {
@@ -550,12 +555,14 @@ impl<'a> Painter<'a> {
             return None;
         }
 
-        let visible_w = layout.axis_content_box_size(ScrollAxis::X) as f64;
-        let visible_h = layout.axis_content_box_size(ScrollAxis::Y) as f64;
+        let (shows_x, shows_y) = visible_scrollbars(style, layout);
+        let content_box = scroll_content_box(layout, style, shows_x, shows_y);
+        let visible_w = content_box.width;
+        let visible_h = content_box.height;
         let content_w = layout.axis_scroll_content_size(ScrollAxis::X) as f64;
         let content_h = layout.axis_scroll_content_size(ScrollAxis::Y) as f64;
-        let max_x = layout.axis_scroll_overflow(ScrollAxis::X) as f64;
-        let max_y = layout.axis_scroll_overflow(ScrollAxis::Y) as f64;
+        let max_x = (content_w - visible_w).max(0.0);
+        let max_y = (content_h - visible_h).max(0.0);
 
         let ss = &mut self.dom.nodes[node_id].scroll_state;
         if ss.scroll_offset_x as f64 > max_x {
@@ -575,7 +582,7 @@ impl<'a> Painter<'a> {
                 .is_some_and(|(mx, my)| view_bounds.contains(mx, my));
 
         let mut thumbs = Vec::new();
-        if scroll_y && content_h > visible_h {
+        if shows_y {
             thumbs.push(self.register_view_thumb(
                 node_id,
                 ScrollAxis::Y,
@@ -587,7 +594,7 @@ impl<'a> Painter<'a> {
                 &style.scrollbar,
             ));
         }
-        if scroll_x && content_w > visible_w {
+        if shows_x {
             thumbs.push(self.register_view_thumb(
                 node_id,
                 ScrollAxis::X,
@@ -601,6 +608,7 @@ impl<'a> Painter<'a> {
         }
 
         Some(ViewScroll {
+            content_box,
             offset_x,
             offset_y,
             mouse_in_view,
@@ -770,7 +778,67 @@ impl<'a> Painter<'a> {
     }
 }
 
+fn visible_scrollbars(style: &UzStyle, layout: &taffy::Layout) -> (bool, bool) {
+    let content_w = layout.axis_scroll_content_size(ScrollAxis::X) as f64;
+    let content_h = layout.axis_scroll_content_size(ScrollAxis::Y) as f64;
+    let visible_w = layout.axis_content_box_size(ScrollAxis::X) as f64;
+    let visible_h = layout.axis_content_box_size(ScrollAxis::Y) as f64;
+    let shows_x = scrollbar_visible(style.overflow_x, content_w, visible_w);
+    let shows_y = scrollbar_visible(style.overflow_y, content_h, visible_h);
+
+    (shows_x, shows_y)
+}
+
+fn scrollbar_visible(overflow: Overflow, content: f64, visible: f64) -> bool {
+    match overflow {
+        Overflow::Scroll => true,
+        Overflow::Auto => content > visible + 0.5,
+        Overflow::Visible | Overflow::Hidden => false,
+    }
+}
+
+fn scroll_content_box(
+    layout: &taffy::Layout,
+    style: &UzStyle,
+    shows_x: bool,
+    shows_y: bool,
+) -> Bounds {
+    let mut content_box = layout.content_box_bounds();
+    let gutter = style.scrollbar.gutter_width() as f64;
+    content_box.width = (content_box.width
+        - auto_scrollbar_gutter(
+            style.overflow_y,
+            layout.scrollbar_size.width,
+            shows_y,
+            gutter,
+        ))
+    .max(0.0);
+    content_box.height = (content_box.height
+        - auto_scrollbar_gutter(
+            style.overflow_x,
+            layout.scrollbar_size.height,
+            shows_x,
+            gutter,
+        ))
+    .max(0.0);
+    content_box
+}
+
+fn auto_scrollbar_gutter(
+    overflow: Overflow,
+    reserved_gutter: f32,
+    visible: bool,
+    gutter: f64,
+) -> f64 {
+    if overflow == Overflow::Auto && visible {
+        (gutter - reserved_gutter as f64).max(0.0)
+    } else {
+        0.0
+    }
+}
+
 struct ViewScroll {
+    content_box: Bounds,
     offset_x: f64,
     offset_y: f64,
     mouse_in_view: bool,
@@ -880,11 +948,11 @@ fn available_as_option(space: taffy::AvailableSpace) -> Option<f32> {
 mod tests {
     use std::sync::Arc;
 
-    use super::measure;
+    use super::{measure, scroll_content_box, visible_scrollbars};
     use crate::element::{ElementNode, ImageData, ImageNode, RasterImageData};
     use crate::layout::NodeContext;
     use crate::node::Node;
-    use crate::style::UzStyle;
+    use crate::style::{Overflow, UzStyle};
     use crate::text::TextRenderer;
     use slab::Slab;
 
@@ -904,6 +972,74 @@ mod tests {
             ElementNode::new_image(ImageNode::default()),
         ));
         (nodes, NodeContext { node_id })
+    }
+
+    fn scroll_layout(
+        width: f32,
+        height: f32,
+        content_width: f32,
+        content_height: f32,
+    ) -> taffy::Layout {
+        let mut layout = taffy::Layout::new();
+        layout.size.width = width;
+        layout.size.height = height;
+        layout.content_size.width = content_width;
+        layout.content_size.height = content_height;
+        layout
+    }
+
+    fn auto_scroll_style() -> UzStyle {
+        UzStyle {
+            overflow_x: Overflow::Auto,
+            overflow_y: Overflow::Auto,
+            ..Default::default()
+        }
+    }
+
+    #[test]
+    fn auto_scroll_has_no_gutter_when_content_fits() {
+        let style = auto_scroll_style();
+        let mut layout = scroll_layout(100.0, 100.0, 92.0, 92.0);
+        layout.scrollbar_size.width = style.scrollbar.gutter_width();
+        layout.scrollbar_size.height = style.scrollbar.gutter_width();
+        let (shows_x, shows_y) = visible_scrollbars(&style, &layout);
+        let content_box = scroll_content_box(&layout, &style, shows_x, shows_y);
+
+        assert_eq!((shows_x, shows_y), (false, false));
+        assert_eq!(content_box.width, 92.0);
+        assert_eq!(content_box.height, 92.0);
+    }
+
+    #[test]
+    fn auto_scroll_vertical_overflow_adds_only_vertical_gutter() {
+        let style = UzStyle {
+            overflow_y: Overflow::Auto,
+            ..Default::default()
+        };
+        let mut layout = scroll_layout(100.0, 100.0, 100.0, 150.0);
+        layout.scrollbar_size.width = style.scrollbar.gutter_width();
+        let (shows_x, shows_y) = visible_scrollbars(&style, &layout);
+        let content_box = scroll_content_box(&layout, &style, shows_x, shows_y);
+
+        assert_eq!((shows_x, shows_y), (false, true));
+        assert_eq!(content_box.width, 92.0);
+        assert_eq!(content_box.height, 100.0);
+    }
+
+    #[test]
+    fn auto_scroll_horizontal_overflow_adds_only_horizontal_gutter() {
+        let style = UzStyle {
+            overflow_x: Overflow::Auto,
+            ..Default::default()
+        };
+        let mut layout = scroll_layout(100.0, 100.0, 150.0, 100.0);
+        layout.scrollbar_size.height = style.scrollbar.gutter_width();
+        let (shows_x, shows_y) = visible_scrollbars(&style, &layout);
+        let content_box = scroll_content_box(&layout, &style, shows_x, shows_y);
+
+        assert_eq!((shows_x, shows_y), (true, false));
+        assert_eq!(content_box.width, 100.0);
+        assert_eq!(content_box.height, 92.0);
     }
 
     #[test]

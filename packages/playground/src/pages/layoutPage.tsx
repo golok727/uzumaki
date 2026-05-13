@@ -243,7 +243,7 @@ export function LayoutPage() {
       flexDir="col"
       gap={0}
       h="full"
-      scroll
+      scrollY
       scrollbarRadius={5}
     >
       <view
