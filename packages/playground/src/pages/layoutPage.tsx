@@ -15,6 +15,7 @@ const ALIGN_VALUES: TextAlignValue[] = [
 
 function TextAlignDemo() {
   const [align, setAlign] = useState<TextAlignValue>('start');
+  const [parentDisplay, setParentDisplay] = useState<'block' | 'flex'>('block');
   const [singleLine, setSingleLine] = useState('');
   const [multiLine, setMultiLine] = useState('');
 
@@ -55,7 +56,35 @@ function TextAlignDemo() {
         ))}
       </view>
 
+      <view display="flex" flexDir="row" gap={6}>
+        {(['block', 'flex'] as const).map((v) => (
+          <button
+            key={v}
+            onClick={() => setParentDisplay(v)}
+            px={12}
+            py={6}
+            bg={parentDisplay === v ? C.accentDim : C.surface3}
+            hover:bg={parentDisplay === v ? C.accent : C.surface4}
+            active:bg={C.accentDim}
+            rounded={6}
+            border={1}
+            borderColor={parentDisplay === v ? C.accent : C.border}
+            cursor="pointer"
+          >
+            <text
+              fontSize={12}
+              fontWeight={parentDisplay === v ? 700 : 400}
+              color={parentDisplay === v ? C.accentHi : C.textMuted}
+            >
+              {v}
+            </text>
+          </button>
+        ))}
+      </view>
+
       <view
+        display={parentDisplay}
+        flexDir="col"
         p={16}
         bg={C.surface2}
         rounded={8}
@@ -67,10 +96,129 @@ function TextAlignDemo() {
         textAlign={align}
       >
         The quick brown{' '}
-        <text bg={C.accent} p={3} rounded={5} fontWeight={700} fontSize={16}>
+        <text
+          bg={C.accent}
+          border={1}
+          borderColor={C.accentHi}
+          textAlign="center"
+          p={6}
+          rounded={5}
+          fontWeight={700}
+          fontSize={16}
+        >
           fox
         </text>{' '}
         jumps over the lazy dog. Pack my box with five dozen liquor jugs.
+      </view>
+
+      <view display="flex" flexDir="col" gap={8}>
+        <view
+          display={parentDisplay}
+          flexDir="col"
+          p={14}
+          bg={C.surface2}
+          rounded={8}
+          border={1}
+          borderColor={C.border}
+          fontSize={14}
+          color={C.text}
+          textAlign={align}
+        >
+          Inline chip before{' '}
+          <text
+            bg={C.accentDark}
+            border={1}
+            borderColor={C.accent}
+            color={C.accentHi}
+            p={4}
+            px={8}
+            rounded={4}
+            fontWeight={700}
+          >
+            middle
+          </text>{' '}
+          and after text should keep clear spacing.
+        </view>
+
+        <view
+          display={parentDisplay}
+          flexDir="col"
+          p={14}
+          bg={C.surface2}
+          rounded={8}
+          border={1}
+          borderColor={C.border}
+          fontSize={14}
+          color={C.text}
+          textAlign={align}
+          w={360}
+        >
+          Wrapping inline chips should stay attached to their text while this{' '}
+          <text
+            bg={C.successDark}
+            border={1}
+            borderColor={C.success}
+            color={C.successHi}
+            p={5}
+            px={9}
+            rounded={5}
+            fontWeight={700}
+          >
+            highlighted phrase
+          </text>{' '}
+          moves across lines.
+        </view>
+
+        <view
+          display={parentDisplay}
+          flexDir="col"
+          p={14}
+          bg={C.surface2}
+          rounded={8}
+          border={1}
+          borderColor={C.border}
+          fontSize={14}
+          color={C.text}
+          textAlign={align}
+        >
+          Multiple chips:{' '}
+          <text
+            bg={C.warningDark}
+            border={1}
+            borderColor={C.warning}
+            color={C.warningHi}
+            p={3}
+            px={7}
+            rounded={4}
+            fontWeight={700}
+          >
+            alpha
+          </text>{' '}
+          <text
+            bg={C.surface4}
+            border={1}
+            borderColor={C.borderHi}
+            color={C.text}
+            p={5}
+            px={9}
+            rounded={5}
+            fontWeight={700}
+          >
+            beta
+          </text>{' '}
+          <text
+            bg={C.accent}
+            border={1}
+            borderColor={C.accentHi}
+            color={C.bg}
+            p={6}
+            px={10}
+            rounded={5}
+            fontWeight={700}
+          >
+            gamma
+          </text>
+        </view>
       </view>
 
       <view display="flex" flexDir="col" gap={8}>

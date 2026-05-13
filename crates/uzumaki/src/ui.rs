@@ -12,8 +12,8 @@ use crate::{
         scroll::{self, ScrollAlign, ScrollIntoViewOptions},
     },
     selection::TextSelection,
-    style::{Length, TextStyle, UzStyle},
-    text::TextRenderer,
+    style::{Length, UzStyle},
+    text::{InlineTextSegment, TextRenderer, inline_text_segment},
 };
 
 /// Active scroll-thumb drag. Stored on the dom (only one drag at a time).
@@ -741,17 +741,10 @@ impl UIState {
         }
     }
 
-    fn collect_inline_segments(
-        &self,
-        node_id: UzNodeId,
-        segments: &mut Vec<(UzNodeId, String, TextStyle)>,
-    ) {
+    fn collect_inline_segments(&self, node_id: UzNodeId, segments: &mut Vec<InlineTextSegment>) {
+        let style = self.nodes[node_id].computed_style();
         if let Some(text) = self.nodes[node_id].get_text_content() {
-            segments.push((
-                node_id,
-                text.content.clone(),
-                self.nodes[node_id].computed_style().text.clone(),
-            ));
+            segments.push(inline_text_segment(node_id, text.content.clone(), style));
             return;
         }
         if self.nodes[node_id].is_inline_level() {

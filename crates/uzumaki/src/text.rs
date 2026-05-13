@@ -1,12 +1,51 @@
 use parley::{
     Affinity as ParleyAffinity, Alignment as ParleyAlignment, AlignmentOptions, BoundingBox,
-    Cluster, Cursor, FontContext, Layout, LayoutContext, Selection,
+    Cluster, Cursor, FontContext, InlineBox, Layout, LayoutContext, Selection,
 };
 use vello::Scene;
 use vello::kurbo::Affine;
 use vello::peniko::{Brush, Color, Fill};
 
-use crate::style::TextStyle;
+use crate::style::{TextStyle, UzStyle};
+
+pub(crate) struct InlineTextSegment {
+    node_id: usize,
+    text: String,
+    style: TextStyle,
+    leading: f32,
+    trailing: f32,
+    inline_height: f32,
+}
+
+pub(crate) fn inline_text_segment(
+    node_id: usize,
+    text: String,
+    style: &UzStyle, // todo this is worong we should get the taffy layout
+) -> InlineTextSegment {
+    let leading = style.padding.left + style.border_widths.left;
+    let trailing = style.padding.right + style.border_widths.right;
+    let inline_height = (style.text.font_size * style.text.line_height
+        + style.padding.vertical()
+        + style.border_widths.vertical())
+    .max(0.0);
+
+    InlineTextSegment {
+        node_id,
+        text,
+        style: style.text.clone(),
+        leading,
+        trailing,
+        inline_height,
+    }
+}
+
+pub(crate) fn leading_inline_box_id(node_id: usize) -> u64 {
+    (node_id as u64) << 1
+}
+
+pub(crate) fn trailing_inline_box_id(node_id: usize) -> u64 {
+    ((node_id as u64) << 1) | 1
+}
 
 impl From<crate::selection::Affinity> for ParleyAffinity {
     fn from(value: crate::selection::Affinity) -> Self {
@@ -86,7 +125,7 @@ impl TextRenderer {
 
     pub(crate) fn build_inline_layout(
         &mut self,
-        segments: &[(usize, String, TextStyle)],
+        segments: &[InlineTextSegment],
         root_style: &TextStyle,
         max_width: Option<f32>,
     ) -> Layout<TextBrush> {
@@ -94,11 +133,27 @@ impl TextRenderer {
         let mut builder = self
             .layout_ctx
             .tree_builder(&mut self.font_ctx, 1.0, true, &parley_root);
-        for (node_id, text, style) in segments {
-            let span_style = style.to_parley_text_style(*node_id);
+        for segment in segments {
+            if segment.leading > 0.0 {
+                builder.push_inline_box(InlineBox {
+                    id: leading_inline_box_id(segment.node_id),
+                    index: 0,
+                    width: segment.leading,
+                    height: segment.inline_height,
+                });
+            }
+            let span_style = segment.style.to_parley_text_style(segment.node_id);
             builder.push_style_span(span_style);
-            builder.push_text(text);
+            builder.push_text(&segment.text);
             builder.pop_style_span();
+            if segment.trailing > 0.0 {
+                builder.push_inline_box(InlineBox {
+                    id: trailing_inline_box_id(segment.node_id),
+                    index: 0,
+                    width: segment.trailing,
+                    height: segment.inline_height,
+                });
+            }
         }
         let (mut layout, _) = builder.build();
         layout.break_all_lines(max_width);
@@ -107,6 +162,18 @@ impl TextRenderer {
             layout.align(max_width, alignment, AlignmentOptions::default());
         }
         layout
+    }
+
+    pub(crate) fn measure_inline_text(
+        &mut self,
+        segments: &[InlineTextSegment],
+        root_style: &TextStyle,
+        max_width: Option<f32>,
+    ) -> (f32, f32) {
+        let layout = self.build_inline_layout(segments, root_style, max_width);
+        let measured_width = layout.full_width();
+        let measured_height = layout.height();
+        (measured_width.ceil(), measured_height.ceil())
     }
 
     fn grapheme_to_byte(boundaries: &[usize], grapheme_index: usize) -> usize {
