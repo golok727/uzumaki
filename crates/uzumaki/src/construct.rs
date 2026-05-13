@@ -23,7 +23,7 @@ impl UIState {
         self.nodes.retain(|_, node| !node.flags.is_anonymous());
 
         for (_, node) in self.nodes.iter_mut() {
-            node.layout_children = None;
+            *node.layout_children.get_mut() = node.children.clone();
             node.layout_parent = node.parent;
 
             if let Some(element) = node.as_element_mut() {
@@ -39,6 +39,7 @@ impl UIState {
             return;
         };
         let children = node.children.clone();
+        *self.nodes[node_id].layout_children.borrow_mut() = children.clone();
         if children.is_empty() {
             return;
         }
@@ -60,7 +61,6 @@ impl UIState {
         }
 
         if !has_inline_nodes {
-            // Pure block container: layout_children == children.
             for &cid in &children {
                 if let Some(child) = self.nodes.get_mut(cid) {
                     child.layout_parent = Some(node_id);
@@ -86,7 +86,7 @@ impl UIState {
 
         if !has_block_nodes && parent_display != Display::Flex {
             self.set_inline_layout(node_id, self.collect_inline_layout(&children));
-            self.nodes[node_id].layout_children = Some(Vec::new());
+            self.nodes[node_id].layout_children.borrow_mut().clear();
             self.nodes[node_id].flags.insert(NodeFlags::INLINE_ROOT);
             for &cid in &children {
                 if let Some(child) = self.nodes.get_mut(cid) {
@@ -138,8 +138,8 @@ impl UIState {
             }
         }
 
-        self.nodes[node_id].layout_children = Some(layout_children.clone());
         self.build_layout_children_recurse(&layout_children);
+        *self.nodes[node_id].layout_children.borrow_mut() = layout_children;
     }
 
     fn build_layout_children_recurse(&mut self, ids: &[UzNodeId]) {
@@ -236,7 +236,7 @@ mod tests {
         dom.resolve_layout_children();
 
         assert!(dom.nodes[parent].flags.is_inline_root());
-        assert_eq!(dom.nodes[parent].layout_children.as_deref(), Some(&[][..]));
+        assert!(dom.nodes[parent].layout_children.borrow().is_empty());
         assert_eq!(
             dom.nodes[parent]
                 .as_element()
@@ -261,7 +261,7 @@ mod tests {
         dom.append_child(parent, second);
         dom.resolve_layout_children();
 
-        let layout_children = dom.nodes[parent].layout_children.as_ref().unwrap();
+        let layout_children = dom.nodes[parent].layout_children.borrow();
         assert_eq!(layout_children.len(), 3);
         assert!(dom.nodes[layout_children[0]].flags.is_anonymous());
         assert_eq!(layout_children[1], block);
@@ -283,7 +283,7 @@ mod tests {
         dom.append_child(parent, text_element);
         dom.resolve_layout_children();
 
-        let layout_children = dom.nodes[parent].layout_children.as_ref().unwrap();
+        let layout_children = dom.nodes[parent].layout_children.borrow();
         assert!(!dom.nodes[parent].flags.is_inline_root());
         assert!(dom.nodes[layout_children[0]].flags.is_anonymous());
         assert_eq!(layout_children[1], text_element);
@@ -301,6 +301,9 @@ mod tests {
 
         assert!(!dom.nodes[parent].flags.is_inline_root());
         assert_eq!(dom.nodes[text].layout_parent, Some(parent));
-        assert!(dom.nodes[parent].layout_children.is_none());
+        assert_eq!(
+            dom.nodes[parent].layout_children.borrow().as_slice(),
+            &[text]
+        );
     }
 }

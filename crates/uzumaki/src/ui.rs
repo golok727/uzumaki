@@ -684,10 +684,7 @@ impl UIState {
     }
 
     fn refresh_text_layouts_at(&mut self, node_id: UzNodeId, text_renderer: &mut TextRenderer) {
-        let children = self.nodes[node_id]
-            .layout_children
-            .clone()
-            .unwrap_or_else(|| self.nodes[node_id].children.clone());
+        let children = self.nodes[node_id].layout_children.borrow().clone();
         let has_inline_layout = self.nodes[node_id]
             .as_element()
             .is_some_and(|element| element.inline_layout.is_some());

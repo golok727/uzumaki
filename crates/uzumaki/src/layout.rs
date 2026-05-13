@@ -139,30 +139,18 @@ impl LayoutEngine {
         let node = nodes.get(node_id)?;
         let style = node.computed_style();
 
-        let mut children = Vec::new();
-        let layout_children: &[UzNodeId] = node
-            .layout_children
-            .as_deref()
-            .unwrap_or(node.children.as_slice());
-        for &child_id in layout_children {
-            if let Some(taffy_child) = self.build_node(nodes, child_id) {
-                children.push(taffy_child);
-            }
-        }
-
-        let context = NodeContext { node_id };
-
-        let taffy_node = if children.is_empty() {
-            self.taffy.new_leaf(style.to_taffy()).unwrap()
-        } else {
-            self.taffy
-                .new_with_children(style.to_taffy(), &children)
-                .unwrap()
-        };
+        let taffy_node = self.taffy.new_leaf(style.to_taffy()).unwrap();
         self.taffy
-            .set_node_context(taffy_node, Some(context))
+            .set_node_context(taffy_node, Some(NodeContext { node_id }))
             .unwrap();
         self.set_taffy_node(node_id, taffy_node);
+
+        let layout_children = node.layout_children.borrow();
+        for &child_id in layout_children.iter() {
+            if let Some(taffy_child) = self.build_node(nodes, child_id) {
+                self.taffy.add_child(taffy_node, taffy_child).unwrap();
+            }
+        }
         Some(taffy_node)
     }
 }

@@ -88,10 +88,7 @@ impl UIState {
             run.total_graphemes += gc;
         }
 
-        let layout_children = self.nodes[node_id]
-            .layout_children
-            .clone()
-            .unwrap_or_else(|| self.nodes[node_id].children.clone());
+        let layout_children = self.nodes[node_id].layout_children.borrow().clone();
         for cid in layout_children {
             self.visit_text_select(cid, current_run);
         }

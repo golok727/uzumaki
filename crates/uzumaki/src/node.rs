@@ -1,4 +1,7 @@
-use std::ops::{Deref, DerefMut};
+use std::{
+    cell::RefCell,
+    ops::{Deref, DerefMut},
+};
 
 use refineable::Refineable;
 
@@ -146,10 +149,9 @@ pub struct Node {
     /// inline children that were wrapped, points at the synthetic anonymous
     /// inline wrapper instead. Set by the construct phase each frame.
     pub layout_parent: Option<UzNodeId>,
-    /// Layout-tree children. When `Some`, layout/paint walk this list instead
-    /// of `children`. Inserted by the construct phase to splice anonymous
-    /// inline wrappers around runs of inline-level children.
-    pub layout_children: Option<Vec<UzNodeId>>,
+    /// Layout-tree children. Rebuilt by the construct phase to splice
+    /// anonymous inline wrappers around runs of inline-level children.
+    pub layout_children: RefCell<Vec<UzNodeId>>,
 }
 
 impl Node {
@@ -166,7 +168,7 @@ impl Node {
             scroll_state: ScrollState::new(),
             final_layout: taffy::Layout::new(),
             layout_parent: None,
-            layout_children: None,
+            layout_children: RefCell::new(Vec::new()),
             flags: NodeFlags::empty(),
         }
     }
