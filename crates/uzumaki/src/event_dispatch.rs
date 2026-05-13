@@ -3,6 +3,7 @@ use winit::keyboard::{Key, NamedKey};
 
 use crate::clipboard::SystemClipboard;
 use crate::input::{KeyResult, input_align_offset};
+use crate::layout::TaffyLayoutExt;
 use crate::node::{ScrollAxis, UzNodeId};
 use crate::selection::{Affinity, SelectionEndpoint, TextSelection};
 use crate::style::TextStyle;
@@ -104,8 +105,8 @@ pub fn handle_redraw(dom: &mut UIState, handle: &mut Window) {
 pub struct FocusedInputLayoutMeta {
     pub taffy_x: f64,
     pub taffy_y: f64,
-    pub input_padding: f32,
-    pub top_pad: f32,
+    pub content_x: f32,
+    pub content_y: f32,
     pub multiline: bool,
     pub text_style: TextStyle,
     pub input_width: f32,
@@ -115,21 +116,19 @@ pub struct FocusedInputLayoutMeta {
 pub fn input_layout_meta(dom: &UIState, focused_id: UzNodeId) -> Option<FocusedInputLayoutMeta> {
     let node = dom.nodes.get(focused_id)?;
     let is = node.as_text_input()?;
-    let input_padding = node.final_layout.padding.left;
-    let top_pad = node.final_layout.padding.top;
     let text_style = node.computed_style().text.clone();
     let hb = node.hitbox_id.and_then(|hid| dom.hitbox_store.get(hid))?;
     let layout = &node.final_layout;
-    let padding = node.final_layout.padding;
+    let content_box = layout.content_box_bounds();
     Some(FocusedInputLayoutMeta {
         taffy_x: hb.bounds.x,
         taffy_y: hb.bounds.y,
-        input_padding,
-        top_pad,
+        content_x: content_box.x as f32,
+        content_y: content_box.y as f32,
         multiline: is.multiline,
         text_style,
-        input_width: (layout.size.width - (padding.left + padding.right)).max(0.0),
-        input_height: layout.size.height,
+        input_width: content_box.width as f32,
+        input_height: content_box.height as f32,
     })
 }
 
@@ -171,11 +170,13 @@ fn set_ime_cursor_area(
     scroll_offset_y: f32,
 ) {
     let line_height = (meta.text_style.font_size * meta.text_style.line_height).round() as f64;
-    let text_origin_x = meta.taffy_x + meta.input_padding as f64;
+    let text_origin_x = meta.taffy_x + meta.content_x as f64;
     let text_origin_y = if meta.multiline {
-        meta.taffy_y + meta.top_pad as f64 - scroll_offset_y as f64
+        meta.taffy_y + meta.content_y as f64 - scroll_offset_y as f64
     } else {
-        meta.taffy_y + ((meta.input_height as f64 - line_height) / 2.0).max(0.0)
+        meta.taffy_y
+            + meta.content_y as f64
+            + ((meta.input_height as f64 - line_height) / 2.0).max(0.0)
     };
     let position =
         winit::dpi::LogicalPosition::new(text_origin_x + ime_area.x0, text_origin_y + ime_area.y0);
@@ -270,11 +271,8 @@ pub fn scroll_input_to_cursor(dom: &mut UIState, handle: &mut Window) {
         if let Some(rect) = cursor_rect {
             if meta.multiline {
                 let line_height = (meta.text_style.font_size * meta.text_style.line_height).round();
-                node.scroll_state.scroll_input_y(
-                    rect.y0 as f32,
-                    line_height,
-                    meta.input_height - meta.top_pad * 2.0,
-                );
+                node.scroll_state
+                    .scroll_input_y(rect.y0 as f32, line_height, meta.input_height);
             } else {
                 let display_text = is.display_text();
                 let natural_w = handle
@@ -353,8 +351,7 @@ pub fn handle_cursor_moved(
                 let is = node.as_text_input()?;
                 let scroll_offset_x = node.scroll_state.scroll_offset_x;
                 let scroll_offset_y = node.scroll_state.scroll_offset_y;
-                let input_padding = node.final_layout.padding.left as f64;
-                let top_pad = node.final_layout.padding.top;
+                let content_box = node.final_layout.content_box_bounds();
                 let hb = node
                     .hitbox_id
                     .and_then(|hid| dom.hitbox_store.get(hid))?
@@ -363,20 +360,14 @@ pub fn handle_cursor_moved(
                     scroll_offset_x,
                     scroll_offset_y,
                     is.multiline,
-                    input_padding,
-                    top_pad,
+                    content_box.x,
+                    content_box.y,
                     hb,
                 ))
             });
 
-            if let Some((
-                scroll_offset,
-                scroll_offset_y,
-                is_multiline,
-                input_padding,
-                top_pad,
-                hb,
-            )) = hit_info
+            if let Some((scroll_offset, scroll_offset_y, is_multiline, content_x, content_y, hb)) =
+                hit_info
             {
                 // Apply styles/width so the driver's layout accounts for
                 // wrapping; also gives us a fresh natural width for align_offset.
@@ -398,11 +389,11 @@ pub fn handle_cursor_moved(
                     single_line_align_offset(dom, handle, drag_nid)
                 };
                 let relative_x = if is_multiline {
-                    (logical_x - hb.x - input_padding) as f32
+                    (logical_x - hb.x - content_x) as f32
                 } else {
-                    (logical_x - hb.x - input_padding) as f32 + scroll_offset - align_offset
+                    (logical_x - hb.x - content_x) as f32 + scroll_offset - align_offset
                 };
-                let relative_y = (logical_y - hb.y) as f32 + scroll_offset_y - top_pad;
+                let relative_y = (logical_y - hb.y - content_y) as f32 + scroll_offset_y;
 
                 if let Some(node) = dom.nodes.get_mut(drag_nid)
                     && let Some(is) = node.as_text_input_mut()
@@ -496,8 +487,9 @@ fn hit_text_in_run(
         });
     }
 
-    let relative_x = (mx - bounds.x) as f32 - node.final_layout.padding.left;
-    let relative_y = (my - bounds.y) as f32 - node.final_layout.padding.top;
+    let content_box = node.final_layout.content_box_bounds();
+    let relative_x = (mx - bounds.x - content_box.x) as f32;
+    let relative_y = (my - bounds.y - content_box.y) as f32;
     let (global_offset, affinity) = if let Some(layout) = node
         .as_element()
         .and_then(|element| element.inline_layout.as_ref())
@@ -509,7 +501,7 @@ fn hit_text_in_run(
         text_renderer.hit_to_text_position(
             &text.content,
             &node.computed_style().text,
-            Some(bounds.width as f32),
+            Some(content_box.width as f32),
             relative_x,
             relative_y,
         )
@@ -575,8 +567,9 @@ fn text_range_at_point(
         return Some((endpoint, endpoint));
     }
 
-    let rel_x = (mx - bounds.x) as f32 - layout_node.final_layout.padding.left;
-    let rel_y = (my - bounds.y) as f32 - layout_node.final_layout.padding.top;
+    let content_box = layout_node.final_layout.content_box_bounds();
+    let rel_x = (mx - bounds.x - content_box.x) as f32;
+    let rel_y = (my - bounds.y - content_box.y) as f32;
     let (global_start, global_end) = if let Some(layout) = layout_node
         .as_element()
         .and_then(|element| element.inline_layout.as_ref())
@@ -592,7 +585,7 @@ fn text_range_at_point(
         text_renderer.line_byte_range_at_point(
             &text.content,
             &layout_node.computed_style().text,
-            Some(bounds.width as f32),
+            Some(content_box.width as f32),
             rel_x,
             rel_y,
         )
@@ -601,7 +594,7 @@ fn text_range_at_point(
         text_renderer.word_byte_range_at_point(
             &text.content,
             &layout_node.computed_style().text,
-            Some(bounds.width as f32),
+            Some(content_box.width as f32),
             rel_x,
             rel_y,
         )
@@ -782,8 +775,7 @@ pub fn handle_mouse_input(
                         let is = node.as_text_input().unwrap();
                         let scroll_offset_x = node.scroll_state.scroll_offset_x;
                         let scroll_offset_y = node.scroll_state.scroll_offset_y;
-                        let input_padding = node.final_layout.padding.left as f64;
-                        let top_pad = node.final_layout.padding.top;
+                        let content_box = node.final_layout.content_box_bounds();
                         let hb = node
                             .hitbox_id
                             .and_then(|hid| dom.hitbox_store.get(hid))
@@ -792,8 +784,8 @@ pub fn handle_mouse_input(
                             scroll_offset_x,
                             scroll_offset_y,
                             is.multiline,
-                            input_padding,
-                            top_pad,
+                            content_box.x,
+                            content_box.y,
                             hb,
                         )
                     };
@@ -801,8 +793,8 @@ pub fn handle_mouse_input(
                         scroll_offset,
                         scroll_offset_y,
                         is_multiline,
-                        input_padding,
-                        top_pad,
+                        content_x,
+                        content_y,
                         hitbox_bounds,
                     ) = click_info;
 
@@ -828,11 +820,11 @@ pub fn handle_mouse_input(
                             single_line_align_offset(dom, handle, nid)
                         };
                         let relative_x = if is_multiline {
-                            (mx - hb.x - input_padding) as f32
+                            (mx - hb.x - content_x) as f32
                         } else {
-                            (mx - hb.x - input_padding) as f32 + scroll_offset - align_offset
+                            (mx - hb.x - content_x) as f32 + scroll_offset - align_offset
                         };
-                        let relative_y = (my - hb.y) as f32 + scroll_offset_y - top_pad;
+                        let relative_y = (my - hb.y - content_y) as f32 + scroll_offset_y;
 
                         if let Some(node) = dom.nodes.get_mut(nid)
                             && let Some(is) = node.as_text_input_mut()

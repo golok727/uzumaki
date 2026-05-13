@@ -1,8 +1,9 @@
 use slab::Slab;
 
 use crate::{
-    node::{Node, UzNodeId},
+    node::{Node, ScrollAxis, UzNodeId},
     paint::render,
+    style::Bounds,
     text::TextRenderer,
 };
 
@@ -10,6 +11,55 @@ use crate::{
 pub struct NodeContext {
     // NOTE FOR LLMS: DONT ADD ANYTHING ELSE
     pub node_id: UzNodeId,
+}
+
+pub trait TaffyLayoutExt {
+    fn border_box_bounds(&self) -> Bounds;
+    fn content_box_bounds(&self) -> Bounds;
+    fn axis_location(&self, axis: ScrollAxis) -> f32;
+    fn axis_size(&self, axis: ScrollAxis) -> f32;
+    fn axis_scroll_overflow(&self, axis: ScrollAxis) -> f32;
+    fn axis_scroll_content_size(&self, axis: ScrollAxis) -> f32;
+}
+
+impl TaffyLayoutExt for taffy::Layout {
+    fn border_box_bounds(&self) -> Bounds {
+        Bounds::new(0.0, 0.0, self.size.width as f64, self.size.height as f64)
+    }
+
+    fn content_box_bounds(&self) -> Bounds {
+        Bounds::new(
+            (self.border.left + self.padding.left) as f64,
+            (self.border.top + self.padding.top) as f64,
+            self.content_box_width().max(0.0) as f64,
+            self.content_box_height().max(0.0) as f64,
+        )
+    }
+
+    fn axis_location(&self, axis: ScrollAxis) -> f32 {
+        match axis {
+            ScrollAxis::X => self.location.x,
+            ScrollAxis::Y => self.location.y,
+        }
+    }
+
+    fn axis_size(&self, axis: ScrollAxis) -> f32 {
+        match axis {
+            ScrollAxis::X => self.size.width,
+            ScrollAxis::Y => self.size.height,
+        }
+    }
+
+    fn axis_scroll_overflow(&self, axis: ScrollAxis) -> f32 {
+        match axis {
+            ScrollAxis::X => self.scroll_width(),
+            ScrollAxis::Y => self.scroll_height(),
+        }
+    }
+
+    fn axis_scroll_content_size(&self, axis: ScrollAxis) -> f32 {
+        self.axis_size(axis) + self.axis_scroll_overflow(axis)
+    }
 }
 
 pub struct LayoutEngine {

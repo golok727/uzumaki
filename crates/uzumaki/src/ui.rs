@@ -5,7 +5,7 @@ use crate::{
     element::{ElementNode, ImageData, ImageNode, TextContent, TextRunEntry, TextSelectRun},
     input::InputState,
     interactivity::{HitTestState, HitboxStore},
-    layout::LayoutEngine,
+    layout::{LayoutEngine, TaffyLayoutExt},
     node::{Node, ScrollAxis, TextNode, UzNodeId},
     paint::{
         ScrollThumbRect,
@@ -371,32 +371,20 @@ impl UIState {
             return;
         };
 
-        let target_extent = axis_size(target_node.final_layout.size, axis);
-        let content_extent = axis_size(scroller_ref.final_layout.content_size, axis);
+        let target_extent = target_node.final_layout.axis_size(axis);
+        let content_extent = scroller_ref.final_layout.axis_scroll_content_size(axis);
 
         // Clamp viewport by the root rect so a scroller overflowing the window
         // doesn't think it has more visible space than the user can actually see.
         let root_extent = self
             .root
             .and_then(|r| self.nodes.get(r))
-            .map(|n| axis_size(n.final_layout.size, axis))
+            .map(|n| n.final_layout.axis_size(axis))
             .unwrap_or(f32::MAX);
-        let scroller_extent = axis_size(scroller_ref.final_layout.size, axis);
+        let scroller_extent = scroller_ref.final_layout.axis_size(axis);
         let clipped_end = (scroller_abs + scroller_extent).min(root_extent);
         let true_viewport = (clipped_end - scroller_abs).max(0.0);
-
-        // Match render: a horizontal scrollbar steals from the Y viewport, but
-        // a vertical scrollbar does not steal from the X viewport.
-        let viewport_extent = match axis {
-            ScrollAxis::Y => scroll::vertical_scroll_visible_height(
-                true_viewport,
-                scroller_ref.final_layout.content_size.width,
-                scroller_ref.final_layout.size.width,
-                scroller_ref.computed_style().overflow_x.is_scrollable(),
-                scroller_ref.computed_style().scrollbar.width,
-            ),
-            ScrollAxis::X => true_viewport,
-        };
+        let viewport_extent = true_viewport;
 
         let cur_offset = scroller_ref.scroll_state.offset(axis);
 
@@ -450,7 +438,7 @@ impl UIState {
         let mut past_scroller = false;
         loop {
             let node = nodes.get(cur)?;
-            let loc = axis_loc(node.final_layout.location, axis);
+            let loc = node.final_layout.axis_location(axis);
             if past_scroller {
                 scroller_abs += loc;
             } else {
@@ -716,7 +704,7 @@ impl UIState {
             .map(|i| i.text.clone());
         if let Some(text) = inline_text {
             let computed = self.nodes[node_id].computed_style();
-            let width = text_layout_width(&self.nodes[node_id].final_layout, computed);
+            let width = text_layout_width(&self.nodes[node_id].final_layout);
             let mut segments = Vec::new();
             for cid in &inline_children {
                 self.collect_inline_segments(*cid, &mut segments);
@@ -737,7 +725,7 @@ impl UIState {
                 .map(|t| t.content.clone())
         {
             let computed = self.nodes[node_id].computed_style();
-            let width = text_layout_width(&self.nodes[node_id].final_layout, computed);
+            let width = text_layout_width(&self.nodes[node_id].final_layout);
             let layout = text_renderer.build_layout(&text, &computed.text, width);
             if let Some(element) = self.nodes[node_id].as_element_mut() {
                 let inline_layout = element
@@ -889,24 +877,8 @@ impl UIState {
     }
 }
 
-#[inline]
-fn axis_size(size: taffy::Size<f32>, axis: ScrollAxis) -> f32 {
-    match axis {
-        ScrollAxis::X => size.width,
-        ScrollAxis::Y => size.height,
-    }
-}
-
-#[inline]
-fn axis_loc(point: taffy::Point<f32>, axis: ScrollAxis) -> f32 {
-    match axis {
-        ScrollAxis::X => point.x,
-        ScrollAxis::Y => point.y,
-    }
-}
-
-fn text_layout_width(layout: &taffy::Layout, style: &UzStyle) -> Option<f32> {
-    Some((layout.size.width - style.padding.horizontal()).max(0.0))
+fn text_layout_width(layout: &taffy::Layout) -> Option<f32> {
+    Some(layout.content_box_width().max(0.0))
 }
 
 #[cfg(test)]

@@ -4,7 +4,7 @@ use vello::kurbo::{Affine, Rect};
 use vello::peniko::{Color as VelloColor, Fill};
 
 use crate::input::input_align_offset;
-use crate::style::{Bounds, Edges, TextStyle, UzStyle};
+use crate::style::{Bounds, TextStyle, UzStyle};
 use crate::text::TextRenderer;
 
 const SELECTION_COLOR: VelloColor = VelloColor::from_rgba8(56, 121, 185, 128);
@@ -43,6 +43,7 @@ pub fn paint_input(
     text_renderer: &mut TextRenderer,
     bounds: Bounds,
     style: &UzStyle,
+    content_box: Bounds,
     info: &InputRenderInfo,
     transform: Affine,
 ) {
@@ -50,8 +51,7 @@ pub fn paint_input(
         InputPainter {
             scene,
             text_renderer,
-            bounds,
-            padding: style.padding,
+            content_box,
             info,
             transform,
         }
@@ -62,8 +62,7 @@ pub fn paint_input(
 struct InputPainter<'a> {
     scene: &'a mut Scene,
     text_renderer: &'a mut TextRenderer,
-    bounds: Bounds,
-    padding: Edges,
+    content_box: Bounds,
     info: &'a InputRenderInfo,
     transform: Affine,
 }
@@ -77,13 +76,13 @@ struct LayoutOrigin {
 
 impl InputPainter<'_> {
     fn paint(mut self) {
-        let content = self.content_box();
+        let content = self.content_box;
         if content.width <= 0.0 || content.height <= 0.0 {
             return;
         }
 
         self.scene
-            .push_clip_layer(Fill::NonZero, self.transform, &self.bounds.to_rect());
+            .push_clip_layer(Fill::NonZero, self.transform, &content.to_rect());
 
         let origin = self.layout_origin(content);
         let is_empty = self.info.display_text.is_empty();
@@ -112,10 +111,6 @@ impl InputPainter<'_> {
         }
 
         self.scene.pop_layer();
-    }
-
-    fn content_box(&self) -> Bounds {
-        self.bounds.inset_by(&self.padding)
     }
 
     fn line_height(&self) -> f32 {

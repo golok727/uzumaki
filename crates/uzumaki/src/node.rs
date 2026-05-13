@@ -10,6 +10,7 @@ use crate::style::{Outline, TextSelectable, UzStyle, UzStyleRefinement};
 
 pub type UzNodeId = usize;
 
+// todo replace with bitflags!
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
 pub struct NodeFlags(u8);
 

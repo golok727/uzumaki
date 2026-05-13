@@ -5,7 +5,7 @@ use vello::Scene;
 use vello::kurbo::{Affine, Rect};
 use vello::peniko::{Color as VelloColor, Fill};
 
-use crate::layout::NodeContext;
+use crate::layout::{NodeContext, TaffyLayoutExt};
 use crate::node::{Node, ScrollAxis, UzNodeId};
 use crate::paint::{
     ScrollThumbRect,
@@ -74,7 +74,7 @@ impl<'a> Painter<'a> {
         let Some(node_ref) = self.dom.nodes.get(node_id) else {
             return;
         };
-        let layout = LayoutSnapshot::from(&node_ref.final_layout);
+        let layout = node_ref.final_layout;
 
         let computed_style = node_ref.computed_style().clone();
 
@@ -84,28 +84,29 @@ impl<'a> Painter<'a> {
             return;
         }
 
-        let x = parent_x + layout.location_x;
-        let y = parent_y + layout.location_y;
-        let w = layout.size_w;
-        let h = layout.size_h;
+        let border_box = layout.border_box_bounds();
+        let x = parent_x + layout.location.x as f64;
+        let y = parent_y + layout.location.y as f64;
+        let w = border_box.width;
+        let h = border_box.height;
 
         let local_style_transform = computed_style.transform.to_affine(w, h);
-        let local_translate = Affine::translate((layout.location_x, layout.location_y));
+        let local_translate =
+            Affine::translate((layout.location.x as f64, layout.location.y as f64));
         let transform = parent_paint_transform * local_translate * local_style_transform;
         let hit_transform = parent_hit_transform * local_translate * local_style_transform;
 
-        let hitbox_id = self.dom.hitbox_store.insert_transformed(
-            node_id,
-            Bounds::new(0.0, 0.0, w, h),
-            hit_transform,
-        );
+        let hitbox_id =
+            self.dom
+                .hitbox_store
+                .insert_transformed(node_id, border_box, hit_transform);
         self.dom.nodes[node_id].hitbox_id = Some(hitbox_id);
 
         self.paint_node(
             node_id,
             &layout,
             &computed_style,
-            Bounds::new(0.0, 0.0, w, h),
+            border_box,
             Bounds::new(x, y, w, h),
             transform,
             scene,
@@ -179,7 +180,7 @@ impl<'a> Painter<'a> {
     fn paint_node(
         &mut self,
         node_id: UzNodeId,
-        layout: &LayoutSnapshot,
+        layout: &taffy::Layout,
         style: &UzStyle,
         bounds: Bounds,      // local (0,0,w,h)
         view_bounds: Bounds, // absolute (x,y,w,h) for scrollbar placement
@@ -195,6 +196,7 @@ impl<'a> Painter<'a> {
                 self.text_renderer,
                 bounds,
                 style,
+                layout.content_box_bounds(),
                 &info,
                 transform,
             );
@@ -202,8 +204,7 @@ impl<'a> Painter<'a> {
             if let Some(thumb) = self.register_input_scrollbar(
                 node_id,
                 style,
-                layout.size_w,
-                layout.size_h,
+                layout,
                 &info,
                 transform,
                 view_bounds.x,
@@ -258,6 +259,7 @@ impl<'a> Painter<'a> {
                     scene,
                     bounds,
                     style,
+                    layout.content_box_bounds(),
                     &inline.layout,
                     inline.text.len(),
                     transform,
@@ -270,6 +272,7 @@ impl<'a> Painter<'a> {
                     scene,
                     bounds,
                     style,
+                    layout.content_box_bounds(),
                     &inline.layout,
                     inline.text.len(),
                     transform,
@@ -282,12 +285,22 @@ impl<'a> Painter<'a> {
             let text_len = tc.content.len();
             // Cached parley layout (built once per frame in refresh_text_layouts).
             // If absent (shouldn't happen for nodes with text content), skip.
-            if let Some(layout) = node
+            if let Some(text_layout) = node
                 .as_element()
                 .and_then(|element| element.inline_layout.as_ref())
                 .map(|inline| &inline.layout)
             {
-                Self::paint_text_node(scene, bounds, style, layout, text_len, transform, sel, None);
+                Self::paint_text_node(
+                    scene,
+                    bounds,
+                    style,
+                    layout.content_box_bounds(),
+                    text_layout,
+                    text_len,
+                    transform,
+                    sel,
+                    None,
+                );
             }
         } else {
             crate::paint::view::paint_view(scene, bounds, style, transform, |_| {});
@@ -301,6 +314,7 @@ impl<'a> Painter<'a> {
         scene: &mut Scene,
         bounds: Bounds,
         style: &UzStyle,
+        content_box: Bounds,
         layout: &parley::Layout<crate::text::TextBrush>,
         text_len: usize,
         transform: Affine,
@@ -308,8 +322,8 @@ impl<'a> Painter<'a> {
         colors: Option<&HashMap<usize, VelloColor>>,
     ) {
         style.paint(bounds, scene, transform, |scene| {
-            let text_x = style.padding.left as f64;
-            let text_y = style.padding.top as f64;
+            let text_x = content_box.x;
+            let text_y = content_box.y;
             if let Some((sel_start, sel_end)) = selection {
                 let rects =
                     crate::text::selection_rects_from_layout(layout, text_len, sel_start, sel_end);
@@ -333,7 +347,7 @@ impl<'a> Painter<'a> {
                 crate::text::draw_layout_with_brush(
                     scene,
                     layout,
-                    (style.padding.left, style.padding.top),
+                    (content_box.x as f32, content_box.y as f32),
                     transform,
                     |brush| {
                         colors
@@ -346,7 +360,7 @@ impl<'a> Painter<'a> {
                 crate::text::draw_layout(
                     scene,
                     layout,
-                    (style.padding.left, style.padding.top),
+                    (content_box.x as f32, content_box.y as f32),
                     style.text.color.to_vello(),
                     transform,
                 );
@@ -358,9 +372,9 @@ impl<'a> Painter<'a> {
         &mut self,
         node_id: UzNodeId,
         style: &UzStyle,
-        layout: &LayoutSnapshot,
+        layout: &taffy::Layout,
     ) -> InputRenderInfo {
-        let text_w = (layout.size_w as f32 - style.padding.horizontal()).max(0.0);
+        let text_w = layout.content_box_width().max(0.0);
         let text_style = style.text.clone();
 
         // Grab seed values first so we can drop the immutable borrow.
@@ -453,8 +467,7 @@ impl<'a> Painter<'a> {
         &mut self,
         node_id: UzNodeId,
         style: &UzStyle,
-        w: f64,
-        h: f64,
+        layout: &taffy::Layout,
         info: &InputRenderInfo,
         transform: Affine,
         view_x: f64,
@@ -463,9 +476,11 @@ impl<'a> Painter<'a> {
         if !info.multiline {
             return None;
         }
+        let border_box = layout.border_box_bounds();
+        let content_box = layout.content_box_bounds();
         let axis_info = ScrollAxisInfo {
-            content_size: info.layout_height as f64 + style.padding.vertical() as f64,
-            visible_size: h,
+            content_size: info.layout_height as f64,
+            visible_size: content_box.height,
             offset: info.scroll_offset_y as f64,
         };
         if !axis_info.overflows() {
@@ -477,9 +492,9 @@ impl<'a> Painter<'a> {
             scroll.scroll_offset_y = max_y;
         }
 
-        let view_local = Bounds::new(0.0, 0.0, w, h);
+        let view_local = border_box;
         let geom = scroll::thumb_geometry(ScrollAxis::Y, view_local, axis_info, &style.scrollbar);
-        let view_bounds = Bounds::new(view_x, view_y, w, h);
+        let view_bounds = Bounds::new(view_x, view_y, border_box.width, border_box.height);
         let thumb_bounds = Bounds::new(
             view_x + geom.local_x,
             view_y + geom.local_y,
@@ -527,7 +542,7 @@ impl<'a> Painter<'a> {
         &mut self,
         node_id: UzNodeId,
         style: &UzStyle,
-        layout: &LayoutSnapshot,
+        layout: &taffy::Layout,
         view_bounds: Bounds,
         transform: Affine,
     ) -> Option<ViewScroll> {
@@ -537,16 +552,12 @@ impl<'a> Painter<'a> {
             return None;
         }
 
-        let visible_h = scroll::vertical_scroll_visible_height(
-            layout.size_h as f32,
-            layout.content_w as f32,
-            layout.size_w as f32,
-            scroll_x,
-            style.scrollbar.width,
-        ) as f64;
-
-        let max_x = (layout.content_w - layout.size_w).max(0.0);
-        let max_y = (layout.content_h - visible_h).max(0.0);
+        let visible_w = layout.axis_size(ScrollAxis::X) as f64;
+        let visible_h = layout.axis_size(ScrollAxis::Y) as f64;
+        let content_w = layout.axis_scroll_content_size(ScrollAxis::X) as f64;
+        let content_h = layout.axis_scroll_content_size(ScrollAxis::Y) as f64;
+        let max_x = layout.axis_scroll_overflow(ScrollAxis::X) as f64;
+        let max_y = layout.axis_scroll_overflow(ScrollAxis::Y) as f64;
 
         let ss = &mut self.dom.nodes[node_id].scroll_state;
         if ss.scroll_offset_x as f64 > max_x {
@@ -566,25 +577,25 @@ impl<'a> Painter<'a> {
                 .is_some_and(|(mx, my)| view_bounds.contains(mx, my));
 
         let mut thumbs = Vec::new();
-        if scroll_y && layout.content_h > visible_h {
+        if scroll_y && content_h > visible_h {
             thumbs.push(self.register_view_thumb(
                 node_id,
                 ScrollAxis::Y,
                 view_bounds,
-                layout.content_h,
+                content_h,
                 visible_h,
                 offset_y,
                 transform,
                 &style.scrollbar,
             ));
         }
-        if scroll_x && layout.content_w > layout.size_w {
+        if scroll_x && content_w > visible_w {
             thumbs.push(self.register_view_thumb(
                 node_id,
                 ScrollAxis::X,
                 view_bounds,
-                layout.content_w,
-                layout.size_w,
+                content_w,
+                visible_w,
                 offset_x,
                 transform,
                 &style.scrollbar,
@@ -758,28 +769,6 @@ impl<'a> Painter<'a> {
             }
         }
         map
-    }
-}
-
-struct LayoutSnapshot {
-    location_x: f64,
-    location_y: f64,
-    size_w: f64,
-    size_h: f64,
-    content_w: f64,
-    content_h: f64,
-}
-
-impl From<&taffy::Layout> for LayoutSnapshot {
-    fn from(l: &taffy::Layout) -> Self {
-        Self {
-            location_x: l.location.x as f64,
-            location_y: l.location.y as f64,
-            size_w: l.size.width as f64,
-            size_h: l.size.height as f64,
-            content_w: l.content_size.width as f64,
-            content_h: l.content_size.height as f64,
-        }
     }
 }
 
