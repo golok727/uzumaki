@@ -1,13 +1,15 @@
 use parley::{
     Affinity as ParleyAffinity, Alignment as ParleyAlignment, AlignmentOptions, BoundingBox,
-    Cluster, Cursor, FontContext, InlineBox, Layout, LayoutContext, Selection,
+    Cluster, Cursor, FontContext, Layout, LayoutContext, Selection,
 };
 use vello::Scene;
 use vello::kurbo::Affine;
 use vello::peniko::{Brush, Color, Fill};
 
-use crate::style::{TextStyle, UzStyle};
+use crate::style::TextStyle;
 
+#[allow(unused_imports)]
+pub(crate) use InlineBox as _;
 /// One contribution to an inline-root parent's parley layout.
 ///
 /// Mirrors blitz's "atomic inline box per inline element" pattern: bare text
@@ -16,38 +18,9 @@ use crate::style::{TextStyle, UzStyle};
 /// size, identified by their `node_id`. Their text content is rendered later
 /// via the chip's own parley layout, painted through the normal render_node
 /// recursion.
-pub(crate) enum InlineItem {
-    Text {
-        node_id: usize,
-        text: String,
-        style: TextStyle,
-    },
-    Box {
-        node_id: usize,
-        width: f32,
-        height: f32,
-    },
-}
-
-pub(crate) fn inline_text_item(node_id: usize, text: String, style: &UzStyle) -> InlineItem {
-    InlineItem::Text {
-        node_id,
-        text,
-        style: style.text.clone(),
-    }
-}
-
-pub(crate) fn inline_box_item(node_id: usize, width: f32, height: f32) -> InlineItem {
-    InlineItem::Box {
-        node_id,
-        width,
-        height,
-    }
-}
-
-pub(crate) fn inline_box_id(node_id: usize) -> u64 {
-    node_id as u64
-}
+/// Re-exported so callers driving `build_inline_layout` can push spans and
+/// inline boxes directly without depending on parley.
+pub(crate) use parley::{InlineBox, TreeBuilder};
 
 impl From<crate::selection::Affinity> for ParleyAffinity {
     fn from(value: crate::selection::Affinity) -> Self {
@@ -125,42 +98,26 @@ impl TextRenderer {
         layout
     }
 
-    pub(crate) fn build_inline_layout(
+    /// Build a multi-span inline parley layout. The caller drives the parley
+    /// `TreeBuilder` via `build`, choosing which fragments to push (styled
+    /// spans, inline boxes, padding spacers, etc.). text.rs only owns the
+    /// parley setup — line breaking, alignment — so the inline-formatting
+    /// policy stays in the layout module.
+    pub(crate) fn build_inline_layout<F>(
         &mut self,
-        items: &[InlineItem],
         root_style: &TextStyle,
+        root_node_id: usize,
         max_width: Option<f32>,
-    ) -> Layout<TextBrush> {
-        let parley_root = root_style.to_parley_text_style(0);
+        build: F,
+    ) -> Layout<TextBrush>
+    where
+        F: FnOnce(&mut TreeBuilder<'_, TextBrush>),
+    {
+        let parley_root = root_style.to_parley_text_style(root_node_id);
         let mut builder = self
             .layout_ctx
             .tree_builder(&mut self.font_ctx, 1.0, true, &parley_root);
-        for item in items {
-            match item {
-                InlineItem::Text {
-                    node_id,
-                    text,
-                    style,
-                } => {
-                    let span_style = style.to_parley_text_style(*node_id);
-                    builder.push_style_span(span_style);
-                    builder.push_text(text);
-                    builder.pop_style_span();
-                }
-                InlineItem::Box {
-                    node_id,
-                    width,
-                    height,
-                } => {
-                    builder.push_inline_box(InlineBox {
-                        id: inline_box_id(*node_id),
-                        index: 0,
-                        width: *width,
-                        height: *height,
-                    });
-                }
-            }
-        }
+        build(&mut builder);
         let (mut layout, _) = builder.build();
         layout.break_all_lines(max_width);
         let alignment = root_style.text_align;
@@ -168,18 +125,6 @@ impl TextRenderer {
             layout.align(max_width, alignment, AlignmentOptions::default());
         }
         layout
-    }
-
-    pub(crate) fn measure_inline_text(
-        &mut self,
-        items: &[InlineItem],
-        root_style: &TextStyle,
-        max_width: Option<f32>,
-    ) -> (f32, f32) {
-        let layout = self.build_inline_layout(items, root_style, max_width);
-        let measured_width = layout.full_width();
-        let measured_height = layout.height();
-        (measured_width.ceil(), measured_height.ceil())
     }
 
     fn grapheme_to_byte(boundaries: &[usize], grapheme_index: usize) -> usize {

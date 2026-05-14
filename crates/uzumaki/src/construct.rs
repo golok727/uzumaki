@@ -132,6 +132,10 @@ impl UIState {
                     child.layout_parent = Some(wrapper_id);
                 }
                 self.nodes[wrapper_id].children.push(cid);
+                self.nodes[wrapper_id]
+                    .layout_children
+                    .borrow_mut()
+                    .push(cid);
                 self.append_inline_layout(wrapper_id, cid);
             } else {
                 open_wrapper = None;
@@ -205,29 +209,27 @@ impl UIState {
             let Some(node) = self.nodes.get(node_id) else {
                 continue;
             };
-            // Bare text nodes contribute their text to the parent's run.
-            // Inline element children (e.g. `<text>` chips) become an atomic
-            // inline-box placeholder: their own text is rendered separately
-            // via their own inline_layout. We record the entry with `byte_len
-            // = 0` so the entry list still reflects document order.
-            match &node.data {
-                NodeData::Text(text_node) => {
-                    let byte_start = inline.text.len();
-                    inline.text.push_str(&text_node.content);
-                    inline.entries.push(InlineTextEntry {
-                        node_id,
-                        byte_start,
-                        byte_len: text_node.content.len(),
-                    });
-                }
-                NodeData::Element(_) if node.is_inline_level() => {
-                    inline.entries.push(InlineTextEntry {
-                        node_id,
-                        byte_start: inline.text.len(),
-                        byte_len: 0,
-                    });
-                }
-                _ => {}
+            // All inline-level children contribute text to the parent's run.
+            // Bare text nodes use their content directly; `<text>` elements
+            // contribute their content as a styled span (their `computed_style`
+            // already encodes the inherited cascade, including any bg/border/
+            // padding the painter draws around the span).
+            let text_content = match &node.data {
+                NodeData::Text(text_node) => Some(text_node.content.as_str()),
+                NodeData::Element(el) if node.is_inline_level() => el
+                    .data
+                    .get_text_content()
+                    .map(|content| content.content.as_str()),
+                _ => None,
+            };
+            if let Some(content) = text_content {
+                let byte_start = inline.text.len();
+                inline.text.push_str(content);
+                inline.entries.push(InlineTextEntry {
+                    node_id,
+                    byte_start,
+                    byte_len: content.len(),
+                });
             }
         }
     }

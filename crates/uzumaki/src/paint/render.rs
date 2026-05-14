@@ -1,13 +1,11 @@
 use std::collections::HashMap;
 
-use slab::Slab;
 use vello::Scene;
 use vello::kurbo::{Affine, Rect};
 use vello::peniko::{Color as VelloColor, Fill};
 
-use crate::element::TextLayout;
-use crate::layout::{NodeContext, TaffyLayoutExt};
-use crate::node::{Node, ScrollAxis, UzNodeId};
+use crate::layout::TaffyLayoutExt;
+use crate::node::{ScrollAxis, UzNodeId};
 use crate::paint::{
     ScrollThumbRect,
     checkbox::CheckboxRenderInfo,
@@ -17,8 +15,8 @@ use crate::paint::{
 };
 use crate::style::{Bounds, Overflow, ScrollbarStyle, UzStyle, Visibility};
 use crate::text::{
-    InlineItem, TextRenderer, apply_text_style_to_editor, inline_box_item, inline_text_item,
-    secure_cursor_geometry, secure_selection_geometry,
+    TextBrush, TextRenderer, apply_text_style_to_editor, secure_cursor_geometry,
+    secure_selection_geometry,
 };
 use crate::ui::UIState;
 
@@ -269,12 +267,13 @@ impl<'a> Painter<'a> {
         }
     }
 
-    /// Draw a text node from its cached parley layout, optionally with a
-    /// selection highlight. Inline element children (chips) are NOT drawn
-    /// here — they're rendered by the normal render_node recursion using
-    /// their synthesized `final_layout`. parley still positions their atomic
-    /// inline-box slot in the parent's layout; the actual chip bg/border/text
-    /// are painted in the chip's own paint_node pass.
+    /// Draw an inline-formatting-context node from its cached parley layout.
+    /// Inline `<text>` element children contribute styled spans (identified by
+    /// `TextBrush::id == node_id`); their bg/border/padding/corner-radii are
+    /// painted here per line by reconstructing each span's bbox from parley
+    /// glyph-run geometry, then routed through `UzStyle::paint` so they share
+    /// every visual feature with regular block elements. Glyph color comes
+    /// from each span's owning node so per-span `color` works.
     #[allow(clippy::too_many_arguments)]
     fn paint_text_node(
         &self,
@@ -282,7 +281,7 @@ impl<'a> Painter<'a> {
         bounds: Bounds,
         style: &UzStyle,
         content_box: Bounds,
-        layout: &parley::Layout<crate::text::TextBrush>,
+        layout: &parley::Layout<TextBrush>,
         text_len: usize,
         transform: Affine,
         selection: Option<(usize, usize)>,
@@ -290,6 +289,14 @@ impl<'a> Painter<'a> {
         style.paint(bounds, scene, transform, |scene| {
             let text_x = content_box.x;
             let text_y = content_box.y;
+
+            // Paint per-span backgrounds/borders BEFORE glyphs so glyphs sit
+            // on top. Walk lines; within each line, group consecutive glyph
+            // runs by brush.id; for each group whose brush refers to an
+            // inline `<text>` element with visible box styling, build a bounds
+            // rect and run it through UzStyle::paint.
+            self.paint_inline_span_boxes(scene, layout, text_x, text_y, transform);
+
             if let Some((sel_start, sel_end)) = selection {
                 let rects =
                     crate::text::selection_rects_from_layout(layout, text_len, sel_start, sel_end);
@@ -309,14 +316,101 @@ impl<'a> Painter<'a> {
                     );
                 }
             }
-            crate::text::draw_layout(
+
+            let nodes = &self.dom.nodes;
+            let parent_color = style.text.color.to_vello();
+            crate::text::draw_layout_with_brush(
                 scene,
                 layout,
-                (content_box.x as f32, content_box.y as f32),
-                style.text.color.to_vello(),
+                (text_x as f32, text_y as f32),
                 transform,
+                |brush| {
+                    nodes
+                        .get(brush.id)
+                        .map(|node| node.computed_style().text.color.to_vello())
+                        .unwrap_or(parent_color)
+                },
             );
         });
+    }
+
+    /// Per-span bg/border painting. For each line, gather contiguous glyph
+    /// runs by brush.id and produce one bounds rect per (span, line). The
+    /// vertical extent is the full line box (so adjacent lines of the same
+    /// span visually merge); horizontal extent is the run's `offset..offset
+    /// + advance`, expanded by the span node's left/right padding and border.
+    /// Then `UzStyle::paint` draws the same bg/border/corner/shadow stack as
+    /// any other element.
+    fn paint_inline_span_boxes(
+        &self,
+        scene: &mut Scene,
+        layout: &parley::Layout<TextBrush>,
+        text_x: f64,
+        text_y: f64,
+        transform: Affine,
+    ) {
+        use parley::PositionedLayoutItem;
+
+        for line in layout.lines() {
+            let metrics = line.metrics();
+            let line_top = metrics.min_coord as f64;
+            let line_bottom = metrics.max_coord as f64;
+            let line_height = (line_bottom - line_top).max(0.0);
+
+            let mut current_id: Option<usize> = None;
+            let mut seg_start: f32 = 0.0;
+            let mut seg_end: f32 = 0.0;
+            let flush = |id: usize, start: f32, end: f32, scene: &mut Scene| {
+                let Some(node) = self.dom.nodes.get(id) else {
+                    return;
+                };
+                let style = node.computed_style();
+                let has_box = style.background.is_some()
+                    || style.border_widths.any_nonzero()
+                    || style.box_shadow.is_some();
+                if !has_box {
+                    return;
+                }
+                let pad_l = style.padding.left as f64;
+                let pad_r = style.padding.right as f64;
+                let pad_t = style.padding.top as f64;
+                let pad_b = style.padding.bottom as f64;
+                let bx = text_x + start as f64 - pad_l;
+                let by = text_y + line_top - pad_t;
+                let bw = (end - start) as f64 + pad_l + pad_r;
+                let bh = line_height + pad_t + pad_b;
+                let bounds = Bounds::new(bx, by, bw, bh);
+                style.paint(bounds, scene, transform, |_| {});
+            };
+
+            for item in line.items() {
+                let PositionedLayoutItem::GlyphRun(run) = item else {
+                    continue;
+                };
+                let id = run.style().brush.id;
+                let run_start = run.offset();
+                let run_end = run_start + run.advance();
+                match current_id {
+                    Some(cur) if cur == id => {
+                        seg_end = run_end;
+                    }
+                    Some(cur) => {
+                        flush(cur, seg_start, seg_end, scene);
+                        current_id = Some(id);
+                        seg_start = run_start;
+                        seg_end = run_end;
+                    }
+                    None => {
+                        current_id = Some(id);
+                        seg_start = run_start;
+                        seg_end = run_end;
+                    }
+                }
+            }
+            if let Some(id) = current_id {
+                flush(id, seg_start, seg_end, scene);
+            }
+        }
     }
 
     fn build_input_render_info(
@@ -800,149 +894,6 @@ struct ScrollbarPaint {
     hovered: bool,
     active: bool,
     style: ScrollbarStyle,
-}
-
-pub(crate) fn measure(
-    text_renderer: &mut TextRenderer,
-    nodes: &Slab<Node>,
-    known_dimensions: taffy::Size<Option<f32>>,
-    available_space: taffy::Size<taffy::AvailableSpace>,
-    node_context: Option<&mut NodeContext>,
-) -> taffy::Size<f32> {
-    let default_size = taffy::Size {
-        width: known_dimensions.width.unwrap_or(0.0),
-        height: known_dimensions.height.unwrap_or(0.0),
-    };
-
-    let Some(ctx) = node_context else {
-        return default_size;
-    };
-    let Some(node) = nodes.get(ctx.node_id) else {
-        return default_size;
-    };
-    let style = node.computed_style();
-
-    if node.is_text_input() {
-        return taffy::Size {
-            width: known_dimensions
-                .width
-                .or_else(|| available_as_option(available_space.width))
-                .unwrap_or(200.0),
-            height: known_dimensions
-                .height
-                .unwrap_or((style.text.font_size * style.text.line_height).round()),
-        };
-    }
-
-    if let Some(inline) = node
-        .as_element()
-        .and_then(|element| element.inline_layout.as_ref())
-        && !inline.entries.is_empty()
-    {
-        let items = inline_items(nodes, text_renderer, inline);
-        let (measured_width, measured_height) = text_renderer.measure_inline_text(
-            &items,
-            &style.text,
-            known_dimensions
-                .width
-                .or_else(|| available_as_option(available_space.width)),
-        );
-        return taffy::Size {
-            width: measured_width,
-            height: measured_height,
-        };
-    }
-
-    if let Some(text) = node
-        .as_element()
-        .and_then(|element| element.inline_layout.as_ref())
-        .map(|inline| inline.text.as_str())
-        .or_else(|| node.get_text_content().map(|text| text.content.as_str()))
-    {
-        let (measured_width, measured_height) = text_renderer.measure_text(
-            text,
-            &style.text,
-            known_dimensions
-                .width
-                .or_else(|| available_as_option(available_space.width)),
-            known_dimensions
-                .height
-                .or_else(|| available_as_option(available_space.height)),
-        );
-        return taffy::Size {
-            width: measured_width,
-            height: measured_height,
-        };
-    }
-
-    if let Some((width, height)) = node.as_image().and_then(|image| image.data.natural_size()) {
-        if width <= 0.0 || height <= 0.0 {
-            return default_size;
-        }
-        let aspect_ratio = width / height;
-        let measured_width = known_dimensions.width.unwrap_or({
-            if let Some(known_height) = known_dimensions.height {
-                known_height * aspect_ratio
-            } else {
-                width
-            }
-        });
-        let measured_height = known_dimensions.height.unwrap_or_else(|| {
-            if let Some(known_width) = known_dimensions.width {
-                known_width / aspect_ratio
-            } else {
-                height
-            }
-        });
-        return taffy::Size {
-            width: measured_width,
-            height: measured_height,
-        };
-    }
-
-    default_size
-}
-
-fn inline_items(
-    nodes: &Slab<Node>,
-    text_renderer: &mut TextRenderer,
-    inline: &TextLayout,
-) -> Vec<InlineItem> {
-    inline
-        .entries
-        .iter()
-        .filter_map(|entry| {
-            let node = nodes.get(entry.node_id)?;
-            let style = node.computed_style();
-            match &node.data {
-                crate::node::NodeData::Text(_) => {
-                    let byte_end = entry.byte_start.checked_add(entry.byte_len)?;
-                    let text = inline.text.get(entry.byte_start..byte_end)?;
-                    Some(inline_text_item(entry.node_id, text.to_owned(), style))
-                }
-                crate::node::NodeData::Element(el) => {
-                    let chip_text = el
-                        .data
-                        .get_text_content()
-                        .map(|t| t.content.as_str())
-                        .unwrap_or("");
-                    let (w, h) = text_renderer.measure_text(chip_text, &style.text, None, None);
-                    let box_w = w + style.padding.horizontal() + style.border_widths.horizontal();
-                    let box_h = h + style.padding.vertical() + style.border_widths.vertical();
-                    Some(inline_box_item(entry.node_id, box_w, box_h))
-                }
-                _ => None,
-            }
-        })
-        .collect()
-}
-
-fn available_as_option(space: taffy::AvailableSpace) -> Option<f32> {
-    match space {
-        taffy::AvailableSpace::Definite(v) => Some(v),
-        taffy::AvailableSpace::MinContent => Some(0.0),
-        taffy::AvailableSpace::MaxContent => None,
-    }
 }
 
 #[cfg(test)]

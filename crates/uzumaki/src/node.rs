@@ -145,6 +145,9 @@ pub struct Node {
     computed_style: UzStyle,
 
     pub final_layout: taffy::Layout,
+    pub unrounded_layout: taffy::Layout,
+    pub cache: taffy::Cache,
+    pub taffy_style: taffy::Style,
     /// Layout-tree parent. Equals `parent` for normal nodes; for the original
     /// inline children that were wrapped, points at the synthetic anonymous
     /// inline wrapper instead. Set by the construct phase each frame.
@@ -157,16 +160,20 @@ pub struct Node {
 impl Node {
     pub fn new(default_style: UzStyle, data: impl Into<NodeData>) -> Self {
         // todo should we keep a base style to derive from ?
+        let taffy_style = default_style.to_taffy();
         Self {
             parent: None,
             children: Vec::new(),
             default_style: default_style.clone(),
             computed_style: default_style,
+            taffy_style,
             data: data.into(),
             interactivity: Interactivity::default(),
             hitbox_id: None,
             scroll_state: ScrollState::new(),
             final_layout: taffy::Layout::new(),
+            unrounded_layout: taffy::Layout::new(),
+            cache: taffy::Cache::new(),
             layout_parent: None,
             layout_children: RefCell::new(Vec::new()),
             flags: NodeFlags::empty(),
@@ -215,6 +222,7 @@ impl Node {
             style.outline = Some(Outline::FOCUS_RING);
         }
 
+        self.taffy_style = style.to_taffy();
         self.computed_style = style;
     }
 

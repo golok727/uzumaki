@@ -6,14 +6,14 @@ use crate::{
     input::InputState,
     interactivity::{HitTestState, HitboxStore},
     layout::{LayoutEngine, TaffyLayoutExt},
-    node::{Node, NodeData, ScrollAxis, TextNode, UzNodeId},
+    node::{Node, ScrollAxis, TextNode, UzNodeId},
     paint::{
         ScrollThumbRect,
         scroll::{self, ScrollAlign, ScrollIntoViewOptions},
     },
     selection::TextSelection,
     style::{Length, UzStyle},
-    text::{InlineItem, TextRenderer, inline_box_id, inline_box_item, inline_text_item},
+    text::TextRenderer,
 };
 
 /// Active scroll-thumb drag. Stored on the dom (only one drag at a time).
@@ -635,10 +635,7 @@ impl UIState {
     pub fn compute_layout(&mut self, width: f32, height: f32, text_renderer: &mut TextRenderer) {
         self.compute_styles();
         self.resolve_layout_children();
-        self.layout_engine
-            .compute_layout(&self.nodes, self.root, width, height, text_renderer);
-        self.copy_final_layouts();
-        self.refresh_text_layouts(text_renderer);
+        crate::layout::LayoutTree::run(self, text_renderer, width, height);
         if let Some((nid, opts)) = self.pending_scroll_node_into_view.take() {
             self.scroll_node_into_view(nid, opts);
         }
@@ -663,235 +660,6 @@ impl UIState {
                 self.compute_styles_at(child_id, Some(computed.clone()));
             }
         }
-    }
-
-    fn copy_final_layouts(&mut self) {
-        for (node_id, node) in self.nodes.iter_mut() {
-            node.final_layout = self
-                .layout_engine
-                .layout(node_id)
-                .copied()
-                .unwrap_or_else(taffy::Layout::new);
-        }
-    }
-
-    /// Rebuild cached parley layouts for every text-bearing node at its final
-    /// taffy width. Runs once per frame after layout. Paint / selection /
-    /// hit-test then reuse element inline layouts instead of rebuilding.
-    fn refresh_text_layouts(&mut self, text_renderer: &mut TextRenderer) {
-        let Some(root) = self.root else { return };
-        self.refresh_text_layouts_at(root, text_renderer);
-    }
-
-    fn refresh_text_layouts_at(&mut self, node_id: UzNodeId, text_renderer: &mut TextRenderer) {
-        let children = self.nodes[node_id].layout_children.borrow().clone();
-        let has_inline_layout = self.nodes[node_id]
-            .as_element()
-            .is_some_and(|element| element.inline_layout.is_some());
-        let inline_children = if has_inline_layout {
-            self.nodes[node_id].children.clone()
-        } else {
-            children.clone()
-        };
-
-        let inline_text = self.nodes[node_id]
-            .as_element()
-            .and_then(|element| element.inline_layout.as_ref())
-            .as_ref()
-            .map(|i| i.text.clone());
-        if let Some(text) = inline_text {
-            let computed = self.nodes[node_id].computed_style().clone();
-            let width = text_layout_width(&self.nodes[node_id].final_layout);
-
-            // Pre-build each inline element child's own parley layout so we
-            // can use its exact first-line baseline when positioning the
-            // chip relative to its parent line.
-            for &cid in &inline_children {
-                let is_inline_element = matches!(
-                    self.nodes.get(cid).map(|n| &n.data),
-                    Some(NodeData::Element(_))
-                ) && self.nodes[cid].is_inline_level();
-                if !is_inline_element {
-                    continue;
-                }
-                let chip_text = self.nodes[cid]
-                    .get_text_content()
-                    .map(|t| t.content.clone())
-                    .unwrap_or_default();
-                let chip_style = self.nodes[cid].computed_style().clone();
-                let chip_parley = text_renderer.build_layout(&chip_text, &chip_style.text, None);
-                if let Some(element) = self.nodes[cid].as_element_mut() {
-                    let inline_layout = element
-                        .inline_layout
-                        .get_or_insert_with(|| Box::new(crate::element::TextLayout::default()));
-                    inline_layout.text = chip_text;
-                    inline_layout.entries.clear();
-                    inline_layout.layout = chip_parley;
-                }
-            }
-
-            let mut items = Vec::new();
-            for cid in &inline_children {
-                self.collect_inline_items(*cid, text_renderer, &mut items);
-            }
-            let layout = if items.is_empty() {
-                text_renderer.build_layout(&text, &computed.text, width)
-            } else {
-                text_renderer.build_inline_layout(&items, &computed.text, width)
-            };
-            // Write `final_layout` for every inline element child from the
-            // positioned inline boxes in the parent's parley layout. This
-            // makes the painter / hit-test / getBoundingClientRect path
-            // identical for inline children and regular taffy-laid nodes.
-            let content_box = self.nodes[node_id].final_layout.content_box_bounds();
-            for cid in &inline_children {
-                self.write_inline_child_layout(*cid, &layout, content_box.x, content_box.y);
-            }
-            if let Some(element) = self.nodes[node_id].as_element_mut()
-                && let Some(inline_layout) = element.inline_layout.as_mut()
-            {
-                inline_layout.layout = layout;
-            }
-        } else if !self.nodes[node_id].is_text_input()
-            && let Some(text) = self.nodes[node_id]
-                .get_text_content()
-                .map(|t| t.content.clone())
-        {
-            let computed = self.nodes[node_id].computed_style();
-            let width = text_layout_width(&self.nodes[node_id].final_layout);
-            let layout = text_renderer.build_layout(&text, &computed.text, width);
-            if let Some(element) = self.nodes[node_id].as_element_mut() {
-                let inline_layout = element
-                    .inline_layout
-                    .get_or_insert_with(|| Box::new(crate::element::TextLayout::default()));
-                inline_layout.text = text;
-                inline_layout.entries.clear();
-                inline_layout.layout = layout;
-            }
-        } else if let Some(element) = self.nodes[node_id].as_element_mut() {
-            element.inline_layout = None;
-        }
-
-        for cid in children {
-            self.refresh_text_layouts_at(cid, text_renderer);
-        }
-    }
-
-    fn collect_inline_items(
-        &self,
-        node_id: UzNodeId,
-        text_renderer: &mut TextRenderer,
-        items: &mut Vec<InlineItem>,
-    ) {
-        let style = self.nodes[node_id].computed_style();
-        match &self.nodes[node_id].data {
-            NodeData::Text(text_node) => {
-                items.push(inline_text_item(node_id, text_node.content.clone(), style));
-            }
-            NodeData::Element(el) if self.nodes[node_id].is_inline_level() => {
-                let chip_text = el
-                    .data
-                    .get_text_content()
-                    .map(|t| t.content.as_str())
-                    .unwrap_or("");
-                let (text_w, text_h) =
-                    text_renderer.measure_text(chip_text, &style.text, None, None);
-                let box_w = text_w + style.padding.horizontal() + style.border_widths.horizontal();
-                let box_h = text_h + style.padding.vertical() + style.border_widths.vertical();
-                items.push(inline_box_item(node_id, box_w, box_h));
-            }
-            _ => {}
-        }
-    }
-
-    /// Look up `chip_id` in the parent's parley layout (matched by
-    /// `inline_box_id(chip_id)`) and stamp its `final_layout` from the box's
-    /// position and size. Padding/border come from the chip's computed style;
-    /// content_size matches the box's interior. Only inline element children
-    /// produce inline boxes — bare text nodes are skipped.
-    ///
-    /// Parley positions inline boxes with their bottom at the line baseline.
-    /// That's correct CSS default behavior, but it means the chip's *inner*
-    /// text (drawn from the chip's own parley layout starting at its content
-    /// box top) would float above the parent line baseline. We adjust the
-    /// chip's y so its inner-text baseline aligns with the parent line
-    /// baseline; the chip box still has its full size including padding.
-    fn write_inline_child_layout(
-        &mut self,
-        chip_id: UzNodeId,
-        parent_layout: &parley::Layout<crate::text::TextBrush>,
-        offset_x: f64,
-        offset_y: f64,
-    ) {
-        if !self.nodes.contains(chip_id) {
-            return;
-        }
-        let target_id = inline_box_id(chip_id);
-        let mut found: Option<(f32, f32, f32, f32, f32)> = None;
-        for line in parent_layout.lines() {
-            let line_baseline = line.metrics().baseline;
-            for item in line.items() {
-                if let parley::PositionedLayoutItem::InlineBox(b) = item
-                    && b.id == target_id
-                {
-                    found = Some((b.x, b.y, b.width, b.height, line_baseline));
-                    break;
-                }
-            }
-            if found.is_some() {
-                break;
-            }
-        }
-        let Some((bx, _by, bw, bh, line_baseline)) = found else {
-            return;
-        };
-        let style = self.nodes[chip_id].computed_style().clone();
-        let pad = taffy::Rect {
-            left: style.padding.left,
-            right: style.padding.right,
-            top: style.padding.top,
-            bottom: style.padding.bottom,
-        };
-        let border = taffy::Rect {
-            left: style.border_widths.left,
-            right: style.border_widths.right,
-            top: style.border_widths.top,
-            bottom: style.border_widths.bottom,
-        };
-        let content_w = (bw - pad.left - pad.right - border.left - border.right).max(0.0);
-        let content_h = (bh - pad.top - pad.bottom - border.top - border.bottom).max(0.0);
-
-        // Chip text baseline (within its own parley layout, measured from
-        // content-box top). When the chip's own parley layout isn't built
-        // yet, fall back to a font-metric approximation.
-        let chip_text_baseline = self
-            .nodes
-            .get(chip_id)
-            .and_then(|n| n.as_element())
-            .and_then(|el| el.inline_layout.as_ref())
-            .and_then(|inline| inline.layout.lines().next().map(|l| l.metrics().baseline))
-            .unwrap_or_else(|| style.text.font_size * style.text.line_height * 0.8);
-
-        let chip_local_y = line_baseline - chip_text_baseline - pad.top - border.top;
-
-        let chip = &mut self.nodes[chip_id];
-        chip.final_layout = taffy::Layout {
-            location: taffy::Point {
-                x: offset_x as f32 + bx,
-                y: offset_y as f32 + chip_local_y,
-            },
-            size: taffy::Size {
-                width: bw,
-                height: bh,
-            },
-            content_size: taffy::Size {
-                width: content_w,
-                height: content_h,
-            },
-            padding: pad,
-            border,
-            ..taffy::Layout::new()
-        };
     }
 
     /// Run hit test at the given mouse position and update hit_state.
@@ -1005,10 +773,6 @@ impl UIState {
         }
         None
     }
-}
-
-fn text_layout_width(layout: &taffy::Layout) -> Option<f32> {
-    Some(layout.axis_content_box_size(ScrollAxis::X).max(0.0))
 }
 
 #[cfg(test)]
