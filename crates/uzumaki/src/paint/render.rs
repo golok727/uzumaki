@@ -364,6 +364,9 @@ impl<'a> Painter<'a> {
                 let Some(node) = self.dom.nodes.get(id) else {
                     return;
                 };
+                if !node.is_text_element() {
+                    return;
+                }
                 let style = node.computed_style();
                 let has_box = style.background.is_some()
                     || style.border_widths.any_nonzero()
@@ -371,14 +374,17 @@ impl<'a> Painter<'a> {
                 if !has_box {
                     return;
                 }
-                let pad_l = style.padding.left as f64;
-                let pad_r = style.padding.right as f64;
-                let pad_t = style.padding.top as f64;
-                let pad_b = style.padding.bottom as f64;
-                let bx = text_x + start as f64 - pad_l;
-                let by = text_y + line_top - pad_t;
-                let bw = (end - start) as f64 + pad_l + pad_r;
-                let bh = line_height + pad_t + pad_b;
+                let inset_l = (style.padding.left + style.border_widths.left) as f64;
+                let inset_r = (style.padding.right + style.border_widths.right) as f64;
+                let visual_h = (style.text.font_size * style.text.line_height
+                    + style.padding.top
+                    + style.padding.bottom
+                    + style.border_widths.top
+                    + style.border_widths.bottom) as f64;
+                let bx = text_x + start as f64 - inset_l;
+                let bh = line_height.max(visual_h);
+                let by = text_y + line_top + (line_height - bh) * 0.5;
+                let bw = (end - start) as f64 + inset_l + inset_r;
                 let bounds = Bounds::new(bx, by, bw, bh);
                 style.paint(bounds, scene, transform, |_| {});
             };

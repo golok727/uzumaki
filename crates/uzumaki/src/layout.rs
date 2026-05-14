@@ -290,7 +290,11 @@ impl<'a> LayoutTree<'a> {
                     AvailableSpace::Definite(v) => Some(v),
                     _ => None,
                 });
-                let layout = self.text.build_layout(&text, &style.text, max_w);
+                let layout =
+                    self.text
+                        .build_inline_layout(&style.text, node_id, max_w, |builder| {
+                            builder.push_text(&text);
+                        });
                 let w = known.width.unwrap_or_else(|| layout.full_width().ceil());
                 let h = known.height.unwrap_or_else(|| layout.height().ceil());
                 stashed_layout = Some(layout);
@@ -317,11 +321,7 @@ impl<'a> LayoutTree<'a> {
     /// Custom inline formatting context. Inline-root nodes own a parley run
     /// where bare text nodes and `<text>` element children contribute styled
     /// spans (each text node's `computed_style` already encodes the inherited
-    /// cascade). `<text>` elements are NEVER atomic inline-boxes; their
-    /// bg/border/padding is painted by the painter from parley's span
-    /// geometry. This means the inline-root layout is a pure text measurement
-    /// — no child taffy boxes — and inline element children have no
-    /// independent layout box.
+    /// cascade). `<text>` element box styling is painted from span geometry.
     fn compute_inline_layout(&mut self, node_id: UzNodeId, inputs: LayoutInput) -> LayoutOutput {
         let LayoutInput {
             known_dimensions,
@@ -390,6 +390,7 @@ impl<'a> LayoutTree<'a> {
             style: crate::style::TextStyle,
             pad_left: f32,
             pad_right: f32,
+            line_height: Option<f32>,
         }
         let mut fragments: Vec<InlineFragment> = Vec::with_capacity(entries.len());
         for entry in &entries {
@@ -400,18 +401,19 @@ impl<'a> LayoutTree<'a> {
             let slice = text.get(entry.byte_start..end).unwrap_or("");
             let entry_node = &self.nodes()[entry.node_id];
             let entry_style = entry_node.computed_style();
-            // Bare text nodes contribute no padding/border — the surrounding
-            // element owns those. `<text>` elements push horizontal padding
-            // (+ border) as flanking inline boxes so adjacent inline content
-            // is shifted out of the span's box. Vertical padding is purely
-            // visual (CSS: vertical padding on inline elements does not
-            // affect line layout) and is handled at paint time.
-            let (pad_l, pad_r) = if entry_node.is_text_node() {
-                (0.0, 0.0)
+            let (pad_l, pad_r, line_height) = if entry_node.is_text_node() {
+                (0.0, 0.0, None)
             } else {
                 (
                     entry_style.padding.left + entry_style.border_widths.left,
                     entry_style.padding.right + entry_style.border_widths.right,
+                    Some(
+                        (entry_style.text.font_size * entry_style.text.line_height).ceil()
+                            + entry_style.padding.top
+                            + entry_style.padding.bottom
+                            + entry_style.border_widths.top
+                            + entry_style.border_widths.bottom,
+                    ),
                 )
             };
             fragments.push(InlineFragment {
@@ -420,6 +422,7 @@ impl<'a> LayoutTree<'a> {
                 style: entry_style.text.clone(),
                 pad_left: pad_l,
                 pad_right: pad_r,
+                line_height,
             });
         }
 
@@ -441,7 +444,10 @@ impl<'a> LayoutTree<'a> {
                                 height: 0.0,
                             });
                         }
-                        let span_style = frag.style.to_parley_text_style(frag.node_id);
+                        let mut span_style = frag.style.to_parley_text_style(frag.node_id);
+                        if let Some(line_height) = frag.line_height {
+                            span_style.line_height = parley::LineHeight::Absolute(line_height);
+                        }
                         builder.push_style_span(span_style);
                         builder.push_text(&frag.text);
                         builder.pop_style_span();

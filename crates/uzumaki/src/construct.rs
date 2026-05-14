@@ -86,17 +86,15 @@ impl UIState {
 
         if !has_block_nodes && parent_display != Display::Flex {
             self.set_inline_layout(node_id, self.collect_inline_layout(&children));
-            // Keep inline children in `layout_children` so the painter still
-            // recurses into them. They are intentionally NOT added to the
-            // taffy tree (the inline-root parent is a measured leaf there);
-            // their `final_layout` is synthesized from parley positions
-            // after layout, in `UIState::sync_inline_child_layouts`.
+            // Inline-flow text descendants are represented by the parent's
+            // Parley layout. They are not layout or paint children.
             self.nodes[node_id].flags.insert(NodeFlags::INLINE_ROOT);
             for &cid in &children {
                 if let Some(child) = self.nodes.get_mut(cid) {
                     child.layout_parent = Some(node_id);
                 }
             }
+            self.nodes[node_id].layout_children.borrow_mut().clear();
             return;
         }
 
@@ -132,10 +130,6 @@ impl UIState {
                     child.layout_parent = Some(wrapper_id);
                 }
                 self.nodes[wrapper_id].children.push(cid);
-                self.nodes[wrapper_id]
-                    .layout_children
-                    .borrow_mut()
-                    .push(cid);
                 self.append_inline_layout(wrapper_id, cid);
             } else {
                 open_wrapper = None;
@@ -182,7 +176,7 @@ impl UIState {
 
     fn collect_inline_layout(&self, children: &[UzNodeId]) -> TextLayout {
         let mut inline = TextLayout::default();
-        self.collect_inline_text_into(children, &mut inline);
+        self.collect_inline_text_into(children, &mut inline, None);
         inline
     }
 
@@ -204,33 +198,55 @@ impl UIState {
             }));
     }
 
-    fn collect_inline_text_into(&self, children: &[UzNodeId], inline: &mut TextLayout) {
+    fn collect_inline_text_into(
+        &self,
+        children: &[UzNodeId],
+        inline: &mut TextLayout,
+        style_owner: Option<UzNodeId>,
+    ) {
         for &node_id in children {
             let Some(node) = self.nodes.get(node_id) else {
                 continue;
             };
-            // All inline-level children contribute text to the parent's run.
-            // Bare text nodes use their content directly; `<text>` elements
-            // contribute their content as a styled span (their `computed_style`
-            // already encodes the inherited cascade, including any bg/border/
-            // padding the painter draws around the span).
-            let text_content = match &node.data {
-                NodeData::Text(text_node) => Some(text_node.content.as_str()),
-                NodeData::Element(el) if node.is_inline_level() => el
-                    .data
-                    .get_text_content()
-                    .map(|content| content.content.as_str()),
-                _ => None,
-            };
-            if let Some(content) = text_content {
-                let byte_start = inline.text.len();
-                inline.text.push_str(content);
-                inline.entries.push(InlineTextEntry {
-                    node_id,
-                    byte_start,
-                    byte_len: content.len(),
-                });
+            match &node.data {
+                NodeData::Text(text_node) => {
+                    let owner = style_owner.unwrap_or(node_id);
+                    self.push_inline_text(inline, owner, text_node.content.as_str());
+                }
+                NodeData::Element(el) if node.is_inline_level() => {
+                    let content = el
+                        .data
+                        .get_text_content()
+                        .map(|content| content.content.as_str());
+                    if let Some(content) = content {
+                        self.push_inline_text(inline, node_id, content);
+                    }
+                    let children = node.children.clone();
+                    self.collect_inline_text_into(&children, inline, Some(node_id));
+                }
+                _ => {}
             }
+        }
+    }
+
+    fn push_inline_text(&self, inline: &mut TextLayout, node_id: UzNodeId, content: &str) {
+        if !content.is_empty() {
+            if let Some(last) = inline.entries.last_mut()
+                && last.node_id == node_id
+                && last.byte_start + last.byte_len == inline.text.len()
+            {
+                inline.text.push_str(content);
+                last.byte_len += content.len();
+                return;
+            }
+
+            let byte_start = inline.text.len();
+            inline.text.push_str(content);
+            inline.entries.push(InlineTextEntry {
+                node_id,
+                byte_start,
+                byte_len: content.len(),
+            });
         }
     }
 }
@@ -304,6 +320,29 @@ mod tests {
         assert!(!dom.nodes[parent].flags.is_inline_root());
         assert!(dom.nodes[layout_children[0]].flags.is_anonymous());
         assert_eq!(layout_children[1], text_element);
+    }
+
+    #[test]
+    fn nested_text_node_uses_inline_element_as_style_owner() {
+        let mut dom = UIState::new();
+        let parent = dom.create_view(UzStyle::default_for_element("view"));
+        let text_element =
+            dom.create_text_element(String::new(), UzStyle::default_for_element("text"));
+        let raw_text = dom.create_text_node("styled".into(), UzStyle::default_for_element("#text"));
+
+        dom.set_root(parent);
+        dom.append_child(parent, text_element);
+        dom.append_child(text_element, raw_text);
+        dom.resolve_layout_children();
+
+        let inline = dom.nodes[parent]
+            .as_element()
+            .and_then(|element| element.inline_layout.as_ref())
+            .expect("parent should own inline layout");
+
+        assert_eq!(inline.text, "styled");
+        assert_eq!(inline.entries.len(), 1);
+        assert_eq!(inline.entries[0].node_id, text_element);
     }
 
     #[test]
