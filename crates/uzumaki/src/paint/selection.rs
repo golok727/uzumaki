@@ -36,6 +36,8 @@ impl UIState {
             None
         };
 
+        let is_inline_root = self.nodes[node_id].flags.is_inline_root();
+
         if let Some(idx) = current_run
             && let Some(inline) = self.nodes[node_id]
                 .as_element()
@@ -45,6 +47,13 @@ impl UIState {
             let entries = inline.entries.clone();
             let run = &mut self.selectable_text_runs[idx];
             for inline_entry in entries {
+                // Atomic inline-box entries (chips) carry no text in the
+                // parent's parley layout — they're recorded so document
+                // ordering is preserved, but the chip's own text is added
+                // when we recurse into the chip below.
+                if inline_entry.byte_len == 0 {
+                    continue;
+                }
                 let flat_start = run.total_graphemes;
                 let flat_byte_start = inline_entry.byte_start;
                 let flat_byte_end = flat_byte_start + inline_entry.byte_len;
@@ -61,12 +70,15 @@ impl UIState {
                 });
                 run.total_graphemes += grapheme_count;
             }
-            return;
-        }
-
-        if let Some(idx) = current_run
+        } else if let Some(idx) = current_run
             && self.nodes[node_id].get_text_content().is_some()
+            && self.nodes[node_id]
+                .as_element()
+                .and_then(|element| element.inline_layout.as_ref())
+                .is_some()
         {
+            // Leaf text element (chip rendering its own text). Its parley
+            // layout lives on the chip itself and starts at byte 0.
             let gc = self.nodes[node_id]
                 .as_element()
                 .and_then(|element| element.inline_layout.as_ref())
@@ -90,6 +102,17 @@ impl UIState {
 
         let layout_children = self.nodes[node_id].layout_children.borrow().clone();
         for cid in layout_children {
+            // Bare text children of an inline-root parent are already
+            // represented in the parent's entries; skip them so we don't
+            // double-count.
+            if is_inline_root
+                && matches!(
+                    self.nodes.get(cid).map(|n| &n.data),
+                    Some(crate::node::NodeData::Text(_))
+                )
+            {
+                continue;
+            }
             self.visit_text_select(cid, current_run);
         }
     }

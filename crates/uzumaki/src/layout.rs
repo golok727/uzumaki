@@ -153,6 +153,13 @@ impl LayoutEngine {
             .unwrap();
         self.set_taffy_node(node_id, taffy_node);
 
+        // Inline-root parents are measured by parley as a single leaf. Their
+        // inline children remain in `layout_children` for the painter, but
+        // taffy must not see them as block-level children.
+        if node.flags.is_inline_root() {
+            return Some(taffy_node);
+        }
+
         let layout_children = node.layout_children.borrow();
         for &child_id in layout_children.iter() {
             if let Some(taffy_child) = self.build_node(nodes, child_id) {

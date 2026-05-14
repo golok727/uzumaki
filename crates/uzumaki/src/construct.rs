@@ -86,7 +86,11 @@ impl UIState {
 
         if !has_block_nodes && parent_display != Display::Flex {
             self.set_inline_layout(node_id, self.collect_inline_layout(&children));
-            self.nodes[node_id].layout_children.borrow_mut().clear();
+            // Keep inline children in `layout_children` so the painter still
+            // recurses into them. They are intentionally NOT added to the
+            // taffy tree (the inline-root parent is a measured leaf there);
+            // their `final_layout` is synthesized from parley positions
+            // after layout, in `UIState::sync_inline_child_layouts`.
             self.nodes[node_id].flags.insert(NodeFlags::INLINE_ROOT);
             for &cid in &children {
                 if let Some(child) = self.nodes.get_mut(cid) {
@@ -201,18 +205,29 @@ impl UIState {
             let Some(node) = self.nodes.get(node_id) else {
                 continue;
             };
-            if let Some(text) = node.get_text_content() {
-                let byte_start = inline.text.len();
-                inline.text.push_str(&text.content);
-                inline.entries.push(InlineTextEntry {
-                    node_id,
-                    byte_start,
-                    byte_len: text.content.len(),
-                });
-                continue;
-            }
-            if node.is_inline_level() {
-                self.collect_inline_text_into(&node.children, inline);
+            // Bare text nodes contribute their text to the parent's run.
+            // Inline element children (e.g. `<text>` chips) become an atomic
+            // inline-box placeholder: their own text is rendered separately
+            // via their own inline_layout. We record the entry with `byte_len
+            // = 0` so the entry list still reflects document order.
+            match &node.data {
+                NodeData::Text(text_node) => {
+                    let byte_start = inline.text.len();
+                    inline.text.push_str(&text_node.content);
+                    inline.entries.push(InlineTextEntry {
+                        node_id,
+                        byte_start,
+                        byte_len: text_node.content.len(),
+                    });
+                }
+                NodeData::Element(_) if node.is_inline_level() => {
+                    inline.entries.push(InlineTextEntry {
+                        node_id,
+                        byte_start: inline.text.len(),
+                        byte_len: 0,
+                    });
+                }
+                _ => {}
             }
         }
     }

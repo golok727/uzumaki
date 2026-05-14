@@ -5,7 +5,7 @@ use vello::Scene;
 use vello::kurbo::{Affine, Rect};
 use vello::peniko::{Color as VelloColor, Fill};
 
-use crate::element::{InlineTextEntry, TextLayout};
+use crate::element::TextLayout;
 use crate::layout::{NodeContext, TaffyLayoutExt};
 use crate::node::{Node, ScrollAxis, UzNodeId};
 use crate::paint::{
@@ -17,9 +17,8 @@ use crate::paint::{
 };
 use crate::style::{Bounds, Overflow, ScrollbarStyle, UzStyle, Visibility};
 use crate::text::{
-    InlineTextSegment, TextRenderer, apply_text_style_to_editor, inline_text_segment,
-    leading_inline_box_id, secure_cursor_geometry, secure_selection_geometry,
-    trailing_inline_box_id,
+    InlineItem, TextRenderer, apply_text_style_to_editor, inline_box_item, inline_text_item,
+    secure_cursor_geometry, secure_selection_geometry,
 };
 use crate::ui::UIState;
 
@@ -245,62 +244,37 @@ impl<'a> Painter<'a> {
             .as_element()
             .and_then(|element| element.inline_layout.as_ref())
         {
-            let sel = self.compute_inline_selection(node_id);
-            if !inline.entries.is_empty() {
-                self.paint_text_node(
-                    scene,
-                    bounds,
-                    style,
-                    layout.content_box_bounds(),
-                    &inline.layout,
-                    inline.text.len(),
-                    transform,
-                    sel,
-                    Some(&inline.entries),
-                );
+            // Either an inline-root parent (its parley layout holds a flat
+            // run of bare text + atomic boxes for inline element children)
+            // or a chip rendering its own text. In both cases parley already
+            // has the glyphs; the per-node bg/border is drawn by paint_view
+            // through the normal render_node recursion using final_layout.
+            let sel = if inline.entries.iter().any(|e| e.byte_len > 0) {
+                self.compute_inline_selection(node_id)
             } else {
-                let sel = text_selections.get(&node_id).copied();
-                self.paint_text_node(
-                    scene,
-                    bounds,
-                    style,
-                    layout.content_box_bounds(),
-                    &inline.layout,
-                    inline.text.len(),
-                    transform,
-                    sel,
-                    None,
-                );
-            }
-        } else if let Some(tc) = node.get_text_content() {
-            let sel = text_selections.get(&node_id).copied();
-            let text_len = tc.content.len();
-            // Cached parley layout (built once per frame in refresh_text_layouts).
-            // If absent (shouldn't happen for nodes with text content), skip.
-            if let Some(text_layout) = node
-                .as_element()
-                .and_then(|element| element.inline_layout.as_ref())
-                .map(|inline| &inline.layout)
-            {
-                self.paint_text_node(
-                    scene,
-                    bounds,
-                    style,
-                    layout.content_box_bounds(),
-                    text_layout,
-                    text_len,
-                    transform,
-                    sel,
-                    None,
-                );
-            }
+                text_selections.get(&node_id).copied()
+            };
+            self.paint_text_node(
+                scene,
+                bounds,
+                style,
+                layout.content_box_bounds(),
+                &inline.layout,
+                inline.text.len(),
+                transform,
+                sel,
+            );
         } else {
             crate::paint::view::paint_view(scene, bounds, style, transform, |_| {});
         }
     }
 
     /// Draw a text node from its cached parley layout, optionally with a
-    /// selection highlight.
+    /// selection highlight. Inline element children (chips) are NOT drawn
+    /// here — they're rendered by the normal render_node recursion using
+    /// their synthesized `final_layout`. parley still positions their atomic
+    /// inline-box slot in the parent's layout; the actual chip bg/border/text
+    /// are painted in the chip's own paint_node pass.
     #[allow(clippy::too_many_arguments)]
     fn paint_text_node(
         &self,
@@ -312,14 +286,10 @@ impl<'a> Painter<'a> {
         text_len: usize,
         transform: Affine,
         selection: Option<(usize, usize)>,
-        inline_entries: Option<&[InlineTextEntry]>,
     ) {
         style.paint(bounds, scene, transform, |scene| {
             let text_x = content_box.x;
             let text_y = content_box.y;
-            if let Some(entries) = inline_entries {
-                self.paint_inline_entries(scene, content_box, layout, text_len, transform, entries);
-            }
             if let Some((sel_start, sel_end)) = selection {
                 let rects =
                     crate::text::selection_rects_from_layout(layout, text_len, sel_start, sel_end);
@@ -339,150 +309,14 @@ impl<'a> Painter<'a> {
                     );
                 }
             }
-            if let Some(entries) = inline_entries {
-                crate::text::draw_layout_with_brush(
-                    scene,
-                    layout,
-                    (content_box.x as f32, content_box.y as f32),
-                    transform,
-                    |brush| {
-                        self.inline_text_color(entries, brush.id)
-                            .unwrap_or_else(|| style.text.color.to_vello())
-                    },
-                );
-            } else {
-                crate::text::draw_layout(
-                    scene,
-                    layout,
-                    (content_box.x as f32, content_box.y as f32),
-                    style.text.color.to_vello(),
-                    transform,
-                );
-            }
-        });
-    }
-
-    fn inline_text_color(&self, entries: &[InlineTextEntry], node_id: usize) -> Option<VelloColor> {
-        entries
-            .iter()
-            .find(|entry| entry.node_id == node_id)
-            .and_then(|entry| self.dom.nodes.get(entry.node_id))
-            .map(|node| node.computed_style().text.color.to_vello())
-    }
-
-    fn paint_inline_entries(
-        &self,
-        scene: &mut Scene,
-        content_box: Bounds,
-        layout: &parley::Layout<crate::text::TextBrush>,
-        text_len: usize,
-        transform: Affine,
-        entries: &[InlineTextEntry],
-    ) {
-        for entry in entries {
-            let Some(node) = self.dom.nodes.get(entry.node_id) else {
-                continue;
-            };
-            let style = node.computed_style();
-            let Some(byte_end) = entry.byte_start.checked_add(entry.byte_len) else {
-                continue;
-            };
-            let rects = crate::text::selection_rects_from_layout(
+            crate::text::draw_layout(
+                scene,
                 layout,
-                text_len,
-                entry.byte_start,
-                byte_end,
+                (content_box.x as f32, content_box.y as f32),
+                style.text.color.to_vello(),
+                transform,
             );
-            let inline_edges = Self::inline_box_edges(layout, entry.node_id);
-            for mut rect in rects {
-                let expand_x = inline_edges.is_none();
-                if let Some((leading, trailing)) = inline_edges {
-                    if Self::vertical_ranges_overlap(rect.y0, rect.y1, leading.y0, leading.y1) {
-                        rect.x0 = leading.x0;
-                    }
-                    if Self::vertical_ranges_overlap(rect.y0, rect.y1, trailing.y0, trailing.y1) {
-                        rect.x1 = trailing.x1;
-                    }
-                }
-                let bounds = Self::inline_range_bounds(content_box, rect, style, expand_x, true);
-                style.paint(bounds, scene, transform, |_| {});
-            }
-        }
-    }
-
-    fn inline_box_edges(
-        layout: &parley::Layout<crate::text::TextBrush>,
-        node_id: UzNodeId,
-    ) -> Option<(InlineBoxEdge, InlineBoxEdge)> {
-        let leading_id = leading_inline_box_id(node_id);
-        let trailing_id = trailing_inline_box_id(node_id);
-        let mut leading = None;
-        let mut trailing = None;
-
-        for line in layout.lines() {
-            for item in line.items() {
-                let parley::PositionedLayoutItem::InlineBox(inline_box) = item else {
-                    continue;
-                };
-                if inline_box.id == leading_id {
-                    leading = Some(InlineBoxEdge {
-                        x0: inline_box.x as f64,
-                        x1: (inline_box.x + inline_box.width) as f64,
-                        y0: inline_box.y as f64,
-                        y1: (inline_box.y + inline_box.height) as f64,
-                    });
-                } else if inline_box.id == trailing_id {
-                    trailing = Some(InlineBoxEdge {
-                        x0: inline_box.x as f64,
-                        x1: (inline_box.x + inline_box.width) as f64,
-                        y0: inline_box.y as f64,
-                        y1: (inline_box.y + inline_box.height) as f64,
-                    });
-                }
-            }
-        }
-
-        Some((leading?, trailing?))
-    }
-
-    fn vertical_ranges_overlap(a0: f64, a1: f64, b0: f64, b1: f64) -> bool {
-        const EPSILON: f64 = 1.0;
-        a0 <= b1 + EPSILON && b0 <= a1 + EPSILON
-    }
-
-    fn inline_range_bounds(
-        content_box: Bounds,
-        rect: parley::BoundingBox,
-        style: &UzStyle,
-        expand_x: bool,
-        expand_y: bool,
-    ) -> Bounds {
-        let left = if expand_x {
-            (style.padding.left + style.border_widths.left) as f64
-        } else {
-            0.0
-        };
-        let right = if expand_x {
-            (style.padding.right + style.border_widths.right) as f64
-        } else {
-            0.0
-        };
-        let top = if expand_y {
-            (style.padding.top + style.border_widths.top) as f64
-        } else {
-            0.0
-        };
-        let bottom = if expand_y {
-            (style.padding.bottom + style.border_widths.bottom) as f64
-        } else {
-            0.0
-        };
-        Bounds::new(
-            content_box.x + rect.x0 - left,
-            content_box.y + rect.y0 - top,
-            rect.x1 - rect.x0 + left + right,
-            rect.y1 - rect.y0 + top + bottom,
-        )
+        });
     }
 
     fn build_input_render_info(
@@ -968,14 +802,6 @@ struct ScrollbarPaint {
     style: ScrollbarStyle,
 }
 
-#[derive(Clone, Copy)]
-struct InlineBoxEdge {
-    x0: f64,
-    x1: f64,
-    y0: f64,
-    y1: f64,
-}
-
 pub(crate) fn measure(
     text_renderer: &mut TextRenderer,
     nodes: &Slab<Node>,
@@ -1013,9 +839,9 @@ pub(crate) fn measure(
         .and_then(|element| element.inline_layout.as_ref())
         && !inline.entries.is_empty()
     {
-        let segments = inline_segments(nodes, inline);
+        let items = inline_items(nodes, text_renderer, inline);
         let (measured_width, measured_height) = text_renderer.measure_inline_text(
-            &segments,
+            &items,
             &style.text,
             known_dimensions
                 .width
@@ -1077,20 +903,36 @@ pub(crate) fn measure(
     default_size
 }
 
-fn inline_segments(nodes: &Slab<Node>, inline: &TextLayout) -> Vec<InlineTextSegment> {
+fn inline_items(
+    nodes: &Slab<Node>,
+    text_renderer: &mut TextRenderer,
+    inline: &TextLayout,
+) -> Vec<InlineItem> {
     inline
         .entries
         .iter()
         .filter_map(|entry| {
-            let text = inline
-                .text
-                .get(entry.byte_start..entry.byte_start.checked_add(entry.byte_len)?)?;
             let node = nodes.get(entry.node_id)?;
-            Some(inline_text_segment(
-                entry.node_id,
-                text.to_owned(),
-                node.computed_style(),
-            ))
+            let style = node.computed_style();
+            match &node.data {
+                crate::node::NodeData::Text(_) => {
+                    let byte_end = entry.byte_start.checked_add(entry.byte_len)?;
+                    let text = inline.text.get(entry.byte_start..byte_end)?;
+                    Some(inline_text_item(entry.node_id, text.to_owned(), style))
+                }
+                crate::node::NodeData::Element(el) => {
+                    let chip_text = el
+                        .data
+                        .get_text_content()
+                        .map(|t| t.content.as_str())
+                        .unwrap_or("");
+                    let (w, h) = text_renderer.measure_text(chip_text, &style.text, None, None);
+                    let box_w = w + style.padding.horizontal() + style.border_widths.horizontal();
+                    let box_h = h + style.padding.vertical() + style.border_widths.vertical();
+                    Some(inline_box_item(entry.node_id, box_w, box_h))
+                }
+                _ => None,
+            }
         })
         .collect()
 }
