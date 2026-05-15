@@ -9,6 +9,25 @@ use crate::node::{Node, NodeData, NodeFlags, UzNodeId};
 use crate::style::{Display, UzStyle};
 use crate::ui::UIState;
 
+/// How a container's children should be folded into its layout tree.
+/// Computed up-front by `classify_children` so the dispatch in
+/// `build_layout_children` is a flat match instead of nested if-chains.
+enum ChildLayout {
+    /// No inline children — every child becomes a layout child of the
+    /// parent and is laid out as its own box.
+    AllBlock,
+    /// A single `<text>` element child — recurse into it directly so it
+    /// owns its own inline-formatting context (preserving its style).
+    SingleTextElement,
+    /// All children are inline-level and the parent isn't a flex
+    /// container — the parent itself becomes the inline-formatting root.
+    InlineRoot,
+    /// Mixed inline/block children, or a flex container with bare text
+    /// to wrap. `wrap_inline_elements = false` for flex parents (only
+    /// bare text gets wrapped; `<text>` chips stay as flex items).
+    Mixed { wrap_inline_elements: bool },
+}
+
 impl UIState {
     /// Tear down anonymous wrappers from the previous frame and rebuild the
     /// layout tree. Must be called before `layout_engine.compute_layout`.
@@ -34,6 +53,9 @@ impl UIState {
         }
     }
 
+    /// Build the layout tree under `node_id`. Picks one of four strategies
+    /// based on the kinds of children present and the parent's display
+    /// mode, then recurses.
     fn build_layout_children(&mut self, node_id: UzNodeId) {
         let Some(node) = self.nodes.get(node_id) else {
             return;
@@ -44,76 +66,118 @@ impl UIState {
             return;
         }
 
+        match self.classify_children(node_id, &children) {
+            ChildLayout::AllBlock => {
+                self.reparent_as_layout_children(node_id, &children);
+                self.build_layout_children_recurse(&children);
+            }
+            ChildLayout::SingleTextElement => {
+                let child_id = children[0];
+                self.set_layout_parent(child_id, node_id);
+                self.build_layout_children(child_id);
+            }
+            ChildLayout::InlineRoot => {
+                self.become_inline_root(node_id, &children);
+            }
+            ChildLayout::Mixed {
+                wrap_inline_elements,
+            } => {
+                let layout_children =
+                    self.wrap_inline_runs(node_id, &children, wrap_inline_elements);
+                self.build_layout_children_recurse(&layout_children);
+                *self.nodes[node_id].layout_children.borrow_mut() = layout_children;
+            }
+        }
+    }
+
+    /// Decide how `node_id`'s children should be laid out.
+    fn classify_children(&self, node_id: UzNodeId, children: &[UzNodeId]) -> ChildLayout {
         let parent_display = self.nodes[node_id].computed_style().display;
 
         let mut has_inline_nodes = false;
         let mut has_block_nodes = false;
-
-        for &cid in &children {
+        for &cid in children {
             let is_inline = self.nodes.get(cid).is_some_and(|n| n.is_inline_level());
-
             has_inline_nodes |= is_inline;
             has_block_nodes |= !is_inline;
-
             if has_inline_nodes && has_block_nodes {
                 break;
             }
         }
 
         if !has_inline_nodes {
-            for &cid in &children {
-                if let Some(child) = self.nodes.get_mut(cid) {
-                    child.layout_parent = Some(node_id);
-                }
-            }
-            self.build_layout_children_recurse(&children);
-            return;
+            return ChildLayout::AllBlock;
         }
 
+        // A lone `<text>` child becomes its own layout box (so its style
+        // can drive textAlign, etc.) and we recurse into it instead of
+        // wrapping it in an inline-formatting context here.
         if children.len() == 1
             && self
                 .nodes
                 .get(children[0])
-                .is_some_and(|node| node.is_text_element())
+                .is_some_and(|n| n.is_text_element())
         {
-            let child_id = children[0];
-            if let Some(child) = self.nodes.get_mut(child_id) {
-                child.layout_parent = Some(node_id);
-            }
-            self.build_layout_children(child_id);
-            return;
+            return ChildLayout::SingleTextElement;
         }
 
+        // Pure-inline non-flex container becomes one inline-formatting
+        // context owning all its children's text via a parley layout.
         if !has_block_nodes && parent_display != Display::Flex {
-            self.set_inline_layout(node_id, self.collect_inline_layout(&children));
-            // Inline-flow text descendants are represented by the parent's
-            // Parley layout. They are not layout or paint children.
-            self.nodes[node_id].flags.insert(NodeFlags::INLINE_ROOT);
-            for &cid in &children {
-                if let Some(child) = self.nodes.get_mut(cid) {
-                    child.layout_parent = Some(node_id);
-                }
-            }
-            self.nodes[node_id].layout_children.borrow_mut().clear();
-            return;
+            return ChildLayout::InlineRoot;
         }
 
-        // Wrap every contiguous run of inline children in an anonymous block.
-        // The wrapper is measured and painted as one inline formatting context.
-        // Flex containers only wrap bare text nodes, since flex items should
-        // stay as independent flex children.
+        // Mixed runs (or a flex container) need anonymous wrappers around
+        // contiguous inline runs. In flex containers we only wrap bare
+        // text nodes; `<text>` chips remain independent flex items, which
+        // matches CSS spec for flex item generation.
+        ChildLayout::Mixed {
+            wrap_inline_elements: parent_display != Display::Flex,
+        }
+    }
+
+    /// All-block children: just point each at this parent and recurse.
+    fn reparent_as_layout_children(&mut self, node_id: UzNodeId, children: &[UzNodeId]) {
+        for &cid in children {
+            self.set_layout_parent(cid, node_id);
+        }
+    }
+
+    /// Convert `node_id` into an inline-formatting-context root: collect
+    /// every descendant text fragment into the parent's parley layout,
+    /// flag the parent as an inline root, and clear `layout_children`
+    /// (they're represented by the parley layout, not by child boxes).
+    fn become_inline_root(&mut self, node_id: UzNodeId, children: &[UzNodeId]) {
+        let inline = self.collect_inline_layout(children);
+        self.set_inline_layout(node_id, inline);
+        self.nodes[node_id].flags.insert(NodeFlags::INLINE_ROOT);
+        for &cid in children {
+            self.set_layout_parent(cid, node_id);
+        }
+        self.nodes[node_id].layout_children.borrow_mut().clear();
+    }
+
+    /// Walk children left-to-right; each contiguous inline run becomes one
+    /// anonymous block wrapper that owns an inline-formatting context.
+    /// Block-level children pass through unchanged. Returns the new
+    /// `layout_children` slice for `node_id`.
+    fn wrap_inline_runs(
+        &mut self,
+        node_id: UzNodeId,
+        children: &[UzNodeId],
+        wrap_inline_elements: bool,
+    ) -> Vec<UzNodeId> {
         let mut layout_children: Vec<UzNodeId> = Vec::with_capacity(children.len());
         let mut open_wrapper: Option<UzNodeId> = None;
 
-        for cid in children {
-            let Some(node) = self.nodes.get(cid) else {
+        for &cid in children {
+            let Some(child) = self.nodes.get(cid) else {
                 continue;
             };
-
-            let should_wrap = if parent_display == Display::Flex {
-                node.is_text_node()
+            let should_wrap = if wrap_inline_elements {
+                child.is_inline_level()
             } else {
-                node.is_inline_level()
+                child.is_text_node()
             };
 
             if should_wrap {
@@ -126,22 +190,23 @@ impl UIState {
                         wrapper
                     }
                 };
-                if let Some(child) = self.nodes.get_mut(cid) {
-                    child.layout_parent = Some(wrapper_id);
-                }
+                self.set_layout_parent(cid, wrapper_id);
                 self.nodes[wrapper_id].children.push(cid);
                 self.append_inline_layout(wrapper_id, cid);
             } else {
                 open_wrapper = None;
-                if let Some(child) = self.nodes.get_mut(cid) {
-                    child.layout_parent = Some(node_id);
-                }
+                self.set_layout_parent(cid, node_id);
                 layout_children.push(cid);
             }
         }
 
-        self.build_layout_children_recurse(&layout_children);
-        *self.nodes[node_id].layout_children.borrow_mut() = layout_children;
+        layout_children
+    }
+
+    fn set_layout_parent(&mut self, child_id: UzNodeId, parent_id: UzNodeId) {
+        if let Some(child) = self.nodes.get_mut(child_id) {
+            child.layout_parent = Some(parent_id);
+        }
     }
 
     fn build_layout_children_recurse(&mut self, ids: &[UzNodeId]) {
