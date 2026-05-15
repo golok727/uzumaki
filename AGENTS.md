@@ -36,6 +36,10 @@ Write idiomatic Rust 2024. In particular:
 
 When implementing changes:
 
+- Prefer generic and reusable solutions when it makes sense instead of solving only the immediate case
+- Avoid hardcoding logic around a single bug or workflow if the underlying problem can be solved cleanly at a more general level
+- Design APIs and internal abstractions so similar future cases can reuse the same path
+- Do not over-engineer for hypothetical cases, but avoid narrow one-off fixes when a simple generic solution is possible
 - Ask when you have real doubt instead of making risky assumptions
 - Keep code easy to test and easy to change later
 - Avoid overcomplicated abstractions

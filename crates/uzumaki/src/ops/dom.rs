@@ -176,7 +176,7 @@ impl CoreNode {
     pub fn nodeType(&self, state: &OpState) -> Option<u32> {
         self.read_node(state, |node| match node.data {
             NodeData::Root => 1,
-            NodeData::Element(_) => 2,
+            NodeData::Element(_) | NodeData::AnonymousBlock(_) => 2,
             NodeData::Text(_) => 3,
         })
     }
@@ -340,25 +340,8 @@ impl CoreNode {
 
     #[fast]
     #[allow(non_snake_case)]
-    pub fn setStrAttribute(
-        &self,
-        state: &mut OpState,
-        #[string] name: &str,
-        #[string] value: &str,
-    ) {
-        set_str_attribute(state, self.window_id, self.node_id as u32, name, value);
-    }
-
-    #[fast]
-    #[allow(non_snake_case)]
-    pub fn setNumberAttribute(&self, state: &mut OpState, #[string] name: &str, value: f64) {
-        set_number_attribute(state, self.window_id, self.node_id as u32, name, value);
-    }
-
-    #[fast]
-    #[allow(non_snake_case)]
-    pub fn setBoolAttribute(&self, state: &mut OpState, #[string] name: &str, value: bool) {
-        set_bool_attribute(state, self.window_id, self.node_id as u32, name, value);
+    pub fn setAttribute(&self, state: &mut OpState, #[string] name: &str, #[string] value: &str) {
+        set_attribute(state, self.window_id, self.node_id as u32, name, value);
     }
 
     #[fast]
@@ -543,32 +526,12 @@ fn set_text(
     })
 }
 
-fn set_str_attribute(state: &mut OpState, window_id: u32, node_id: u32, name: &str, value: &str) {
+fn set_attribute(state: &mut OpState, window_id: u32, node_id: u32, name: &str, value: &str) {
     let nid = node_id as UzNodeId;
     let app_state = state.borrow::<SharedAppState>().clone();
     with_state(&app_state, |s| {
         if let Some(entry) = s.windows.get_mut(&window_id) {
-            entry.set_str_attribute(nid, name, value);
-        }
-    });
-}
-
-fn set_number_attribute(state: &mut OpState, window_id: u32, node_id: u32, name: &str, value: f64) {
-    let nid = node_id as UzNodeId;
-    let app_state = state.borrow::<SharedAppState>().clone();
-    with_state(&app_state, |s| {
-        if let Some(entry) = s.windows.get_mut(&window_id) {
-            entry.set_number_attribute(nid, name, value);
-        }
-    });
-}
-
-fn set_bool_attribute(state: &mut OpState, window_id: u32, node_id: u32, name: &str, value: bool) {
-    let nid = node_id as UzNodeId;
-    let app_state = state.borrow::<SharedAppState>().clone();
-    with_state(&app_state, |s| {
-        if let Some(entry) = s.windows.get_mut(&window_id) {
-            entry.set_bool_attribute(nid, name, value);
+            entry.set_attribute(nid, name, value);
         }
     });
 }

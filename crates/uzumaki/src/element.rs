@@ -3,6 +3,11 @@ use std::sync::Arc;
 use crate::cursor::UzCursorIcon;
 use crate::input::InputState;
 use crate::node::UzNodeId;
+use crate::parse::parse_max_length;
+use crate::prop_keys::AttrValue;
+use crate::text::TextBrush;
+use parley::{ContentWidths, Layout as ParleyLayout};
+use serde_json::{Value, json};
 use vello::peniko::Blob;
 
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
@@ -26,6 +31,7 @@ pub struct ElementNode {
     pub kind: ElementKind,
     pub is_focussable: bool,
     pub data: ElementData,
+    pub inline_layout: Option<Box<TextLayout>>,
 }
 
 impl ElementNode {
@@ -34,6 +40,7 @@ impl ElementNode {
             kind,
             is_focussable: false,
             data,
+            inline_layout: None,
         }
     }
 
@@ -95,6 +102,30 @@ impl ElementNode {
 
     pub fn set_focussable(&mut self, focussable: bool) {
         self.is_focussable = focussable;
+    }
+
+    pub(crate) fn set_attr(&mut self, name: &str, value: AttrValue<'_>) -> bool {
+        if name == "focusable" {
+            let value = value.parse_bool();
+            self.set_focussable(value);
+        }
+
+        self.data.set_attr(name, value)
+    }
+
+    pub fn clear_attr(&mut self, name: &str) -> bool {
+        if name == "focusable" {
+            self.set_focussable(false);
+            return true;
+        }
+        self.data.clear_attr(name)
+    }
+
+    pub fn get_attr(&self, name: &str) -> Option<Value> {
+        if name == "focusable" {
+            return Some(json!(self.is_focussable()));
+        }
+        self.data.get_attr(name)
     }
 }
 
@@ -189,9 +220,63 @@ impl ImageNode {
 /// One text node's contribution to a textSelect run.
 pub struct TextRunEntry {
     pub node_id: UzNodeId,
+    pub layout_node_id: UzNodeId,
     /// Start grapheme index of this node in the flat run.
     pub flat_start: usize,
+    pub flat_byte_start: usize,
+    pub byte_len: usize,
     pub grapheme_count: usize,
+}
+
+#[derive(Clone, Debug)]
+pub struct InlineTextEntry {
+    /// Style owner — drives glyph color/font, and per-line chip
+    /// bg/border/padding when this entry is a styled inline element.
+    pub node_id: UzNodeId,
+    /// Source node whose `get_text_content()` provides this entry's text.
+    /// Usually equals `node_id`; differs only for nested cases like a bare
+    /// text child of a `<text>` element, where the outer element is the
+    /// style owner but the inner text node is the content source.
+    pub content_source: UzNodeId,
+    /// Cumulative byte offset within the parley layout's flat text.
+    pub byte_start: usize,
+    /// Bytes contributed by this entry.
+    pub byte_len: usize,
+}
+
+#[derive(Clone, Default)]
+pub enum InlineLayoutKind {
+    /// Standalone text leaf — single source, no per-span chip painting.
+    #[default]
+    Leaf,
+    /// Inline-formatting context — multiple inline children contribute
+    /// styled spans. Entries map flat byte ranges back to source nodes
+    /// for selection and per-span box painting.
+    InlineRoot { entries: Vec<InlineTextEntry> },
+}
+
+#[derive(Clone, Default)]
+pub struct TextLayout {
+    pub layout: ParleyLayout<TextBrush>,
+    /// Total bytes in `layout`'s text (equals what would be `text.len()`
+    /// if we materialized the concatenation — we don't, since no consumer
+    /// reads the actual content past construct time).
+    pub text_len: usize,
+    pub content_widths: Option<ContentWidths>,
+    pub kind: InlineLayoutKind,
+}
+
+impl TextLayout {
+    pub fn entries(&self) -> &[InlineTextEntry] {
+        match &self.kind {
+            InlineLayoutKind::InlineRoot { entries } => entries,
+            InlineLayoutKind::Leaf => &[],
+        }
+    }
+
+    pub fn is_inline_root(&self) -> bool {
+        matches!(self.kind, InlineLayoutKind::InlineRoot { .. })
+    }
 }
 
 /// The complete text run for a textSelect subtree.
@@ -288,6 +373,110 @@ impl ElementData {
         match self {
             Self::Image(image) => Some(image),
             _ => None,
+        }
+    }
+
+    pub(crate) fn set_attr(&mut self, name: &str, value: AttrValue<'_>) -> bool {
+        match self {
+            Self::TextInput(input) => match name {
+                "value" => {
+                    input.set_value(&value);
+                    true
+                }
+                "placeholder" => {
+                    input.placeholder = value.to_string();
+                    true
+                }
+                "maxLength" => {
+                    let n = value.parse::<f32>().ok();
+                    let Some(n) = n else {
+                        return false;
+                    };
+                    input.max_length = parse_max_length(n);
+                    true
+                }
+                "disabled" => {
+                    input.disabled = value.parse_bool();
+                    true
+                }
+                "multiline" => {
+                    input.multiline = value.parse_bool();
+                    true
+                }
+                "secure" => {
+                    input.secure = value.parse_bool();
+                    true
+                }
+                _ => false,
+            },
+            Self::CheckboxInput(checked) => match name {
+                "checked" => {
+                    let value = value.parse_bool();
+                    *checked = value;
+                    true
+                }
+                _ => false,
+            },
+            Self::Text(_) | Self::Image(_) | Self::None => false,
+        }
+    }
+
+    pub fn clear_attr(&mut self, name: &str) -> bool {
+        match self {
+            Self::TextInput(input) => match name {
+                "value" => {
+                    input.set_value("");
+                    true
+                }
+                "placeholder" => {
+                    input.placeholder.clear();
+                    true
+                }
+                "maxLength" => {
+                    input.max_length = None;
+                    true
+                }
+                "disabled" => {
+                    input.disabled = false;
+                    true
+                }
+                "multiline" => {
+                    input.multiline = false;
+                    true
+                }
+                "secure" => {
+                    input.secure = false;
+                    true
+                }
+                _ => false,
+            },
+            Self::CheckboxInput(checked) => match name {
+                "checked" => {
+                    *checked = false;
+                    true
+                }
+                _ => false,
+            },
+            Self::Text(_) | Self::Image(_) | Self::None => false,
+        }
+    }
+
+    pub fn get_attr(&self, name: &str) -> Option<Value> {
+        match self {
+            Self::TextInput(input) => match name {
+                "value" => Some(json!(input.text())),
+                "placeholder" => Some(json!(input.placeholder)),
+                "disabled" => Some(json!(input.disabled)),
+                "maxLength" => Some(input.max_length.map_or(Value::Null, |m| json!(m))),
+                "multiline" => Some(json!(input.multiline)),
+                "secure" => Some(json!(input.secure)),
+                _ => None,
+            },
+            Self::CheckboxInput(checked) => match name {
+                "checked" => Some(json!(checked)),
+                _ => None,
+            },
+            Self::Text(_) | Self::Image(_) | Self::None => None,
         }
     }
 }

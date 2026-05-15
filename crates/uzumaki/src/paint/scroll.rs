@@ -12,7 +12,6 @@ use vello::peniko::Fill;
 use crate::node::{ScrollAxis, UzNodeId};
 use crate::style::{Bounds, ScrollbarStyle};
 
-pub const SCROLLBAR_SIDE_MARGIN: f64 = 4.0; // gap between thumb and container edge (perpendicular axis)
 pub const SCROLLBAR_END_MARGIN: f64 = 8.0; // gap at track start/end (along scroll axis)
 pub const THUMB_MIN_LENGTH: f64 = 24.0;
 
@@ -76,7 +75,7 @@ pub fn vertical_scroll_visible_height(
 ) -> f32 {
     let mut h = layout_height;
     if overflow_x_scrollable && layout_content_width > layout_size_width + 0.5 {
-        let reserve = (scrollbar_width as f64 + SCROLLBAR_SIDE_MARGIN).max(0.0);
+        let reserve = scrollbar_width.max(0.0) as f64;
         h = ((h as f64) - reserve).max(1.0) as f32;
     }
     h
@@ -162,7 +161,7 @@ pub fn thumb_geometry(
             let length =
                 (track * info.visible_size / info.content_size.max(1.0)).max(THUMB_MIN_LENGTH);
             let track_range = (track - length).max(0.0);
-            let track_x = view.width - thickness - SCROLLBAR_SIDE_MARGIN;
+            let track_x = view.width - thickness;
             ThumbGeometry {
                 local_x: track_x,
                 local_y: SCROLLBAR_END_MARGIN + scroll_ratio * track_range,
@@ -180,7 +179,7 @@ pub fn thumb_geometry(
             let length =
                 (track * info.visible_size / info.content_size.max(1.0)).max(THUMB_MIN_LENGTH);
             let track_range = (track - length).max(0.0);
-            let track_y = view.height - thickness - SCROLLBAR_SIDE_MARGIN;
+            let track_y = view.height - thickness;
             ThumbGeometry {
                 local_x: SCROLLBAR_END_MARGIN + scroll_ratio * track_range,
                 local_y: track_y,

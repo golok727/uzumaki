@@ -3,7 +3,7 @@ use std::fs;
 use std::io::{self, Write};
 use std::path::{Path, PathBuf};
 
-use crate::ui;
+use crate::utils;
 
 const TMPL_PACKAGE_JSON: &str = include_str!("../template/package.json");
 const TMPL_TSCONFIG: &str = include_str!("../template/tsconfig.json");
@@ -139,11 +139,11 @@ pub fn cmd_create_interactive() -> Result<()> {
         .filter(|name| !name.is_empty())
         .unwrap_or_else(|| "my-app".to_string());
 
-    println!("{}", ui::brand("Create a new Uzumaki project"));
+    println!("{}", utils::brand("Create a new Uzumaki project"));
     println!();
     println!(
         "{}",
-        ui::muted("Press enter to initialize the current directory.")
+        utils::muted("Press enter to initialize the current directory.")
     );
     println!();
 
@@ -194,7 +194,7 @@ fn scaffold_project(
 
     let vars: Vec<(&str, &str)> = vec![("PROJECT_NAME", &project_name), ("IDENTIFIER", identifier)];
 
-    ui::print_status(
+    utils::print_status(
         action,
         format!("creating project {}", dir_display.display()),
     );
@@ -214,14 +214,14 @@ fn scaffold_project(
     for entry in TEMPLATE_ENTRIES {
         println!(
             "  {} {}/{}",
-            ui::success("created"),
+            utils::success("created"),
             rel.display(),
             entry.path
         );
     }
 
     println!();
-    println!("{}", ui::brand("Next steps"));
+    println!("{}", utils::brand("Next steps"));
     if target_dir.is_some() {
         println!("  cd {}", rel.display());
     }
@@ -245,7 +245,7 @@ fn scaffold_project_here(
         );
     }
 
-    ui::print_status(
+    utils::print_status(
         action,
         format!("creating project {}", project_dir.display()),
     );
@@ -266,13 +266,13 @@ fn scaffold_project_here(
     for entry in TEMPLATE_ENTRIES {
         println!(
             "  {} ./{}",
-            ui::success("created"),
+            utils::success("created"),
             entry.path.replace('\\', "/")
         );
     }
 
     println!();
-    println!("{}", ui::brand("Next steps"));
+    println!("{}", utils::brand("Next steps"));
     println!("  pnpm install");
     println!("  pnpm dev");
     println!();
@@ -312,9 +312,9 @@ fn resolve_project_dir(cwd: &Path, target_dir: Option<&str>) -> (PathBuf, PathBu
 fn prompt_with_default(label: &str, default: &str) -> Result<String> {
     print!(
         "{} {} {} ",
-        ui::teal("?"),
+        utils::teal("?"),
         label,
-        ui::muted(format!("({default})"))
+        utils::muted(format!("({default})"))
     );
     io::stdout().flush()?;
 

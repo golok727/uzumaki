@@ -7,7 +7,7 @@ use std::path::{Path, PathBuf};
 use std::process::Command as ProcessCommand;
 
 use crate::standalone;
-use crate::ui;
+use crate::utils;
 use uzumaki_runtime::AppConfig;
 
 const VERSION: &str = env!("CARGO_PKG_VERSION");
@@ -240,68 +240,68 @@ fn should_print_root_help() -> bool {
 fn print_root_help() {
     println!(
         "{} is a desktop UI runtime for Javascript / TypeScript. (v{})",
-        ui::brand("Uzumaki"),
+        utils::brand("Uzumaki"),
         VERSION
     );
     println!();
     println!("Usage: uzumaki [ENTRY] [ARGS]... [COMMAND]");
     println!();
-    println!("{}", ui::bold("Commands:"));
+    println!("{}", utils::bold("Commands:"));
 
-    ui::print_help_command(
-        ui::purple("dev"),
+    utils::print_help_command(
+        utils::purple("dev"),
         Some("./app.tsx"),
         "Run a file in the interactive runtime",
     );
-    ui::print_help_command(
-        ui::purple("run"),
+    utils::print_help_command(
+        utils::purple("run"),
         Some("./script.ts"),
         "Run a file in headless mode",
     );
 
     println!();
 
-    ui::print_help_command(
-        ui::yellow("build"),
+    utils::print_help_command(
+        utils::yellow("build"),
         Some(""),
         "Build and package an app using uzumaki.config.json",
     );
 
     println!();
 
-    ui::print_help_command(
-        ui::teal("init"),
+    utils::print_help_command(
+        utils::teal("init"),
         Some(""),
         "Initialize the current directory as a new project",
     );
-    ui::print_help_command(
-        ui::teal("create"),
+    utils::print_help_command(
+        utils::teal("create"),
         Some("[name]"),
         "Create a new project, prompting when the name is omitted",
     );
 
     println!();
 
-    ui::print_help_command(
-        ui::cyan("upgrade"),
+    utils::print_help_command(
+        utils::cyan("upgrade"),
         Some(""),
         "Upgrade to the latest version",
     );
 
     println!();
-    println!("{}", ui::bold("Options:"));
-    println!("  {:<10} Print help text", ui::muted("-h, --help"));
-    println!("  {:<10} Print version", ui::muted("-V, --version"));
+    println!("{}", utils::bold("Options:"));
+    println!("  {:<10} Print help text", utils::muted("-h, --help"));
+    println!("  {:<10} Print version", utils::muted("-V, --version"));
     println!();
     println!("  uzumaki --help           Print help text for the root command.");
     println!(
         "  uzumaki {} --help Print help text for a command.",
-        ui::muted("<command>")
+        utils::muted("<command>")
     );
     println!();
     println!(
         "{} https://github.com/golok727/uzumaki",
-        ui::muted("GitHub:")
+        utils::muted("GitHub:")
     );
 }
 
@@ -384,7 +384,7 @@ fn cmd_build(config_path: Option<&str>, no_build: bool) -> Result<()> {
     let config = load_config(&config_file)?;
 
     if !no_build && let Some(ref cmd) = config.build.command {
-        ui::print_status("build", cmd);
+        utils::print_status("build", cmd);
         let status = run_shell_command(cmd, &config_dir)?;
         if !status.success() {
             bail!("build command failed with exit code {}", status);
@@ -421,7 +421,7 @@ fn cmd_build(config_path: Option<&str>, no_build: bool) -> Result<()> {
         None => std::env::current_exe()?,
     };
 
-    ui::print_status("pack", format!("{js_dist} -> {}", output_path.display()));
+    utils::print_status("pack", format!("{js_dist} -> {}", output_path.display()));
 
     let final_output = standalone::pack::pack_app(&standalone::pack::PackOptions {
         dist_dir: js_dist_path,
@@ -479,7 +479,7 @@ fn copy_bundle_resources(base: &Path, patterns: &[String], resources_dir: &Path)
         }
 
         if !matched {
-            ui::print_warning("bundle resource", format!("{pattern} matched nothing"));
+            utils::print_warning("bundle resource", format!("{pattern} matched nothing"));
         }
     }
     Ok(())
@@ -505,7 +505,7 @@ fn copy_path(src: &Path, dest: &Path) -> Result<()> {
 }
 
 fn cmd_upgrade(target_version: Option<&str>) -> Result<()> {
-    ui::print_status("upgrade", "checking for updates...");
+    utils::print_status("upgrade", "checking for updates...");
 
     let version_tag = match target_version {
         Some(v) => {
@@ -538,9 +538,9 @@ fn cmd_upgrade(target_version: Option<&str>) -> Result<()> {
     let version_num = version_tag.strip_prefix('v').unwrap_or(&version_tag);
 
     if version_num == VERSION {
-        ui::print_status(
+        utils::print_status(
             "upgrade",
-            format!("{} (v{VERSION})", ui::success("already up to date")),
+            format!("{} (v{VERSION})", utils::success("already up to date")),
         );
         return Ok(());
     }
@@ -549,7 +549,7 @@ fn cmd_upgrade(target_version: Option<&str>) -> Result<()> {
     let download_url =
         format!("https://github.com/{GITHUB_REPO}/releases/download/{version_tag}/{asset_name}");
 
-    ui::print_status(
+    utils::print_status(
         "upgrade",
         format!("downloading v{VERSION} -> v{version_num}"),
     );
@@ -584,8 +584,8 @@ fn cmd_upgrade(target_version: Option<&str>) -> Result<()> {
             let filled = (pct as usize) / 2;
             eprint!(
                 "\r{} {} [{:█<filled$}{:·<empty$}] {pct}%",
-                ui::brand("uzumaki"),
-                ui::muted("upgrade"),
+                utils::brand("uzumaki"),
+                utils::muted("upgrade"),
                 "",
                 "",
                 filled = filled,
@@ -602,9 +602,9 @@ fn cmd_upgrade(target_version: Option<&str>) -> Result<()> {
     let current_exe = std::env::current_exe()?;
     replace_exe(&current_exe, &binary_bytes)?;
 
-    ui::print_status(
+    utils::print_status(
         "upgrade",
-        format!("{} v{version_num}", ui::success("updated to")),
+        format!("{} v{version_num}", utils::success("updated to")),
     );
 
     Ok(())

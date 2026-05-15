@@ -19,11 +19,7 @@ const TokenRenderer = memo(function TokenComponent({
 }: {
   token: TokenRenderer;
 }) {
-  return (
-    <text textWrap="anywhere" color={token.color}>
-      {token.content}
-    </text>
-  );
+  return <text color={token.color}>{token.content}</text>;
 });
 
 const LineRenderer = memo(function LineComponent({
@@ -34,11 +30,18 @@ const LineRenderer = memo(function LineComponent({
   lineNumber: number;
 }) {
   return (
-    <view display="flex" flexDir="row" gap={12}>
-      <text selectable={false} color={C.textMuted} fontSize={14} w={32}>
+    <view display="flex" flexDir="row" w="full" gap={12}>
+      <text
+        selectable={false}
+        color={C.textMuted}
+        fontSize={14}
+        w={32}
+        flexShrink={0}
+        textAlign="right"
+      >
         {String(lineNumber)}
       </text>
-      <view display="flex" flexDir="row" flexWrap="wrap" flex={1} fontSize={16}>
+      <view w="full" minW={0} fontSize={16}>
         {tokens.map((token, j) => (
           <TokenRenderer key={j} token={token} />
         ))}
@@ -65,11 +68,9 @@ export function ShikiPage() {
       <Panel title="Preview">
         <view
           selectable
-          display="flex"
-          flexDir="col"
           p={16}
-          gap={2}
           flex={1}
+          flexDir="col"
           scroll
           fontFamily="Geist Mono, monospace"
         >
@@ -101,6 +102,7 @@ function Panel({ title, children }: { title: string; children: any }) {
       display="flex"
       flexDir="col"
       flex={1}
+      minW={0}
       bg={C.surface}
       rounded={10}
       border={1}
