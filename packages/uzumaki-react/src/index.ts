@@ -1,1 +1,1 @@
-export { render } from './reconciler';
+export { createRoot, type Root } from './reconciler';

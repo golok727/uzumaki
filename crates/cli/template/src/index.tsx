@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react';
 import { Window } from 'uzumaki';
-import { render } from 'uzumaki-react';
+import { createRoot } from 'uzumaki-react';
 
 const window = new Window('main', {
   width: 800,
@@ -71,4 +71,4 @@ function App() {
   );
 }
 
-render(window, <App />);
+createRoot(window).render(<App />);

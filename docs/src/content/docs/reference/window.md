@@ -7,7 +7,7 @@ description: Create and control native windows.
 
 ```tsx
 import { Window } from 'uzumaki';
-import { render } from 'uzumaki-react';
+import { createRoot } from 'uzumaki-react';
 
 const window = new Window('main', {
   width: 960,
@@ -17,7 +17,7 @@ const window = new Window('main', {
   rootStyles: { bg: '#09090b', color: '#f4f4f5', fontSize: 14 },
 });
 
-render(window, <App />);
+createRoot(window).render(<App />);
 ```
 
 The first argument is a unique label. Use it to find an existing window later.

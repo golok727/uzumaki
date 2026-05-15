@@ -4,10 +4,10 @@ import { highlightTsx } from '../utils/highlighter';
 
 const INITIAL_CODE = `
 import { Window } from "uzumaki"
-import { render } from "uzumaki-react"
+import { createRoot } from "uzumaki-react"
 
 const window = new Window("main", { width: 800, height: 600 });
-render(window, <view><text>Uzumaki</text></view>)`.trim();
+createRoot(window).render(<view><text>Uzumaki</text></view>)`.trim();
 
 interface TokenRenderer {
   content: string;

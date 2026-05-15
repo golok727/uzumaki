@@ -1,5 +1,5 @@
 <div align="center">
-  <img src="etc/logo.svg" width="140" alt="Uzumaki logo" />
+  <img src="etc/logo.svg" width="140" alt="Uzumak" />
 
   <h1>Uzumaki</h1>
 
@@ -23,7 +23,7 @@
 ```tsx
 import { useState } from 'react';
 import { Window } from 'uzumaki';
-import { render } from 'uzumaki-react';
+import { createRoot } from 'uzumaki-react';
 
 const window = new Window('main', {
   width: 800,
@@ -67,7 +67,7 @@ function App() {
   );
 }
 
-render(window, <App />);
+createRoot(window).render(<App />);
 ```
 
 ## Package Model

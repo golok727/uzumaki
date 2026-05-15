@@ -1,5 +1,5 @@
 import { getWindow, Window } from 'uzumaki';
-import { render } from 'uzumaki-react';
+import { createRoot } from 'uzumaki-react';
 
 function WindowPreview({
   title,
@@ -52,7 +52,9 @@ function getOrCreateWindow(
     ...attrs,
     title,
   });
-  render(window, <WindowPreview title={title} detail={detail} bg={bg} />);
+  createRoot(window).render(
+    <WindowPreview title={title} detail={detail} bg={bg} />,
+  );
   return window;
 }
 
