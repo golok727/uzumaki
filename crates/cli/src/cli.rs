@@ -12,6 +12,7 @@ use uzumaki_runtime::AppConfig;
 
 const VERSION: &str = env!("CARGO_PKG_VERSION");
 const GITHUB_REPO: &str = "golok727/uzumaki";
+const CONFIG_FILE_NAME: &str = "uzumaki.config.json";
 #[derive(Debug, serde::Deserialize)]
 pub struct UzumakiConfig {
     #[serde(rename = "productName")]
@@ -20,10 +21,8 @@ pub struct UzumakiConfig {
     pub identifier: String,
     #[serde(default, rename = "jsxImportSource")]
     pub jsx_import_source: Option<String>,
-    #[serde(default)]
-    pub build: BuildConfig,
-    #[serde(default)]
-    pub pack: PackConfig,
+    #[serde(default, rename = "beforeBuildCommand")]
+    pub before_build_command: Option<String>,
     #[serde(default)]
     pub bundle: BundleConfig,
 }
@@ -34,18 +33,8 @@ pub struct BundleConfig {
     /// Resolved relative to the config file's directory.
     #[serde(default)]
     pub resources: Vec<String>,
-}
-
-#[derive(Debug, Default, serde::Deserialize)]
-pub struct BuildConfig {
-    pub command: Option<String>,
-}
-
-#[derive(Debug, Default, serde::Deserialize)]
-pub struct PackConfig {
-    #[serde(rename = "jsDist")]
-    pub js_dist: Option<String>,
-    pub entry: Option<String>,
+    #[serde(default)]
+    pub js: BundleJsConfig,
     #[serde(rename = "outputDir")]
     pub output_dir: Option<String>,
     #[serde(rename = "binName")]
@@ -54,10 +43,46 @@ pub struct PackConfig {
     pub base_binary: Option<String>,
 }
 
+#[derive(Debug, Default, serde::Deserialize)]
+pub struct BundleJsConfig {
+    #[serde(rename = "rootDir")]
+    pub root_dir: Option<String>,
+    pub entry: Option<String>,
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn config_parse_should_accept_bundle_without_before_build_command() {
+        let config: UzumakiConfig = serde_json::from_str(
+            r#"{
+                "productName": "demo",
+                "version": "0.1.0",
+                "identifier": "com.example.demo",
+                "bundle": {
+                    "js": {
+                        "rootDir": "./dist",
+                        "entry": "index.js"
+                    },
+                    "outputDir": "./target"
+                }
+            }"#,
+        )
+        .expect("config should parse");
+
+        assert!(config.before_build_command.is_none());
+        assert_eq!(config.bundle.js.root_dir.as_deref(), Some("./dist"));
+        assert_eq!(config.bundle.js.entry.as_deref(), Some("index.js"));
+        assert_eq!(config.bundle.output_dir.as_deref(), Some("./target"));
+    }
+}
+
 fn find_config(start: &Path) -> Option<PathBuf> {
     let mut dir = start.to_path_buf();
     loop {
-        let candidate = dir.join("uzumaki.config.json");
+        let candidate = dir.join(CONFIG_FILE_NAME);
         if candidate.is_file() {
             return Some(candidate);
         }
@@ -376,14 +401,14 @@ fn cmd_build(config_path: Option<&str>, no_build: bool) -> Result<()> {
             p
         }
         None => find_config(&cwd).ok_or_else(|| {
-            anyhow::anyhow!("could not find uzumaki.config.json from {}", cwd.display())
+            anyhow::anyhow!("could not find {CONFIG_FILE_NAME} from {}", cwd.display())
         })?,
     };
 
     let config_dir = config_file.parent().unwrap().to_path_buf();
     let config = load_config(&config_file)?;
 
-    if !no_build && let Some(ref cmd) = config.build.command {
+    if !no_build && let Some(ref cmd) = config.before_build_command {
         utils::print_status("build", cmd);
         let status = run_shell_command(cmd, &config_dir)?;
         if !status.success() {
@@ -391,37 +416,39 @@ fn cmd_build(config_path: Option<&str>, no_build: bool) -> Result<()> {
         }
     }
 
-    // Pack
+    // Package
     let js_dist = config
-        .pack
-        .js_dist
+        .bundle
+        .js
+        .root_dir
         .as_deref()
-        .ok_or_else(|| anyhow::anyhow!("missing pack.jsDist in config"))?;
+        .ok_or_else(|| anyhow::anyhow!("missing bundle.js.rootDir in config"))?;
     let entry = config
-        .pack
+        .bundle
+        .js
         .entry
         .as_deref()
-        .ok_or_else(|| anyhow::anyhow!("missing pack.entry in config"))?;
+        .ok_or_else(|| anyhow::anyhow!("missing bundle.js.entry in config"))?;
     let output_dir_raw = config
-        .pack
+        .bundle
         .output_dir
         .as_deref()
-        .ok_or_else(|| anyhow::anyhow!("missing pack.outputDir in config"))?;
+        .ok_or_else(|| anyhow::anyhow!("missing bundle.outputDir in config"))?;
 
     let js_dist_path = resolve_from(&config_dir, js_dist);
     let output_dir = resolve_from(&config_dir, output_dir_raw);
     let bin_name = config
-        .pack
+        .bundle
         .bin_name
         .clone()
         .unwrap_or_else(|| config.product_name.clone());
     let output_path = normalize_output_extension(&output_dir.join(&bin_name));
-    let base_binary = match &config.pack.base_binary {
+    let base_binary = match &config.bundle.base_binary {
         Some(b) => resolve_from(&config_dir, b),
         None => std::env::current_exe()?,
     };
 
-    utils::print_status("pack", format!("{js_dist} -> {}", output_path.display()));
+    utils::print_status("package", format!("{js_dist} -> {}", output_path.display()));
 
     let final_output = standalone::pack::pack_app(&standalone::pack::PackOptions {
         dist_dir: js_dist_path,

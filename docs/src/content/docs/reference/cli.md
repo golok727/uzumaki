@@ -64,10 +64,10 @@ pnpm dev
 ```sh
 uzumaki build
 uzumaki build --config ./custom.config.json
-uzumaki build --no-build         # skip the build step, only pack
+uzumaki build --no-build         # skip the build step, only package
 ```
 
-The config tells the CLI what to build, where the bundled JS lives, and how to name the output. See the [build guide](/guides/building/) for the full schema.
+The config tells the CLI which optional command to run before packaging, where the bundled JS lives, and how to name the output. See the [build guide](/guides/building/) for the full schema.
 
 ## Upgrade
 
