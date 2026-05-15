@@ -145,6 +145,7 @@ impl Window {
             width as f32 / scale as f32,
             height as f32 / scale as f32,
             &mut self.text_renderer,
+            scale,
         );
 
         Painter::new(dom, &mut self.text_renderer, scale).paint(&mut self.scene);

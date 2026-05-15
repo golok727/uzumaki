@@ -7,7 +7,6 @@ use vello::peniko::{Color as VelloColor, Fill};
 use crate::layout::TaffyLayoutExt;
 use crate::node::{ScrollAxis, UzNodeId};
 use crate::paint::{
-    ScrollThumbRect,
     checkbox::CheckboxRenderInfo,
     image::ImageRenderInfo,
     input::InputRenderInfo,
@@ -36,11 +35,10 @@ impl<'a> Painter<'a> {
     }
 
     pub fn paint(mut self, scene: &mut Scene) {
-        self.dom.hitbox_store.clear();
-        self.dom.scroll_thumbs.clear();
-        for (_, node) in self.dom.nodes.iter_mut() {
-            node.hitbox_id = None;
-        }
+        // Hit tree (hitboxes + scroll-thumb hit rects) is now built by
+        // `crate::hit_tree::rebuild` independently of paint, so it can be
+        // refreshed eagerly on scroll/mutation. Paint just consumes
+        // current scroll state to draw.
         self.dom.build_text_select_runs();
 
         let text_selections = self.compute_text_selections_map();
@@ -95,12 +93,6 @@ impl<'a> Painter<'a> {
             Affine::translate((layout.location.x as f64, layout.location.y as f64));
         let transform = parent_paint_transform * local_translate * local_style_transform;
         let hit_transform = parent_hit_transform * local_translate * local_style_transform;
-
-        let hitbox_id =
-            self.dom
-                .hitbox_store
-                .insert_transformed(node_id, border_box, hit_transform);
-        self.dom.nodes[node_id].hitbox_id = Some(hitbox_id);
 
         self.paint_node(
             node_id,
@@ -544,12 +536,9 @@ impl<'a> Painter<'a> {
         if !axis_info.overflows() {
             return None;
         }
-        let max_y = axis_info.max_scroll() as f32;
-        let scroll = &mut self.dom.nodes[node_id].scroll_state;
-        if scroll.scroll_offset_y > max_y {
-            scroll.scroll_offset_y = max_y;
-        }
-
+        // Scroll-state clamping and `scroll_thumbs` registration are
+        // owned by `hit_tree::rebuild` — we just compute the visual geom
+        // here for drawing.
         let view_local = border_box;
         let geom = scroll::thumb_geometry(ScrollAxis::Y, view_local, axis_info, &style.scrollbar);
         let view_bounds = Bounds::new(view_x, view_y, border_box.width, border_box.height);
@@ -559,15 +548,6 @@ impl<'a> Painter<'a> {
             geom.thumb_width,
             geom.thumb_height,
         );
-
-        self.dom.scroll_thumbs.push(ScrollThumbRect {
-            node_id,
-            axis: ScrollAxis::Y,
-            thumb_bounds,
-            view_bounds,
-            content_size: axis_info.content_size as f32,
-            visible_size: axis_info.visible_size as f32,
-        });
 
         let mouse_in = self.is_active_drag(node_id)
             || self
@@ -616,16 +596,10 @@ impl<'a> Painter<'a> {
         let visible_h = content_box.height;
         let content_w = layout.axis_scroll_content_size(ScrollAxis::X) as f64;
         let content_h = layout.axis_scroll_content_size(ScrollAxis::Y) as f64;
-        let max_x = (content_w - visible_w).max(0.0);
-        let max_y = (content_h - visible_h).max(0.0);
 
-        let ss = &mut self.dom.nodes[node_id].scroll_state;
-        if ss.scroll_offset_x as f64 > max_x {
-            ss.scroll_offset_x = max_x as f32;
-        }
-        if ss.scroll_offset_y as f64 > max_y {
-            ss.scroll_offset_y = max_y as f32;
-        }
+        // Scroll offsets were already clamped by `hit_tree::rebuild`;
+        // just read them here.
+        let ss = &self.dom.nodes[node_id].scroll_state;
         let offset_x = ss.scroll_offset_x as f64;
         let offset_y = ss.scroll_offset_y as f64;
 
@@ -683,6 +657,8 @@ impl<'a> Painter<'a> {
         transform: Affine,
         scrollbar: &ScrollbarStyle,
     ) -> ScrollbarPaint {
+        // `hit_tree::rebuild` registered the thumb hit rect; we just
+        // compute the visual geometry to draw.
         let view_local = Bounds::new(0.0, 0.0, view_bounds.width, view_bounds.height);
         let geom = scroll::thumb_geometry(
             axis,
@@ -700,14 +676,6 @@ impl<'a> Painter<'a> {
             geom.thumb_width,
             geom.thumb_height,
         );
-        self.dom.scroll_thumbs.push(ScrollThumbRect {
-            node_id,
-            axis,
-            thumb_bounds,
-            view_bounds,
-            content_size: content as f32,
-            visible_size: visible as f32,
-        });
 
         let active = self.is_active_drag_axis(node_id, axis);
         let hovered = !active

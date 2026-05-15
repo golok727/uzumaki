@@ -102,6 +102,12 @@ pub struct UIState {
     pub selectable_text_runs: Vec<TextSelectRun>,
 
     pending_scroll_node_into_view: Option<(UzNodeId, ScrollIntoViewOptions)>,
+
+    /// Set when something invalidates the hit tree (scroll, layout,
+    /// mutation) and a fresh hit-test is needed before input dispatch.
+    /// `hit_tree::rebuild` clears it. Input handlers — which know the
+    /// current scale — call `ensure_hit_tree_fresh` to act on it.
+    pub hit_tree_dirty: bool,
 }
 
 impl Default for UIState {
@@ -127,6 +133,7 @@ impl UIState {
             drag_mode: DragMode::None,
             wheel_capture: None,
             text_selection: TextSelection::default(),
+            hit_tree_dirty: true,
             selectable_text_runs: Vec::new(),
         }
     }
@@ -406,6 +413,7 @@ impl UIState {
         self.nodes[scroller_id]
             .scroll_state
             .set_offset(axis, next_offset);
+        self.hit_tree_dirty = true;
     }
 
     fn nearest_overflow_scroller(
@@ -643,12 +651,30 @@ impl UIState {
         self.on_node_removed(id);
     }
 
-    pub fn compute_layout(&mut self, width: f32, height: f32, text_renderer: &mut TextRenderer) {
+    pub fn compute_layout(
+        &mut self,
+        width: f32,
+        height: f32,
+        text_renderer: &mut TextRenderer,
+        scale: f64,
+    ) {
         self.compute_styles();
         self.resolve_layout_children();
         crate::layout::LayoutTree::run(self, text_renderer, width, height);
         if let Some((nid, opts)) = self.pending_scroll_node_into_view.take() {
             self.scroll_node_into_view(nid, opts);
+        }
+        // Layout invalidates the hit tree — refresh it now so input
+        // dispatched between this frame and the next paint operates on
+        // current geometry.
+        crate::hit_tree::rebuild(self, text_renderer, scale);
+    }
+
+    /// Rebuild the hit tree if any state mutation has flagged it dirty
+    /// (scroll, mutation, etc.). Cheap when nothing has changed.
+    pub fn ensure_hit_tree_fresh(&mut self, text_renderer: &mut TextRenderer, scale: f64) {
+        if self.hit_tree_dirty {
+            crate::hit_tree::rebuild(self, text_renderer, scale);
         }
     }
 
@@ -985,7 +1011,7 @@ mod tests {
         dom.set_root(parent);
         dom.append_child(parent, first);
         dom.append_child(parent, second);
-        dom.compute_layout(100.0, 100.0, &mut renderer);
+        dom.compute_layout(100.0, 100.0, &mut renderer, 1.0);
 
         let first_layout = &dom.nodes[first].final_layout;
         let second_layout = &dom.nodes[second].final_layout;

@@ -317,6 +317,10 @@ pub fn handle_cursor_moved(
     let scale = handle.winit_window.scale_factor();
     let logical_x = position.x / scale;
     let logical_y = position.y / scale;
+    // Burst-scroll inputs may have left the hit tree stale before this
+    // event arrived — refresh against current scroll state so the cursor
+    // hits what the user actually sees.
+    dom.ensure_hit_tree_fresh(&mut handle.text_renderer, scale);
     let old_top = dom.hit_state.top_node;
     dom.update_hit_test(logical_x, logical_y);
     if old_top != dom.hit_state.top_node {
@@ -341,6 +345,7 @@ pub fn handle_cursor_moved(
         if let Some(node) = dom.nodes.get_mut(nid) {
             node.scroll_state.set_offset(axis, clamped);
         }
+        dom.hit_tree_dirty = true;
         needs_redraw = true;
     }
 
@@ -646,6 +651,15 @@ pub fn handle_mouse_input(
     mouse_buttons: u8,
 ) -> (bool, Vec<AppEvent>) {
     use winit::event::ElementState;
+
+    // Defensive: a programmatic scroll or other mutation since the last
+    // input event may have flagged the hit tree dirty. Refresh before
+    // dispatching so clicks land where the user sees them.
+    let scale = handle.winit_window.scale_factor();
+    dom.ensure_hit_tree_fresh(&mut handle.text_renderer, scale);
+    if let Some((mx, my)) = dom.hit_state.mouse_position {
+        dom.update_hit_test(mx, my);
+    }
 
     let mut needs_redraw = false;
     let mut events: Vec<AppEvent> = Vec::new();
@@ -1676,6 +1690,15 @@ pub fn handle_mouse_wheel(
     }
 
     if needs_redraw {
+        // Rebuild now so subsequent input events in this same frame (or
+        // the next, before paint) see post-scroll geometry. The scroll
+        // bug was: clicks during a fast wheel burst hit the previous
+        // frame's hitboxes because paint hadn't refreshed them yet.
+        let scale = handle.winit_window.scale_factor();
+        crate::hit_tree::rebuild(dom, &mut handle.text_renderer, scale);
+        // And re-hit-test the cursor so hover/active state matches what
+        // the user now sees under the pointer.
+        dom.update_hit_test(mx, my);
         update_ime_cursor_area(dom, handle);
     }
     needs_redraw
