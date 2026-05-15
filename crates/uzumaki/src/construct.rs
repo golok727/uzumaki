@@ -164,8 +164,20 @@ impl UIState {
         node.flags.insert(NodeFlags::ANONYMOUS);
         node.flags.insert(NodeFlags::INLINE_ROOT);
         node.layout_parent = Some(parent_id);
-        node.parent = None;
-        self.nodes.insert(node)
+        // Anonymous wrappers participate in the DOM tree for traversal
+        // (e.g. selection-root walks) but are never DOM children of their
+        // parent — they only live in `layout_children`.
+        node.parent = Some(parent_id);
+        let id = self.nodes.insert(node);
+        // Cascade inheritable styles (text, color, visibility,
+        // text_selectable, cursor) from the parent's already-resolved
+        // style. The main style cascade pass runs before construct and
+        // walks DOM `children`, so it never visits these synthetic
+        // wrappers — we have to seed their computed_style here or every
+        // consumer that reads it would see uncascaded defaults.
+        let parent_style = self.nodes[parent_id].computed_style().clone();
+        self.nodes[id].compute_styles(false, false, false, Some(&parent_style));
+        id
     }
 
     fn set_inline_layout(&mut self, node_id: UzNodeId, inline: TextLayout) {
