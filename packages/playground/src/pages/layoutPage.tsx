@@ -117,6 +117,7 @@ function TextAlignDemo() {
           flexDir="col"
           p={14}
           bg={C.surface2}
+          gap={4}
           rounded={8}
           border={1}
           selectable

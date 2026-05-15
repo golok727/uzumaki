@@ -5,7 +5,7 @@ use crate::{
     element::{ElementNode, ImageData, ImageNode, TextContent, TextRunEntry, TextSelectRun},
     input::InputState,
     interactivity::{HitTestState, HitboxStore},
-    layout::{LayoutEngine, TaffyLayoutExt},
+    layout::TaffyLayoutExt,
     node::{Node, ScrollAxis, TextNode, UzNodeId},
     paint::{
         ScrollThumbRect,
@@ -74,40 +74,35 @@ impl DragMode {
 pub struct UIState {
     pub nodes: Slab<Node>,
 
-    pub layout_engine: LayoutEngine,
     pub root: Option<UzNodeId>,
-    /// Hitboxes registered during the last paint pass.
     pub hitbox_store: HitboxStore,
-    /// Current hit test state (updated on mouse move).
+
     pub hit_state: HitTestState,
-    /// Currently focuswsed ndoe
+
     pub focused_node: Option<UzNodeId>,
-    pending_scroll_node_into_view: Option<(UzNodeId, ScrollIntoViewOptions)>,
-    /// Last click time (for multi-click detection).
+
     pub last_click_time: Option<std::time::Instant>,
-    /// Last clicked node (for multi-click detection).
+
     pub last_click_node: Option<UzNodeId>,
-    /// Consecutive click count (1=normal, 2=word, 3=line, 4=select all).
+
     pub click_count: u8,
-    /// Whether the OS window is focused.
+
     pub window_focused: bool,
-    /// Scroll thumb rects from last paint pass (for hit testing).
+
     pub scroll_thumbs: Vec<ScrollThumbRect>,
-    /// Current UI-owned drag
+
     pub drag_mode: DragMode,
-    /// Short-lived wheel routing capture for nested scroll continuity.
+
     pub wheel_capture: Option<ScrollWheelTarget>,
     /// Current text selection within a textSelect view. `root == None` means
     /// there is no active view selection
     pub text_selection: TextSelection,
+    // TODO move this to renderer ?
     /// Text runs for textSelect subtrees, rebuilt each frame.
-    // todo move this to renderer ?
     pub selectable_text_runs: Vec<TextSelectRun>,
-}
 
-// Safety:  We only access it from main thread
-unsafe impl Send for UIState {}
-unsafe impl Sync for UIState {}
+    pending_scroll_node_into_view: Option<(UzNodeId, ScrollIntoViewOptions)>,
+}
 
 impl Default for UIState {
     fn default() -> Self {
@@ -119,7 +114,6 @@ impl UIState {
     pub fn new() -> Self {
         Self {
             nodes: Slab::new(),
-            layout_engine: LayoutEngine::new(),
             root: None,
             hitbox_store: HitboxStore::default(),
             hit_state: HitTestState::default(),

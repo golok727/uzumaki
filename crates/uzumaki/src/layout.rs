@@ -1,12 +1,3 @@
-//! Low-level taffy layout integration.
-//!
-//! `UIState` itself implements taffy's traits indirectly through `LayoutTree`,
-//! a thin wrapper that bundles a mutable borrow of the UI tree with the text
-//! renderer. The wrapper is built per-frame and consumed by `compute_root_layout`
-//! / `round_layout` so the inline formatting context can call back into
-//! `compute_child_layout` for inline-block children (chips) without snapshotting
-//! anything.
-
 use std::cell::Ref;
 
 use slab::Slab;
@@ -18,17 +9,11 @@ use taffy::{
     round_layout,
 };
 
-use crate::element::{ImageData, TextLayout};
+use crate::element::TextLayout;
 use crate::node::{Node, NodeData, ScrollAxis, UzNodeId};
 use crate::style::Bounds;
 use crate::text::{InlineBox, TextRenderer};
 use crate::ui::UIState;
-
-#[allow(dead_code)]
-#[derive(Clone, Debug)]
-pub struct NodeContext {
-    pub node_id: UzNodeId,
-}
 
 pub trait TaffyLayoutExt {
     fn border_box_bounds(&self) -> Bounds;
@@ -87,27 +72,6 @@ impl TaffyLayoutExt for taffy::Layout {
     }
 }
 
-/// Zero-sized facade kept on `UIState` so existing call sites read naturally.
-/// All real work happens through `LayoutTree`.
-pub struct LayoutEngine;
-
-impl LayoutEngine {
-    pub fn new() -> Self {
-        Self
-    }
-
-    pub fn clear(&mut self) {}
-}
-
-impl Default for LayoutEngine {
-    fn default() -> Self {
-        Self::new()
-    }
-}
-
-/// Per-frame layout tree. Carries `UIState` mutably so layout algorithms can
-/// recurse via `compute_child_layout`, plus the text renderer so the inline
-/// formatting context and text leaves can build/measure parley layouts.
 pub struct LayoutTree<'a> {
     pub state: &'a mut UIState,
     pub text: &'a mut TextRenderer,
@@ -513,8 +477,6 @@ impl<'a> LayoutTree<'a> {
     }
 }
 
-// ---- helpers -------------------------------------------------------------
-
 fn sum_rect(r: Rect<f32>) -> Size<f32> {
     Size {
         width: r.left + r.right,
@@ -535,8 +497,6 @@ fn resolve_dim_size(s: Size<taffy::Dimension>, parent: Size<Option<f32>>) -> Siz
     use taffy::MaybeResolve;
     s.maybe_resolve(parent, calc_zero)
 }
-
-// ---- trait impls ---------------------------------------------------------
 
 pub struct RefCellChildIter<'a> {
     items: Ref<'a, [UzNodeId]>,
@@ -698,7 +658,3 @@ impl<'tree> RoundTree for LayoutTree<'tree> {
         self.nodes_mut()[id].final_layout = *layout;
     }
 }
-
-// Image data exported for tests / outer modules — kept for compatibility.
-#[allow(dead_code)]
-pub(crate) fn _keep_image_data(_x: &ImageData) {}
