@@ -205,13 +205,14 @@ pub fn run_cli() -> Result<Option<standalone::LaunchMode>> {
         return Ok(None);
     }
 
-    let matches = if should_parse_subcommand_first() {
-        clap_root().get_matches()
+    let cmd = clap_root();
+    let matches = if is_root_invocation(&cmd) {
+        cmd.get_matches()
     } else {
         let raw_args: Vec<String> = std::env::args().collect();
         let mut patched = vec![raw_args[0].clone(), "dev".to_string()];
         patched.extend_from_slice(&raw_args[1..]);
-        clap_root().get_matches_from(patched)
+        cmd.get_matches_from(patched)
     };
     let cli = Cli::from_arg_matches(&matches)?;
 
@@ -249,11 +250,15 @@ pub fn run_cli() -> Result<Option<standalone::LaunchMode>> {
     }
 }
 
-fn should_parse_subcommand_first() -> bool {
-    matches!(
-        std::env::args().nth(1).as_deref(),
-        Some("dev" | "run" | "build" | "init" | "create" | "upgrade")
-    )
+fn is_root_invocation(cmd: &Command) -> bool {
+    let Some(arg1) = std::env::args().nth(1) else {
+        return true;
+    };
+    if arg1.starts_with('-') {
+        return true;
+    }
+    cmd.get_subcommands()
+        .any(|sc| sc.get_name() == arg1 || sc.get_all_aliases().any(|a| a == arg1))
 }
 
 fn should_print_root_help() -> bool {
@@ -297,12 +302,12 @@ fn print_root_help() {
     utils::print_help_command(
         utils::teal("init"),
         Some(""),
-        "Initialize the current directory as a new project",
+        "Initialize a project in the current directory",
     );
     utils::print_help_command(
         utils::teal("create"),
         Some("[name]"),
-        "Create a new project, prompting when the name is omitted",
+        "Create a new project",
     );
 
     println!();

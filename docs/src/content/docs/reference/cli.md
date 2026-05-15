@@ -29,15 +29,15 @@ uzumaki ./app.tsx --port 3000
 
 ## Commands
 
-| Command           | Use it for                                                             |
-| ----------------- | ---------------------------------------------------------------------- |
-| `uzumaki <entry>` | Run a TypeScript or JavaScript file in GUI mode.                       |
-| `uzumaki dev`     | Same as the bare form — opens an entry in a native window.             |
-| `uzumaki run`     | Run an entry in headless mode (no window).                             |
-| `uzumaki create`  | Create a new project in a new directory. Prompts when name is omitted. |
-| `uzumaki init`    | Initialize the current directory as a new project.                     |
-| `uzumaki build`   | Build and package an app using `uzumaki.config.json`.                  |
-| `uzumaki upgrade` | Upgrade to the latest CLI version.                                     |
+| Command           | Use it for                                                 |
+| ----------------- | ---------------------------------------------------------- |
+| `uzumaki <entry>` | Run a TypeScript or JavaScript file in GUI mode.           |
+| `uzumaki dev`     | Same as the bare form — opens an entry in a native window. |
+| `uzumaki run`     | Run an entry in headless mode (no window).                 |
+| `uzumaki create`  | Create a new project in a new directory.                   |
+| `uzumaki init`    | Initialize a project in the current directory.             |
+| `uzumaki build`   | Build and package an app using `uzumaki.config.json`.      |
+| `uzumaki upgrade` | Upgrade to the latest CLI version.                         |
 
 Run `uzumaki <command> --help` for detailed flags.
 
