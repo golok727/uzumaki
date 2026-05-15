@@ -1730,7 +1730,10 @@ fn apply_wheel_axis(dom: &mut UIState, mx: f64, my: f64, axis: ScrollAxis, delta
             }
         }
 
-        let Some(parent) = dom.nodes.get(nid).and_then(|node| node.parent) else {
+        // Wheel bubbles up the layout tree (matches CSS scroll
+        // containment) so an anonymous wrapper between the cursor and a
+        // scrollable ancestor doesn't break wheel propagation.
+        let Some(parent) = dom.nodes.get(nid).and_then(|node| node.layout_parent) else {
             break;
         };
         nid = parent;

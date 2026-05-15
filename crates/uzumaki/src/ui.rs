@@ -258,6 +258,11 @@ impl UIState {
         self.detach_from_parent(child_id);
 
         self.nodes[child_id].parent = Some(parent_id);
+        // Seed layout_parent to match — the construct phase reassigns it
+        // every frame, but seeding here keeps direct DOM access (e.g.,
+        // hit-test against a manually built tree) consistent before the
+        // first layout pass runs.
+        self.nodes[child_id].layout_parent = Some(parent_id);
         self.nodes[parent_id].children.push(child_id);
     }
 
@@ -270,12 +275,14 @@ impl UIState {
         }
         self.detach_from_parent(child_id);
         self.nodes[child_id].parent = Some(parent_id);
+        self.nodes[child_id].layout_parent = Some(parent_id);
         let Some(index) = self.nodes[parent_id]
             .children
             .iter()
             .position(|&id| id == before_id)
         else {
             self.nodes[child_id].parent = None;
+            self.nodes[child_id].layout_parent = None;
             return;
         };
         self.nodes[parent_id].children.insert(index, child_id);
@@ -323,9 +330,11 @@ impl UIState {
     /// view) instead of themselves, and we always use default options.
     pub fn request_scroll_focus_into_view(&mut self, node_id: UzNodeId) {
         let target = if self.nodes.get(node_id).is_some_and(|n| n.is_text_input()) {
+            // Use the layout parent so an input wrapped by an anonymous
+            // inline run still scrolls its real visual container.
             self.nodes
                 .get(node_id)
-                .and_then(|n| n.parent)
+                .and_then(|n| n.layout_parent)
                 .unwrap_or(node_id)
         } else {
             node_id
@@ -404,7 +413,10 @@ impl UIState {
         target_id: UzNodeId,
         axis: ScrollAxis,
     ) -> Option<UzNodeId> {
-        let mut ancestor = nodes.get(target_id).and_then(|n| n.parent)?;
+        // Walk the layout tree — `overflow` is a layout/visual property
+        // and the scroll container that paints around `target_id` may be
+        // separated by anonymous wrappers in the layout tree.
+        let mut ancestor = nodes.get(target_id).and_then(|n| n.layout_parent)?;
         loop {
             let node = nodes.get(ancestor)?;
             let scrollable = match axis {
@@ -414,7 +426,7 @@ impl UIState {
             if scrollable {
                 return Some(ancestor);
             }
-            ancestor = node.parent?;
+            ancestor = node.layout_parent?;
         }
     }
 
@@ -438,7 +450,9 @@ impl UIState {
             } else {
                 rel += loc;
             }
-            match node.parent {
+            // `final_layout.location` is positioned relative to the
+            // layout parent, so accumulate via `layout_parent`.
+            match node.layout_parent {
                 Some(pid) if !past_scroller && pid == scroller_id => {
                     past_scroller = true;
                     cur = pid;
@@ -475,6 +489,7 @@ impl UIState {
 
         self.remove_child_ref(parent_id, child_id);
         self.nodes[child_id].parent = None;
+        self.nodes[child_id].layout_parent = None;
     }
 
     /// Single source of truth for clearing stale NodeId references when a node
@@ -539,6 +554,7 @@ impl UIState {
             return;
         }
         self.nodes[child_id].parent = None;
+        self.nodes[child_id].layout_parent = None;
         // The node lives on in the slab until its JS wrapper is collected, but
         // every long-lived NodeId field (selection, focus, hit-state, scroll
         // locks…) refers to nodes by their place in the tree. Once detached
@@ -566,6 +582,7 @@ impl UIState {
                 && child.parent == Some(node_id)
             {
                 child.parent = None;
+                child.layout_parent = None;
             }
         }
 
@@ -668,12 +685,15 @@ impl UIState {
     }
 
     fn hit_path(&self, top: UzNodeId) -> Vec<UzNodeId> {
+        // The hit-test top node lives in the painted layout tree — walk
+        // `layout_parent` so anonymous wrappers between the hit and a
+        // hovered ancestor stay in the path.
         let mut path = Vec::new();
         let mut current = Some(top);
         while let Some(id) = current {
             if self.nodes.get(id).is_some() {
                 path.push(id);
-                current = self.nodes[id].parent;
+                current = self.nodes[id].layout_parent;
             } else {
                 break;
             }
@@ -710,13 +730,16 @@ impl UIState {
         node_id: UzNodeId,
         mut matches: impl FnMut(&Node) -> bool,
     ) -> Option<UzNodeId> {
+        // Used by `nearest_button_ancestor` and similar — the question is
+        // "what interactive ancestor visually contains this hit?", which
+        // is a layout-tree question.
         let mut current = Some(node_id);
         while let Some(id) = current {
             let node = self.nodes.get(id)?;
             if matches(node) {
                 return Some(id);
             }
-            current = node.parent;
+            current = node.layout_parent;
         }
         None
     }
@@ -763,7 +786,10 @@ impl UIState {
             {
                 return Some(id);
             }
-            cur = self.nodes.get(id).and_then(|n| n.parent);
+            // Layout walk: a hit on an anonymous wrapper inside a
+            // selectable container should still find that container as
+            // the run root.
+            cur = self.nodes.get(id).and_then(|n| n.layout_parent);
         }
         None
     }
