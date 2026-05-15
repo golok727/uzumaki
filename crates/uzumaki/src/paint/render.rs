@@ -335,8 +335,7 @@ impl<'a> Painter<'a> {
     /// vertical extent is the full line box (so adjacent lines of the same
     /// span visually merge); horizontal extent is the run's `offset..offset
     /// + advance`, expanded by the span node's left/right padding and border.
-    /// Then `UzStyle::paint` draws the same bg/border/corner/shadow stack as
-    /// any other element.
+    /// Then `UzStyle::paint` draws the same bg/border/corner/shadow stack as any other element
     fn paint_inline_span_boxes(
         &self,
         scene: &mut Scene,

@@ -256,7 +256,7 @@ impl<'a> LayoutTree<'a> {
                 // single line and reports max-content as the minimum,
                 // which makes flex layout think the item can't shrink
                 // and prevents wrapping in fixed-width cells.
-                let max_w = known.width.or_else(|| match avail.width {
+                let max_w = known.width.or(match avail.width {
                     AvailableSpace::Definite(v) => Some(v),
                     AvailableSpace::MinContent => Some(0.0),
                     AvailableSpace::MaxContent => None,
