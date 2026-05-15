@@ -85,6 +85,7 @@ function TextAlignDemo() {
       <view
         display={parentDisplay}
         flexDir="col"
+        items="start"
         p={16}
         bg={C.surface2}
         rounded={8}

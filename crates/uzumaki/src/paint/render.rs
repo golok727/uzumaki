@@ -247,7 +247,8 @@ impl<'a> Painter<'a> {
             // or a chip rendering its own text. In both cases parley already
             // has the glyphs; the per-node bg/border is drawn by paint_view
             // through the normal render_node recursion using final_layout.
-            let sel = if inline.entries.iter().any(|e| e.byte_len > 0) {
+            let is_inline_root = inline.entries.iter().any(|e| e.byte_len > 0);
+            let sel = if is_inline_root {
                 self.compute_inline_selection(node_id)
             } else {
                 text_selections.get(&node_id).copied()
@@ -261,6 +262,7 @@ impl<'a> Painter<'a> {
                 inline.text.len(),
                 transform,
                 sel,
+                is_inline_root,
             );
         } else {
             crate::paint::view::paint_view(scene, bounds, style, transform, |_| {});
@@ -285,17 +287,19 @@ impl<'a> Painter<'a> {
         text_len: usize,
         transform: Affine,
         selection: Option<(usize, usize)>,
+        is_inline_root: bool,
     ) {
         style.paint(bounds, scene, transform, |scene| {
             let text_x = content_box.x;
             let text_y = content_box.y;
 
-            // Paint per-span backgrounds/borders BEFORE glyphs so glyphs sit
-            // on top. Walk lines; within each line, group consecutive glyph
-            // runs by brush.id; for each group whose brush refers to an
-            // inline `<text>` element with visible box styling, build a bounds
-            // rect and run it through UzStyle::paint.
-            self.paint_inline_span_boxes(scene, layout, text_x, text_y, transform);
+            // Per-span chip boxes only make sense for inline-root layouts where
+            // distinct `<text>` element children contribute spans. Standalone
+            // text leaves reuse the same parley layout but have no spans —
+            // their box is already drawn by the outer `style.paint` above.
+            if is_inline_root {
+                self.paint_inline_span_boxes(scene, layout, text_x, text_y, transform);
+            }
 
             if let Some((sel_start, sel_end)) = selection {
                 let rects =

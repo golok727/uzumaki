@@ -15,10 +15,17 @@ impl UIState {
     }
 
     fn visit_text_select(&mut self, node_id: UzNodeId, run_idx: Option<usize>) {
-        let resolved_text_sel = self.nodes[node_id]
-            .computed_style()
-            .text_selectable
-            .selectable();
+        // Anonymous inline-run wrappers are not in DOM children, so the
+        // style cascade never runs on them. Treat them as transparent for
+        // selectability — inherit the active run from the layout parent.
+        let resolved_text_sel = if self.nodes[node_id].is_anonymous() {
+            run_idx.is_some()
+        } else {
+            self.nodes[node_id]
+                .computed_style()
+                .text_selectable
+                .selectable()
+        };
 
         // A node that explicitly enables textSelect when the parent scope
         // doesn't have it starts a new selection scope.

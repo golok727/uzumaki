@@ -763,7 +763,10 @@ impl UIState {
             {
                 return Some(id);
             }
-            cur = self.nodes.get(id).and_then(|n| n.parent);
+            // Walk via layout_parent so anonymous inline-run wrappers (which
+            // intentionally have no DOM parent) still resolve to their
+            // containing selectable view.
+            cur = self.nodes.get(id).and_then(|n| n.layout_parent);
         }
         None
     }
