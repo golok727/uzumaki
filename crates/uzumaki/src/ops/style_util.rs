@@ -319,6 +319,17 @@ fn set_node_style(
         StyleProp::ScrollbarRadius => {
             node.style_slot(variant).scrollbar.radius = value.parse_f32(rem_base)
         }
+        StyleProp::ScrollbarMode => {
+            use crate::style::ScrollbarMode;
+            let mode = match value.as_str() {
+                "overlay" | "floating" => Some(ScrollbarMode::Overlay),
+                "gutter" | "reserved" | "inline" => Some(ScrollbarMode::Gutter),
+                _ => None,
+            };
+            if let Some(mode) = mode {
+                node.style_slot(variant).scrollbar.mode = Some(mode);
+            }
+        }
         StyleProp::TextSelect => {
             let text_selectable: TextSelectable = value.parse_bool().into();
             let style = node.style_slot(variant);
@@ -610,6 +621,7 @@ fn clear_style_prop(node: &mut Node, prop: StyleProp, variant: StyleSlot) {
         StyleProp::ScrollbarHoverColor => style.scrollbar.hover_color = None,
         StyleProp::ScrollbarActiveColor => style.scrollbar.active_color = None,
         StyleProp::ScrollbarRadius => style.scrollbar.radius = None,
+        StyleProp::ScrollbarMode => style.scrollbar.mode = None,
         StyleProp::TextSelect => style.text_selectable = None,
         StyleProp::TextWrap => {
             style.text.overflow_wrap = None;

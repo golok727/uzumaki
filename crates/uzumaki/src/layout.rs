@@ -250,9 +250,16 @@ impl<'a> LayoutTree<'a> {
             &taffy_style,
             |_, _| 0.0,
             |known, avail| {
+                // Translate taffy's available_space into a parley wrap
+                // width. MinContent must wrap *maximally* (longest word
+                // is the minimum width) — passing `None` gives parley a
+                // single line and reports max-content as the minimum,
+                // which makes flex layout think the item can't shrink
+                // and prevents wrapping in fixed-width cells.
                 let max_w = known.width.or_else(|| match avail.width {
                     AvailableSpace::Definite(v) => Some(v),
-                    _ => None,
+                    AvailableSpace::MinContent => Some(0.0),
+                    AvailableSpace::MaxContent => None,
                 });
                 // Use the leaf-brush sentinel so per-span paint code can't
                 // mistake this leaf's own glyphs for an inline `<text>` chip
@@ -341,12 +348,16 @@ impl<'a> LayoutTree<'a> {
         };
 
         // Available content width — used as the parley wrap width.
+        // MinContent must wrap at the longest word so flex containers
+        // can shrink us; MaxContent intentionally leaves None so parley
+        // reports our full single-line width.
         let available_width_f32 = known_dimensions
             .width
             .map(|w| (w - inset_w).max(0.0))
             .or_else(|| match available_space.width {
                 AvailableSpace::Definite(v) => Some((v - inset_w).max(0.0)),
-                _ => None,
+                AvailableSpace::MinContent => Some(0.0),
+                AvailableSpace::MaxContent => None,
             })
             .or_else(|| style_size.width.map(|w| (w - inset_w).max(0.0)));
 

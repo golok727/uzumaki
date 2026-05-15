@@ -429,6 +429,19 @@ pub struct TransformStyle {
 }
 
 /// Styling for the scrollbar painted on scrollable views and multiline inputs.
+/// Whether the scrollbar reserves layout space or paints over content.
+///
+/// `Overlay` (the default) is the macOS / modern-app style — thumb paints
+/// over content and nothing reflows when it appears. `Gutter` is the
+/// classic Windows / always-visible style: a reserved lane next to the
+/// content holds the scrollbar so it has a persistent target to grab.
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+pub enum ScrollbarMode {
+    #[default]
+    Overlay,
+    Gutter,
+}
+
 /// Defaults match the legacy hardcoded look (4px overlay thumb, white@90/140
 /// alpha, transparent track, pill-shaped via auto-radius).
 #[derive(Clone, Copy, Debug, PartialEq, Refineable)]
@@ -440,6 +453,7 @@ pub struct ScrollbarStyle {
     pub active_color: Color,
     /// `None` = pill (radius = width / 2); `Some(v)` = explicit radius.
     pub radius: Option<f32>,
+    pub mode: ScrollbarMode,
 }
 
 impl Default for ScrollbarStyle {
@@ -450,13 +464,19 @@ impl Default for ScrollbarStyle {
             hover_color: Color::rgba(255, 255, 255, 140),
             active_color: Color::rgba(255, 255, 255, 180),
             radius: None,
+            mode: ScrollbarMode::Overlay,
         }
     }
 }
 
 impl ScrollbarStyle {
+    /// Layout gutter reserved for the scrollbar. Zero in overlay mode —
+    /// the thumb paints over content and never reflows the layout.
     pub fn gutter_width(self) -> f32 {
-        self.width.max(0.0)
+        match self.mode {
+            ScrollbarMode::Overlay => 0.0,
+            ScrollbarMode::Gutter => self.width.max(0.0),
+        }
     }
 }
 

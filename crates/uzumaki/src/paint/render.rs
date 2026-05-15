@@ -899,9 +899,23 @@ mod tests {
     }
 
     fn auto_scroll_style() -> UzStyle {
+        // Gutter mode reserves a lane for the scrollbar — these tests
+        // verify the gutter math. The default Overlay mode reserves no
+        // space and would make the assertions trivial.
         UzStyle {
             overflow_x: Overflow::Auto,
             overflow_y: Overflow::Auto,
+            scrollbar: crate::style::ScrollbarStyle {
+                mode: crate::style::ScrollbarMode::Gutter,
+                ..Default::default()
+            },
+            ..Default::default()
+        }
+    }
+
+    fn gutter_scrollbar() -> crate::style::ScrollbarStyle {
+        crate::style::ScrollbarStyle {
+            mode: crate::style::ScrollbarMode::Gutter,
             ..Default::default()
         }
     }
@@ -924,6 +938,7 @@ mod tests {
     fn auto_scroll_vertical_overflow_adds_only_vertical_gutter() {
         let style = UzStyle {
             overflow_y: Overflow::Auto,
+            scrollbar: gutter_scrollbar(),
             ..Default::default()
         };
         let mut layout = scroll_layout(100.0, 100.0, 100.0, 150.0);
@@ -940,6 +955,7 @@ mod tests {
     fn auto_scroll_horizontal_overflow_adds_only_horizontal_gutter() {
         let style = UzStyle {
             overflow_x: Overflow::Auto,
+            scrollbar: gutter_scrollbar(),
             ..Default::default()
         };
         let mut layout = scroll_layout(100.0, 100.0, 150.0, 100.0);
