@@ -242,10 +242,15 @@ function createReconciler() {
   });
 }
 
-export function render(window: Window, element: JSX.Element) {
+export interface Root {
+  render(element: JSX.Element | null): void;
+  unmount(): void;
+}
+
+export function createRoot(window: Window): Root {
   const reconciler = createReconciler();
 
-  const root = reconciler.createContainer(
+  const container = reconciler.createContainer(
     window,
     1,
     null,
@@ -258,15 +263,23 @@ export function render(window: Window, element: JSX.Element) {
     () => {},
   );
 
-  reconciler.updateContainer(element, root, null, null);
+  let unmounted = false;
 
-  function dispose() {
-    reconciler.updateContainer(null, root, null, null);
+  function unmount() {
+    if (unmounted) return;
+    unmounted = true;
+    reconciler.updateContainer(null, container, null, null);
   }
 
-  window.addDisposable(dispose);
+  window.addDisposable(unmount);
 
   return {
-    dispose,
+    render(element) {
+      if (unmounted) {
+        throw new Error('[uzumaki] cannot render into an unmounted root');
+      }
+      reconciler.updateContainer(element, container, null, null);
+    },
+    unmount,
   };
 }

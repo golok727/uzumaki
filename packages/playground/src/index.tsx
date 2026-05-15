@@ -1,4 +1,4 @@
-import { render } from 'uzumaki-react';
+import { createRoot } from 'uzumaki-react';
 import { App } from './app';
 // import { RUNTIME_VERSION } from 'uzumaki';
 import { Window } from 'uzumaki';
@@ -28,4 +28,4 @@ window.on('load', () => {
   );
 });
 
-render(window, <App />);
+createRoot(window).render(<App />);
