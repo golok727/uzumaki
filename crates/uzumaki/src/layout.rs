@@ -9,10 +9,10 @@ use taffy::{
     round_layout,
 };
 
-use crate::element::TextLayout;
+use crate::element::{InlineLayoutKind, TextLayout};
 use crate::node::{Node, NodeData, ScrollAxis, UzNodeId};
 use crate::style::Bounds;
-use crate::text::{InlineBox, TextRenderer};
+use crate::text::{InlineBox, LEAF_BRUSH_ID, TextRenderer};
 use crate::ui::UIState;
 
 pub trait TaffyLayoutExt {
@@ -254,9 +254,12 @@ impl<'a> LayoutTree<'a> {
                     AvailableSpace::Definite(v) => Some(v),
                     _ => None,
                 });
+                // Use the leaf-brush sentinel so per-span paint code can't
+                // mistake this leaf's own glyphs for an inline `<text>` chip
+                // span (which would double-paint the leaf's box).
                 let layout =
                     self.text
-                        .build_inline_layout(&style.text, node_id, max_w, |builder| {
+                        .build_inline_layout(&style.text, LEAF_BRUSH_ID, max_w, |builder| {
                             builder.push_text(&text);
                         });
                 let w = known.width.unwrap_or_else(|| layout.full_width().ceil());
@@ -272,12 +275,13 @@ impl<'a> LayoutTree<'a> {
         if let Some(layout) = stashed_layout
             && let Some(element) = self.nodes_mut()[node_id].as_element_mut()
         {
-            let inline = element
-                .inline_layout
-                .get_or_insert_with(|| Box::new(TextLayout::default()));
-            inline.text = text;
-            inline.entries.clear();
-            inline.layout = layout;
+            let text_len = text.len();
+            element.inline_layout = Some(Box::new(TextLayout {
+                layout,
+                text_len,
+                kind: InlineLayoutKind::Leaf,
+                ..TextLayout::default()
+            }));
         }
         output
     }
@@ -325,14 +329,15 @@ impl<'a> LayoutTree<'a> {
         let style_min = resolve_dim_size(taffy_style.min_size, parent_size);
         let style_max = resolve_dim_size(taffy_style.max_size, parent_size);
 
-        // Pull the flat inline content built by the construct phase.
-        let (text, entries) = {
+        // Pull the inline-root entries built by the construct phase. The
+        // text content per fragment is fetched from each entry's source
+        // node below — we never materialize a concatenated string.
+        let entries = {
             let node = &self.nodes()[node_id];
-            let inline = node
-                .as_element()
+            node.as_element()
                 .and_then(|el| el.inline_layout.as_ref())
-                .map(|i| (i.text.clone(), i.entries.clone()));
-            inline.unwrap_or_default()
+                .map(|i| i.entries().to_vec())
+                .unwrap_or_default()
         };
 
         // Available content width — used as the parley wrap width.
@@ -358,11 +363,17 @@ impl<'a> LayoutTree<'a> {
         }
         let mut fragments: Vec<InlineFragment> = Vec::with_capacity(entries.len());
         for entry in &entries {
-            let end = entry
-                .byte_start
-                .saturating_add(entry.byte_len)
-                .min(text.len());
-            let slice = text.get(entry.byte_start..end).unwrap_or("");
+            // Pull the text directly from the entry's source node — the
+            // concatenated string the construct phase used to build no
+            // longer exists.
+            let source_text = self
+                .nodes()
+                .get(entry.content_source)
+                .and_then(|n| n.get_text_content())
+                .map(|t| t.content.as_str())
+                .unwrap_or("");
+            let end = entry.byte_len.min(source_text.len());
+            let slice = &source_text[..end];
             let entry_node = &self.nodes()[entry.node_id];
             let entry_style = entry_node.computed_style();
             let (pad_l, pad_r, line_height) = if entry_node.is_text_node() {
@@ -432,10 +443,11 @@ impl<'a> LayoutTree<'a> {
         let measured_h = parley_layout.height().ceil();
 
         // Stash the parent's parley layout for paint / hit-test / selection.
-        if let Some(element) = self.nodes_mut()[node_id].as_element_mut() {
-            let inline = element
-                .inline_layout
-                .get_or_insert_with(|| Box::new(TextLayout::default()));
+        // Construct already populated `kind = InlineRoot { entries }` and
+        // `text_len`; we just slot in the freshly built parley layout.
+        if let Some(element) = self.nodes_mut()[node_id].as_element_mut()
+            && let Some(inline) = element.inline_layout.as_mut()
+        {
             inline.layout = parley_layout;
         }
 

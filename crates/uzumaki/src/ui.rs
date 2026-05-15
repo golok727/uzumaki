@@ -820,7 +820,13 @@ mod tests {
 
         dom.append_child(parent, child);
         dom.nodes[parent].base_style().cursor = Some(UzCursorIcon::Pointer);
-        // todo we need to compute the styles
+
+        // Drive the cascade so `cursor` actually reaches the child's
+        // computed_style. `compute_styles_at` is private and the full
+        // pipeline needs a TextRenderer, so do the two-node walk inline.
+        dom.nodes[parent].compute_styles(false, false, false, None);
+        let parent_style = dom.nodes[parent].computed_style().clone();
+        dom.nodes[child].compute_styles(false, false, false, Some(&parent_style));
 
         assert_eq!(dom.resolve_cursor(child), UzCursorIcon::Pointer);
     }

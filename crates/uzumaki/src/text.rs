@@ -40,6 +40,12 @@ impl From<ParleyAffinity> for crate::selection::Affinity {
     }
 }
 
+/// Brush id used by `compute_text_leaf` for its standalone parley layout.
+/// Sentinel meaning "no inline `<text>` element owns this run" — paint
+/// code uses it to distinguish a text leaf's own glyphs from a real
+/// inline span that should receive per-line chip painting.
+pub const LEAF_BRUSH_ID: usize = usize::MAX;
+
 #[derive(Debug, Clone, Copy, Default, PartialEq)]
 pub struct TextBrush {
     pub id: usize,
@@ -48,6 +54,10 @@ pub struct TextBrush {
 impl TextBrush {
     pub fn from_id(id: usize) -> Self {
         Self { id }
+    }
+
+    pub fn is_leaf(self) -> bool {
+        self.id == LEAF_BRUSH_ID
     }
 }
 

@@ -4,7 +4,7 @@
 //! children sit alongside block-level siblings.
 //! adapted from https://github.com/DioxusLabs/blitz
 
-use crate::element::{ElementNode, InlineTextEntry, TextLayout};
+use crate::element::{ElementNode, InlineLayoutKind, InlineTextEntry, TextLayout};
 use crate::node::{Node, NodeData, NodeFlags, UzNodeId};
 use crate::style::{Display, UzStyle};
 use crate::ui::UIState;
@@ -187,33 +187,50 @@ impl UIState {
     }
 
     fn collect_inline_layout(&self, children: &[UzNodeId]) -> TextLayout {
-        let mut inline = TextLayout::default();
-        self.collect_inline_text_into(children, &mut inline, None);
-        inline
+        let mut entries: Vec<InlineTextEntry> = Vec::new();
+        let mut text_len: usize = 0;
+        self.collect_inline_text_into(children, &mut entries, &mut text_len, None);
+        TextLayout {
+            text_len,
+            kind: InlineLayoutKind::InlineRoot { entries },
+            ..TextLayout::default()
+        }
     }
 
     fn append_inline_layout(&mut self, wrapper_id: UzNodeId, child_id: UzNodeId) {
-        let mut next = self.collect_inline_layout(&[child_id]);
+        let mut new_entries: Vec<InlineTextEntry> = Vec::new();
+        let mut new_text_len: usize = 0;
+        self.collect_inline_text_into(&[child_id], &mut new_entries, &mut new_text_len, None);
+
         let Some(element) = self.nodes[wrapper_id].as_element_mut() else {
             return;
         };
-        let inline = element
-            .inline_layout
-            .get_or_insert_with(|| Box::new(TextLayout::default()));
-        let offset = inline.text.len();
-        inline.text.push_str(&next.text);
-        inline
-            .entries
-            .extend(next.entries.drain(..).map(|mut entry| {
-                entry.byte_start += offset;
-                entry
-            }));
+        let inline = element.inline_layout.get_or_insert_with(|| {
+            Box::new(TextLayout {
+                kind: InlineLayoutKind::InlineRoot {
+                    entries: Vec::new(),
+                },
+                ..TextLayout::default()
+            })
+        });
+        let offset = inline.text_len;
+        inline.text_len += new_text_len;
+        let InlineLayoutKind::InlineRoot { entries } = &mut inline.kind else {
+            // Wrapper was just created above as InlineRoot; this branch is
+            // only reachable if a caller mutated `kind` out from under us.
+            return;
+        };
+        entries.extend(new_entries.into_iter().map(|mut entry| {
+            entry.byte_start += offset;
+            entry
+        }));
     }
 
     fn collect_inline_text_into(
         &self,
         children: &[UzNodeId],
-        inline: &mut TextLayout,
+        entries: &mut Vec<InlineTextEntry>,
+        text_len: &mut usize,
         style_owner: Option<UzNodeId>,
     ) {
         for &node_id in children {
@@ -223,44 +240,55 @@ impl UIState {
             match &node.data {
                 NodeData::Text(text_node) => {
                     let owner = style_owner.unwrap_or(node_id);
-                    self.push_inline_text(inline, owner, text_node.content.as_str());
+                    push_inline_text(entries, text_len, owner, node_id, text_node.content.len());
                 }
                 NodeData::Element(el) if node.is_inline_level() => {
-                    let content = el
+                    if let Some(content_len) = el
                         .data
                         .get_text_content()
-                        .map(|content| content.content.as_str());
-                    if let Some(content) = content {
-                        self.push_inline_text(inline, node_id, content);
+                        .map(|content| content.content.len())
+                        .filter(|len| *len > 0)
+                    {
+                        push_inline_text(entries, text_len, node_id, node_id, content_len);
                     }
                     let children = node.children.clone();
-                    self.collect_inline_text_into(&children, inline, Some(node_id));
+                    self.collect_inline_text_into(&children, entries, text_len, Some(node_id));
                 }
                 _ => {}
             }
         }
     }
+}
 
-    fn push_inline_text(&self, inline: &mut TextLayout, node_id: UzNodeId, content: &str) {
-        if !content.is_empty() {
-            if let Some(last) = inline.entries.last_mut()
-                && last.node_id == node_id
-                && last.byte_start + last.byte_len == inline.text.len()
-            {
-                inline.text.push_str(content);
-                last.byte_len += content.len();
-                return;
-            }
-
-            let byte_start = inline.text.len();
-            inline.text.push_str(content);
-            inline.entries.push(InlineTextEntry {
-                node_id,
-                byte_start,
-                byte_len: content.len(),
-            });
-        }
+fn push_inline_text(
+    entries: &mut Vec<InlineTextEntry>,
+    text_len: &mut usize,
+    node_id: UzNodeId,
+    content_source: UzNodeId,
+    content_len: usize,
+) {
+    if content_len == 0 {
+        return;
     }
+    let byte_start = *text_len;
+    *text_len += content_len;
+    // Coalesce with previous entry only when the previous entry came from
+    // the exact same content source — otherwise we'd lose the source-node
+    // mapping that layout uses to fetch the actual text per fragment.
+    if let Some(last) = entries.last_mut()
+        && last.node_id == node_id
+        && last.content_source == content_source
+        && last.byte_start + last.byte_len == byte_start
+    {
+        last.byte_len += content_len;
+        return;
+    }
+    entries.push(InlineTextEntry {
+        node_id,
+        content_source,
+        byte_start,
+        byte_len: content_len,
+    });
 }
 
 #[cfg(test)]
@@ -282,14 +310,14 @@ mod tests {
 
         assert!(dom.nodes[parent].flags.is_inline_root());
         assert!(dom.nodes[parent].layout_children.borrow().is_empty());
-        assert_eq!(
-            dom.nodes[parent]
-                .as_element()
-                .and_then(|element| element.inline_layout.as_ref())
-                .as_ref()
-                .map(|text| text.text.as_str()),
-            Some("hello world")
-        );
+        let inline = dom.nodes[parent]
+            .as_element()
+            .and_then(|element| element.inline_layout.as_ref())
+            .expect("parent should own inline layout");
+        assert_eq!(inline.text_len, "hello world".len());
+        assert_eq!(inline.entries().len(), 2);
+        assert_eq!(inline.entries()[0].content_source, first);
+        assert_eq!(inline.entries()[1].content_source, second);
     }
 
     #[test]
@@ -335,26 +363,29 @@ mod tests {
     }
 
     #[test]
-    fn nested_text_node_uses_inline_element_as_style_owner() {
+    fn inline_root_entries_track_style_owner_and_content_source() {
         let mut dom = UIState::new();
         let parent = dom.create_view(UzStyle::default_for_element("view"));
-        let text_element =
-            dom.create_text_element(String::new(), UzStyle::default_for_element("text"));
-        let raw_text = dom.create_text_node("styled".into(), UzStyle::default_for_element("#text"));
+        let bare = dom.create_text_node("hi ".into(), UzStyle::default_for_element("#text"));
+        let chip = dom.create_text_element("chip".into(), UzStyle::default_for_element("text"));
 
         dom.set_root(parent);
-        dom.append_child(parent, text_element);
-        dom.append_child(text_element, raw_text);
+        dom.append_child(parent, bare);
+        dom.append_child(parent, chip);
         dom.resolve_layout_children();
 
         let inline = dom.nodes[parent]
             .as_element()
-            .and_then(|element| element.inline_layout.as_ref())
+            .and_then(|el| el.inline_layout.as_ref())
             .expect("parent should own inline layout");
 
-        assert_eq!(inline.text, "styled");
-        assert_eq!(inline.entries.len(), 1);
-        assert_eq!(inline.entries[0].node_id, text_element);
+        assert_eq!(inline.entries().len(), 2);
+        let bare_entry = &inline.entries()[0];
+        assert_eq!(bare_entry.node_id, bare);
+        assert_eq!(bare_entry.content_source, bare);
+        let chip_entry = &inline.entries()[1];
+        assert_eq!(chip_entry.node_id, chip);
+        assert_eq!(chip_entry.content_source, chip);
     }
 
     #[test]

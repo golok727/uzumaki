@@ -15,7 +15,7 @@ use crate::paint::{
 };
 use crate::style::{Bounds, Overflow, ScrollbarStyle, UzStyle, Visibility};
 use crate::text::{
-    TextBrush, TextRenderer, apply_text_style_to_editor, secure_cursor_geometry,
+    LEAF_BRUSH_ID, TextBrush, TextRenderer, apply_text_style_to_editor, secure_cursor_geometry,
     secure_selection_geometry,
 };
 use crate::ui::UIState;
@@ -247,7 +247,7 @@ impl<'a> Painter<'a> {
             // or a chip rendering its own text. In both cases parley already
             // has the glyphs; the per-node bg/border is drawn by paint_view
             // through the normal render_node recursion using final_layout.
-            let is_inline_root = inline.entries.iter().any(|e| e.byte_len > 0);
+            let is_inline_root = inline.is_inline_root();
             let sel = if is_inline_root {
                 self.compute_inline_selection(node_id)
             } else {
@@ -259,7 +259,7 @@ impl<'a> Painter<'a> {
                 style,
                 layout.content_box_bounds(),
                 &inline.layout,
-                inline.text.len(),
+                inline.text_len,
                 transform,
                 sel,
                 is_inline_root,
@@ -365,6 +365,9 @@ impl<'a> Painter<'a> {
             let mut seg_start: f32 = 0.0;
             let mut seg_end: f32 = 0.0;
             let flush = |id: usize, start: f32, end: f32, scene: &mut Scene| {
+                if id == LEAF_BRUSH_ID {
+                    return;
+                }
                 let Some(node) = self.dom.nodes.get(id) else {
                     return;
                 };

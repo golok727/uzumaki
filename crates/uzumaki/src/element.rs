@@ -230,17 +230,53 @@ pub struct TextRunEntry {
 
 #[derive(Clone, Debug)]
 pub struct InlineTextEntry {
+    /// Style owner — drives glyph color/font, and per-line chip
+    /// bg/border/padding when this entry is a styled inline element.
     pub node_id: UzNodeId,
+    /// Source node whose `get_text_content()` provides this entry's text.
+    /// Usually equals `node_id`; differs only for nested cases like a bare
+    /// text child of a `<text>` element, where the outer element is the
+    /// style owner but the inner text node is the content source.
+    pub content_source: UzNodeId,
+    /// Cumulative byte offset within the parley layout's flat text.
     pub byte_start: usize,
+    /// Bytes contributed by this entry.
     pub byte_len: usize,
 }
 
 #[derive(Clone, Default)]
+pub enum InlineLayoutKind {
+    /// Standalone text leaf — single source, no per-span chip painting.
+    #[default]
+    Leaf,
+    /// Inline-formatting context — multiple inline children contribute
+    /// styled spans. Entries map flat byte ranges back to source nodes
+    /// for selection and per-span box painting.
+    InlineRoot { entries: Vec<InlineTextEntry> },
+}
+
+#[derive(Clone, Default)]
 pub struct TextLayout {
-    pub text: String,
-    pub entries: Vec<InlineTextEntry>,
-    pub content_widths: Option<ContentWidths>,
     pub layout: ParleyLayout<TextBrush>,
+    /// Total bytes in `layout`'s text (equals what would be `text.len()`
+    /// if we materialized the concatenation — we don't, since no consumer
+    /// reads the actual content past construct time).
+    pub text_len: usize,
+    pub content_widths: Option<ContentWidths>,
+    pub kind: InlineLayoutKind,
+}
+
+impl TextLayout {
+    pub fn entries(&self) -> &[InlineTextEntry] {
+        match &self.kind {
+            InlineLayoutKind::InlineRoot { entries } => entries,
+            InlineLayoutKind::Leaf => &[],
+        }
+    }
+
+    pub fn is_inline_root(&self) -> bool {
+        matches!(self.kind, InlineLayoutKind::InlineRoot { .. })
+    }
 }
 
 /// The complete text run for a textSelect subtree.

@@ -473,7 +473,7 @@ fn hit_text_in_run(
     let text_len = node
         .as_element()
         .and_then(|element| element.inline_layout.as_ref())
-        .map(|inline| inline.text.len())
+        .map(|inline| inline.text_len)
         .or_else(|| node.get_text_content().map(|text| text.content.len()))?;
 
     if text_len == 0 {
@@ -551,7 +551,7 @@ fn text_range_at_point(
     let text_len = layout_node
         .as_element()
         .and_then(|element| element.inline_layout.as_ref())
-        .map(|inline| inline.text.len())
+        .map(|inline| inline.text_len)
         .or_else(|| {
             layout_node
                 .get_text_content()

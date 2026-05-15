@@ -42,9 +42,9 @@ impl UIState {
             && let Some(inline) = self.nodes[node_id]
                 .as_element()
                 .and_then(|element| element.inline_layout.as_ref())
-            && !inline.entries.is_empty()
+            && inline.is_inline_root()
         {
-            let entries = inline.entries.clone();
+            let entries = inline.entries().to_vec();
             let run = &mut self.selectable_text_runs[idx];
             for inline_entry in entries {
                 // Atomic inline-box entries (chips) carry no text in the
@@ -584,13 +584,36 @@ fn locate_in_run(run: &TextSelectRun, flat_idx: usize) -> Option<(usize, usize)>
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::style::{TextSelectable, UzStyle};
+    use crate::style::{Display, TextSelectable, UzStyle};
 
     fn selectable_style() -> UzStyle {
+        // Block display so the construct phase folds the inline children
+        // into a single inline-formatting context with populated entries —
+        // selection-run building consumes those entries directly without
+        // needing a glyph layout pass to run first.
         UzStyle {
+            display: Display::Block,
             text_selectable: TextSelectable::True,
             ..Default::default()
         }
+    }
+
+    /// Drive enough of the frame pipeline that `build_text_select_runs`
+    /// has cascaded styles and resolved `layout_children` to walk. Skips
+    /// the parley layout pass — the selection-run builder doesn't need
+    /// glyph geometry.
+    fn prepare_for_select_runs(dom: &mut UIState) {
+        let Some(root) = dom.root else { return };
+        fn cascade(dom: &mut UIState, id: UzNodeId, parent: Option<UzStyle>) {
+            dom.nodes[id].compute_styles(false, false, false, parent.as_ref());
+            let style = dom.nodes[id].computed_style().clone();
+            let children = dom.nodes[id].children.clone();
+            for child in children {
+                cascade(dom, child, Some(style.clone()));
+            }
+        }
+        cascade(dom, root, None);
+        dom.resolve_layout_children();
     }
 
     #[test]
@@ -602,6 +625,7 @@ mod tests {
         dom.set_root(root);
         dom.append_child(root, first);
         dom.append_child(root, second);
+        prepare_for_select_runs(&mut dom);
         dom.build_text_select_runs();
 
         dom.set_selection(TextSelection::new(
@@ -621,6 +645,7 @@ mod tests {
         dom.set_root(root);
         dom.append_child(root, first);
         dom.append_child(root, second);
+        prepare_for_select_runs(&mut dom);
         dom.build_text_select_runs();
         dom.set_selection(TextSelection::new(
             SelectionEndpoint::new(first, 1, Affinity::Downstream),
