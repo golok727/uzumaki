@@ -15,8 +15,8 @@
 
 </div>
 
-> [!WARNING]
-> Uzumaki is in alpha. The API is unstable and will change.
+> [!NOTE]
+> Uzumaki is in early alpha. Expect breaking changes between releases.
 
 ## Quick Example
 
