@@ -11,6 +11,7 @@ const TMPL_CONFIG: &str = include_str!("../template/uzumaki.config.json");
 const TMPL_INDEX_TSX: &str = include_str!("../template/src/index.tsx");
 const TMPL_LOGO_SVG: &[u8] = include_bytes!("../template/assets/logo.svg");
 const TMPL_REACT_SVG: &[u8] = include_bytes!("../template/assets/react.svg");
+const TMPL_BUILD_TS: &str = include_str!("../template/build.ts");
 
 struct TemplateEntry {
     path: &'static str,
@@ -34,6 +35,10 @@ const TEMPLATE_ENTRIES: &[TemplateEntry] = &[
     TemplateEntry {
         path: "uzumaki.config.json",
         content: TemplateContent::Text(TMPL_CONFIG),
+    },
+    TemplateEntry {
+        path: "build.ts",
+        content: TemplateContent::Text(TMPL_BUILD_TS),
     },
     TemplateEntry {
         path: "src/index.tsx",
