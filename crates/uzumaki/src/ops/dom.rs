@@ -5,6 +5,7 @@ use std::rc::{Rc, Weak};
 
 use crate::app::{AppState, NODE_EXTERNAL_BYTES, SharedAppState, with_state};
 use crate::node::{Node, NodeData, UzNodeId};
+use crate::paint::scroll::{ScrollAlign, ScrollIntoViewOptions};
 use crate::style::UzStyle;
 
 fn window_not_found() -> deno_error::JsErrorBox {
@@ -387,6 +388,41 @@ impl CoreNode {
         #[string] text: String,
     ) -> Result<(), deno_error::JsErrorBox> {
         set_text(state, self.window_id, self.node_id as u32, text)
+    }
+
+    #[fast]
+    #[allow(non_snake_case)]
+    pub fn scrollIntoView(
+        &self,
+        state: &mut OpState,
+        #[smi] block: u32,
+        #[smi] inline: u32,
+    ) -> Result<(), deno_error::JsErrorBox> {
+        let opts = ScrollIntoViewOptions {
+            block: scroll_align_from_int(block),
+            inline: scroll_align_from_int(inline),
+            ..Default::default()
+        };
+        let app_state = state.borrow::<SharedAppState>().clone();
+        with_state(&app_state, |s| {
+            let Some(entry) = s.windows.get_mut(&self.window_id) else {
+                return Err(window_not_found());
+            };
+            entry.dom.request_scroll_node_into_view(self.node_id, opts);
+            if let Some(handle) = entry.handle.as_ref() {
+                handle.winit_window.request_redraw();
+            }
+            Ok(())
+        })
+    }
+}
+
+fn scroll_align_from_int(v: u32) -> ScrollAlign {
+    match v {
+        0 => ScrollAlign::Start,
+        1 => ScrollAlign::Center,
+        2 => ScrollAlign::End,
+        _ => ScrollAlign::Nearest,
     }
 }
 
