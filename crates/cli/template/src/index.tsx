@@ -10,7 +10,7 @@ const window = new Window('main', {
 
 const uzumakiLogo = Uz.path.resource('assets/logo.svg');
 const reactLogo = Uz.path.resource('assets/react.svg');
-const SPIN_DEGREES_PER_SECOND = 60;
+const SPIN_DEGREES_PER_SECOND = 90;
 
 function App() {
   const [count, setCount] = useState(0);
