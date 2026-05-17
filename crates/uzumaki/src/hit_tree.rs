@@ -65,8 +65,8 @@ fn walk(
     let local_translate = Affine::translate((layout.location.x as f64, layout.location.y as f64));
     let hit_transform = parent_hit_transform * local_translate * local_style_transform;
 
-    // Screen-space AABB of this node. Used to (a) cull this hitbox
-    // against the ancestor scroll/clip region and (b) extend the clip
+    // Screen-space AABB of this node. Used to cull this hitbox
+    // against the ancestor scroll/clip region and extend the clip
     // for descendants if this node itself clips.
     let screen_aabb = transformed_view_bounds(border_box, hit_transform);
     let visible_aabb = match clip {
@@ -74,15 +74,9 @@ fn walk(
         None => Some(screen_aabb),
     };
 
-    // If this node sits entirely outside the active clip, neither it nor
-    // any of its descendants can be reached by a click — skip the whole
-    // subtree. This is what was missing before: a row scrolled off the
-    // top of an `overflow: scroll` container would still register a
-    // hitbox at negative-y coordinates and capture clicks on whatever
-    // was painted there (e.g. a button above the scroll container).
-    let Some(_) = visible_aabb else {
+    if visible_aabb.is_none() {
         return;
-    };
+    }
 
     let hitbox_id = state
         .hitbox_store

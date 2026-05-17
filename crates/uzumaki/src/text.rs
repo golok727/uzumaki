@@ -98,9 +98,7 @@ impl TextRenderer {
 
     /// Build a multi-span inline parley layout. The caller drives the parley
     /// `TreeBuilder` via `build`, choosing which fragments to push (styled
-    /// spans, inline boxes, padding spacers, etc.). text.rs only owns the
-    /// parley setup — line breaking, alignment — so the inline-formatting
-    /// policy stays in the layout module.
+    /// spans, inline boxes, padding spacers, etc.).
     pub(crate) fn build_inline_layout<F>(
         &mut self,
         root_style: &TextStyle,

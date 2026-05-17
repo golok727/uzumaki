@@ -9,18 +9,15 @@ use crate::node::{Node, NodeData, NodeFlags, UzNodeId};
 use crate::style::{Display, UzStyle};
 use crate::ui::UIState;
 
-/// How a container's children should be folded into its layout tree.
-/// Computed up-front by `classify_children` so the dispatch in
-/// `build_layout_children` is a flat match instead of nested if-chains.
 enum ChildLayout {
-    /// No inline children — every child becomes a layout child of the
+    /// No inline children: every child becomes a layout child of the
     /// parent and is laid out as its own box.
     AllBlock,
-    /// A single `<text>` element child — recurse into it directly so it
+    /// A single `<text>` element child: recurse into it directly so it
     /// owns its own inline-formatting context (preserving its style).
     SingleTextElement,
     /// All children are inline-level and the parent isn't a flex
-    /// container — the parent itself becomes the inline-formatting root.
+    /// container the parent itself becomes the inline-formatting root.
     InlineRoot,
     /// Mixed inline/block children, or a flex container with bare text
     /// to wrap. `wrap_inline_elements = false` for flex parents (only

@@ -54,6 +54,10 @@ declare module 'uzumaki' {
   }
   //#endregion
   //#region js/core.d.ts
+  declare const CoreNode: CoreNodeConstructor;
+  interface CoreNodeConstructor {
+    new (windowId: number, nodeId: NodeId): CoreNode;
+  }
   interface CoreNode {
     readonly id: NodeId;
     readonly windowId: number;
@@ -94,7 +98,7 @@ declare module 'uzumaki' {
     insertBefore<T extends UzNode>(child: T, before: UzNode | null): T;
     removeChild<T extends UzNode>(child: T): T;
     /**
-     * Detach this node from its parent
+     * Detach this node from its parent.
      */
     remove(): void;
     removeChildren(): void;
@@ -317,7 +321,6 @@ declare module 'uzumaki' {
   }
   declare class UzImageElement extends UzElement<ImageEventMap> {
     private _generation;
-    private _disposed;
     private _src;
     constructor(window: Window);
     get src(): string | undefined;

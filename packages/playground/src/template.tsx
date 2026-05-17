@@ -1,4 +1,5 @@
 import { useEffect, useState } from 'react';
+import { C } from './theme';
 
 const uzumakiLogo = Uz.path.resource('assets/logo.svg');
 const reactLogo = Uz.path.resource('assets/react.svg');
@@ -22,14 +23,10 @@ export function TemplateApp() {
       h="full"
       items="center"
       justify="center"
-      bg="#0f0f0f"
       gap={22}
     >
-      <view display="flex" flexDir="row" items="center" gap={20}>
+      <view display="flex" flexDir="row" items="center" gap={'3rem'}>
         <image rotate={spin} src={uzumakiLogo} w={116} h={116} />
-        <text fontSize={42} fontWeight={700} color="#3f3f46">
-          X
-        </text>
         <image rotate={spin} src={reactLogo} w={128} h={116} />
       </view>
       <view display="flex" flexDir="row" items="center" gap={20}>
@@ -46,19 +43,24 @@ export function TemplateApp() {
       <text fontSize={18} color="#a1a1aa">
         Count: {count}
       </text>
-      <view
+      <button
         onClick={() => setCount((c) => c + 1)}
-        p={10}
-        px={24}
-        bg="#2d2d30"
-        rounded={8}
-        hover:bg="#3e3e42"
+        px={14}
+        py={8}
+        rounded={6}
+        bg={C.accentDark}
+        hover:bg={C.accentDim}
+        border={1}
+        borderColor={C.accent}
         cursor="pointer"
+        display="flex"
+        items="center"
+        justify="center"
       >
-        <text fontSize={16} color="#60a5fa">
+        <text fontSize={13} fontWeight={700} color={C.accentHi}>
           Increment
         </text>
-      </view>
+      </button>
     </view>
   );
 }
