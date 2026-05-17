@@ -40,6 +40,7 @@ declare module 'uzumaki' {
     minimizable?: boolean;
     maximizable?: boolean;
     rootStyles?: Record<string, string | number | boolean>;
+    vars?: Record<string, string>;
   }
   interface AppPath {
     readonly resourceDir: string;
@@ -407,6 +408,8 @@ declare module 'uzumaki' {
     set theme(theme: WindowTheme);
     focus(): void;
     requestRedraw(): void;
+    setVar(key: string, value: string | null): void;
+    setVars(patch: Record<string, string | null | undefined>): void;
     requestAnimationFrame(callback: AnimationFrameCallback): number;
     cancelAnimationFrame(handle: number): void;
     set contentProtected(contentProtected: boolean);
