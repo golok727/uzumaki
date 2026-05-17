@@ -146,6 +146,14 @@ impl Default for InputState {
 }
 
 impl InputState {
+    /// Rough heap footprint of the editor state. Tracks the textual content
+    /// plus a fixed overhead for parley's layout/buffer caches; precise
+    /// sizing would require reaching into `PlainEditor` internals.
+    pub fn heap_bytes(&self) -> usize {
+        const EDITOR_OVERHEAD: usize = 8 * 1024;
+        EDITOR_OVERHEAD + self.text().len() + self.placeholder.capacity()
+    }
+
     const BLINK_ON_MS: u128 = 530;
     const BLINK_CYCLE_MS: u128 = 1060;
 

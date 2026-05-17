@@ -24,6 +24,11 @@ import {
   // @ts-expect-error it is what it is
 } from 'ext:core/ops';
 
+// @ts-expect-error registered via the `objects = [...]` list on the extension;
+// exposed as a JS-constructible cppgc class.
+import { CoreNode as CoreNodeImpl } from 'ext:core/ops';
+export const CoreNode = CoreNodeImpl as CoreNodeConstructor;
+
 export interface CoreWindow {
   readonly id: number;
 
@@ -64,6 +69,10 @@ export interface CoreWindow {
   maximizable: boolean | null;
 
   remBase: number;
+}
+
+export interface CoreNodeConstructor {
+  new (windowId: number, nodeId: NodeId): CoreNode;
 }
 
 export interface CoreNode {

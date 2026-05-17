@@ -18,11 +18,6 @@ use crate::runtime::worker::{WorkerBuildOptions, create_worker};
 use crate::ui::UIState;
 use crate::window;
 
-/// Estimated bytes a single retained Rust DOM node holds. Reported to V8 via
-/// `adjust_amount_of_external_allocated_memory` so cppgc schedules collections
-/// based on the real memory footprint, not just the size of the JS wrapper.
-pub const NODE_EXTERNAL_BYTES: i64 = 1024;
-
 /// JS-thread-only state. Holds every per-window DOM, the image cache, and the
 /// cppgc-deferred destroy queue. Never accessed from the main winit thread.
 pub struct JsState {
@@ -47,19 +42,26 @@ impl JsState {
         }
     }
 
-    /// Drain a bounded batch of deferred node destroys. Adaptive: large
-    /// backlogs drain faster while small backlogs trickle through cheaply.
+    /// Process the deferred destroy queue. Each entry is a node whose JS
+    /// `CoreNode` wrapper has been finalized by cppgc. If the node is no
+    /// longer connected to its document root we free it; if it is still
+    /// connected, the tree still owns it, so we re-queue and re-check on the
+    /// next drain (which runs after every event tick).
     pub fn drain_pending_destroy(&mut self) {
-        let len = self.pending_destroy.len();
-        if len == 0 {
-            return;
-        }
-        let budget = (len / 8).clamp(64, 2048).min(len);
-        for _ in 0..budget {
+        let pass = self.pending_destroy.len();
+        for _ in 0..pass {
             let Some((window_id, node_id)) = self.pending_destroy.pop_front() else {
                 break;
             };
-            if let Some(entry) = self.windows.get_mut(&window_id) {
+            let Some(entry) = self.windows.get_mut(&window_id) else {
+                continue;
+            };
+            if !entry.dom.nodes.contains(node_id) {
+                continue;
+            }
+            if entry.dom.is_connected(node_id) {
+                self.pending_destroy.push_back((window_id, node_id));
+            } else {
                 entry.dom.destroy_node(node_id);
             }
         }

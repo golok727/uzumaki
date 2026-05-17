@@ -1,9 +1,9 @@
 use deno_core::*;
 use serde_json::Value;
-use std::cell::RefCell;
+use std::cell::{Cell, RefCell};
 use std::rc::{Rc, Weak};
 
-use crate::app::{JsState, NODE_EXTERNAL_BYTES, SharedJsState, with_state};
+use crate::app::{JsState, SharedJsState, with_state};
 use crate::node::{Node, NodeData, UzNodeId};
 use crate::style::UzStyle;
 
@@ -24,20 +24,34 @@ pub struct CoreNode {
     window_id: u32,
     node_id: UzNodeId,
     owned: bool,
+    /// Bytes this wrapper reported into `external_memory_delta` at creation
+    /// time, so the matching subtraction on drop stays balanced even when
+    /// the underlying node's heap footprint has changed since.
+    reported_bytes: Cell<usize>,
 }
 
 impl CoreNode {
     pub fn new(js_state: &SharedJsState, window_id: u32, node_id: UzNodeId, owned: bool) -> Self {
-        if owned {
+        let reported = if owned {
             with_state(js_state, |s| {
-                s.external_memory_delta += NODE_EXTERNAL_BYTES;
-            });
-        }
+                let bytes = s
+                    .windows
+                    .get(&window_id)
+                    .and_then(|e| e.dom.nodes.get(node_id))
+                    .map(Node::heap_bytes)
+                    .unwrap_or(0);
+                s.external_memory_delta += bytes as i64;
+                bytes
+            })
+        } else {
+            0
+        };
         Self {
             js_state: Rc::downgrade(js_state),
             window_id,
             node_id,
             owned,
+            reported_bytes: Cell::new(reported),
         }
     }
 
@@ -88,7 +102,7 @@ impl Drop for CoreNode {
         let Ok(mut state) = js_state.try_borrow_mut() else {
             return;
         };
-        state.external_memory_delta -= NODE_EXTERNAL_BYTES;
+        state.external_memory_delta -= self.reported_bytes.get() as i64;
         if state.windows.contains_key(&self.window_id) {
             state
                 .pending_destroy
@@ -157,6 +171,34 @@ pub fn op_create_text_node(
 
 #[op2]
 impl CoreNode {
+    /// Re-acquire a wrapper around an existing slab node by id. Used by the JS
+    /// registry to rebuild a wrapper after its previous one was collected but
+    /// the native node is still alive (because it's connected to the tree).
+    /// Throws if the slab entry is gone.
+    #[constructor]
+    #[cppgc]
+    fn new_from_id(
+        state: &mut OpState,
+        #[smi] window_id: u32,
+        #[smi] node_id: u32,
+    ) -> Result<CoreNode, deno_error::JsErrorBox> {
+        let js_state = state.borrow::<SharedJsState>().clone();
+        with_state(&js_state, |s| {
+            let Some(entry) = s.windows.get(&window_id) else {
+                return Err(window_not_found());
+            };
+            if !entry.dom.nodes.contains(node_id as UzNodeId) {
+                return Err(node_not_found());
+            }
+            Ok(CoreNode::new(
+                &js_state,
+                window_id,
+                node_id as UzNodeId,
+                true,
+            ))
+        })
+    }
+
     #[getter]
     #[smi]
     pub fn id(&self) -> u32 {

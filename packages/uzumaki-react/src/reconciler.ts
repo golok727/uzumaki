@@ -144,13 +144,11 @@ function createReconciler() {
 
     removeChild(parent, child) {
       if (parent.window.isDisposed) return;
-      child.destroy();
       parent.removeChild(child);
     },
 
     removeChildFromContainer(window, child) {
       if (window.isDisposed) return;
-      child.destroy();
       window.root.removeChild(child);
     },
 
@@ -170,9 +168,7 @@ function createReconciler() {
       commitText(instance, newText);
     },
 
-    detachDeletedInstance(instance) {
-      instance.destroy();
-    },
+    detachDeletedInstance() {},
 
     hideInstance(instance) {
       hide(instance);
