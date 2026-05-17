@@ -12,6 +12,8 @@ const TMPL_INDEX_TSX: &str = include_str!("../template/src/index.tsx");
 const TMPL_LOGO_SVG: &[u8] = include_bytes!("../template/assets/logo.svg");
 const TMPL_REACT_SVG: &[u8] = include_bytes!("../template/assets/react.svg");
 const TMPL_BUILD_TS: &str = include_str!("../template/build.ts");
+const TMPL_APP_TSX: &str = include_str!("../template/src/app.tsx");
+const TMPL_THEME_TSX: &str = include_str!("../template/src/theme.ts");
 
 struct TemplateEntry {
     path: &'static str,
@@ -43,6 +45,14 @@ const TEMPLATE_ENTRIES: &[TemplateEntry] = &[
     TemplateEntry {
         path: "src/index.tsx",
         content: TemplateContent::Text(TMPL_INDEX_TSX),
+    },
+    TemplateEntry {
+        path: "src/theme.ts",
+        content: TemplateContent::Text(TMPL_THEME_TSX),
+    },
+    TemplateEntry {
+        path: "src/app.tsx",
+        content: TemplateContent::Text(TMPL_APP_TSX),
     },
     TemplateEntry {
         path: "assets/logo.svg",

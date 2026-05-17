@@ -129,7 +129,6 @@ declare module 'uzumaki' {
       options?: ListenerOptions,
     ): void;
     emit<K extends keyof M>(name: K, event: M[K]): boolean;
-    _listenerCount<K extends keyof M>(name: K): number;
   }
   //#endregion
   //#region js/events.d.ts
@@ -325,10 +324,6 @@ declare module 'uzumaki' {
     constructor(window: Window);
     get src(): string | undefined;
     set src(value: string | undefined | null);
-    private _load;
-    private _loadAsync;
-    private _safeEmit;
-    private _isCurrent;
   }
   //#endregion
   //#region js/elements/input.d.ts
@@ -370,6 +365,7 @@ declare module 'uzumaki' {
   }
   //#endregion
   //#region js/window.d.ts
+  type AnimationFrameCallback = (timestamp: number) => void;
   declare const ELEMENT_CONSTRUCTORS: {
     view: typeof UzViewElement;
     text: typeof UzTextElement;
@@ -390,10 +386,12 @@ declare module 'uzumaki' {
     private _disposed;
     private _disposables;
     private _root;
+    private _nextAnimationFrameHandle;
+    private _animationFrameCallbacks;
+    private _animationFramePendingNotified;
     constructor(label: string, attributes?: WindowOptions);
     close(): void;
     addDisposable(cb: () => void): void;
-    static _getById(id: number): Window | undefined;
     set title(title: string);
     set decorations(decorations: boolean);
     set visible(visible: boolean);
@@ -409,6 +407,8 @@ declare module 'uzumaki' {
     set theme(theme: WindowTheme);
     focus(): void;
     requestRedraw(): void;
+    requestAnimationFrame(callback: AnimationFrameCallback): number;
+    cancelAnimationFrame(handle: number): void;
     set contentProtected(contentProtected: boolean);
     set closable(closable: boolean);
     set minimizable(minimizable: boolean);
@@ -455,9 +455,11 @@ declare module 'uzumaki' {
       handler: WindowEventHandler<K>,
       options?: ListenerOptions,
     ): void;
+    private _clearAnimationFrameCallbacks;
+    private _syncAnimationFramePending;
+    private _setAnimationFramePending;
   }
   declare function getWindow(label: string): Window | undefined;
-  declare function __internalDebugNodeCount(windowId: number): number;
   //#endregion
   //#region js/clipboard.d.ts
   declare const Clipboard: {
@@ -511,7 +513,6 @@ declare module 'uzumaki' {
     type WindowPosition,
     type WindowSize,
     type WindowTheme,
-    __internalDebugNodeCount,
     getWindow,
   };
 }

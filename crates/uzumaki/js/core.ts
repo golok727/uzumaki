@@ -62,6 +62,7 @@ export interface CoreWindow {
 
   readonly active: boolean | null;
   focus(): boolean;
+  setAnimationFramePending(pending: boolean): boolean;
 
   contentProtected: boolean | null;
   closable: boolean | null;

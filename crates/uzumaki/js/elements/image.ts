@@ -82,6 +82,7 @@ export class UzImageElement extends UzElement<ImageEventMap> {
     this._load(next);
   }
 
+  /** @internal */
   private _load(src: string | undefined): void {
     const generation = ++this._generation;
     core.clearImageData(this.windowId, this.nodeId);
@@ -101,6 +102,7 @@ export class UzImageElement extends UzElement<ImageEventMap> {
     void this._loadAsync(src, generation);
   }
 
+  /** @internal */
   private async _loadAsync(src: string, generation: number): Promise<void> {
     try {
       const data = await loadImageBytes(src);
@@ -122,6 +124,7 @@ export class UzImageElement extends UzElement<ImageEventMap> {
     }
   }
 
+  /** @internal */
   private _safeEmit<K extends 'load' | 'loadstart' | 'error'>(
     name: K,
     event: ImageEventMap[K],
@@ -129,6 +132,7 @@ export class UzImageElement extends UzElement<ImageEventMap> {
     this._emitter.emit(name, event);
   }
 
+  /** @internal */
   private _isCurrent(generation: number): boolean {
     return !this.window.isDisposed && generation === this._generation;
   }

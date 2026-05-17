@@ -5,7 +5,7 @@ use vello::peniko::Fill;
 use crate::node::{ScrollAxis, UzNodeId};
 use crate::style::{Bounds, ScrollbarStyle};
 
-pub const SCROLLBAR_END_MARGIN: f64 = 8.0; // gap at track start/end (along scroll axis)
+pub const SCROLLBAR_END_MARGIN: f64 = 0.0; // gap at track start/end (along scroll axis)
 pub const THUMB_MIN_LENGTH: f64 = 24.0;
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]

@@ -106,6 +106,10 @@ pub enum UserEvent {
     FrameReady {
         id: WindowEntryId,
     },
+    AnimationFramePending {
+        id: WindowEntryId,
+        pending: bool,
+    },
     SetCursor {
         id: WindowEntryId,
         icon: UzCursorIcon,

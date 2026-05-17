@@ -45,13 +45,11 @@ export function Sidebar({
     >
       <view mb={28} pt={4} display="flex" flexDir="col" gap={2}>
         <view display="flex" flexDir="row" items="center" gap={8}>
+          <image src={uzumakiLogo} w={18} h={18} />
           <text fontSize={17} fontWeight={800} color={C.accentHi}>
-            uzumaki
+            Uzumaki
           </text>
         </view>
-        <text fontSize={11} color={C.textMuted}>
-          playground
-        </text>
       </view>
 
       <view display="flex" flexDir="col" flex={1} gap={2}>
