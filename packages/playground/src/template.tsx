@@ -1,11 +1,12 @@
 import { useEffect, useState } from 'react';
-import type { Window } from 'uzumaki';
+import { useWindow } from 'uzumaki-react';
 
 const uzumakiLogo = Uz.path.resource('assets/logo.svg');
 const reactLogo = Uz.path.resource('assets/react.svg');
 const SPIN_DEGREES_PER_SECOND = 90;
 
-export function TemplateApp({ window }: { window: Window }) {
+export function TemplateApp() {
+  const window = useWindow();
   const [count, setCount] = useState(0);
   const [spin, setSpin] = useState(20);
 

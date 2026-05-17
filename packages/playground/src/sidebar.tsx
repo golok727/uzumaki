@@ -50,9 +50,6 @@ export function Sidebar({
             Uzumaki
           </text>
         </view>
-        <text fontSize={11} color={C.textMuted}>
-          playground
-        </text>
       </view>
 
       <view display="flex" flexDir="col" flex={1} gap={2}>

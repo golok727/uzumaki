@@ -209,6 +209,6 @@ export function openTemplateWindow() {
     theme: 'dark',
   });
   const root = createRoot(window);
-  root.render(<TemplateApp window={window} />);
+  root.render(<TemplateApp />);
   return window;
 }
