@@ -275,9 +275,9 @@ async fn run_main_loop(
                 if let Err(e) = res {
                     print_runtime_error(&anyhow::Error::new(e));
                 }
-                // JS event loop is fully drained , park until the next meesage
-                // We don't re-enter `run_event_loop` because it would
-                // return immediately and busy-loop.
+                // JS event loop is fully drained, park until the next
+                // message. We don't re-enter `run_event_loop` because it
+                // would return immediately and busy-loop.
                 let Ok(msg) = main_to_js.recv_async().await else { break };
                 if !handle_message(msg, worker, state, dispatch_fn) {
                     break;
@@ -324,6 +324,11 @@ fn handle_message(
         }
         MainToJs::CursorBlink { id, generation } => {
             handle_cursor_blink(state, id, generation);
+        }
+        MainToJs::DropJsWindow { id } => {
+            with_state(state, |s| {
+                s.windows.remove(&id);
+            });
         }
         MainToJs::Resumed => {}
         MainToJs::Shutdown => return false,
@@ -831,8 +836,16 @@ fn handle_window_event(
                 dispatch_fn,
                 &AppEvent::WindowClose(event_dispatch::WindowLoadEventData { window_id: wid }),
             );
+            // Drop the native window handle so the OS window goes away
+            // immediately, but keep the JsWindow (DOM, mirror, etc.) in state.
+            // The React reconciler's unmount commit is queued as a microtask;
+            // it needs the entry to still exist when ops fire from
+            // `detachDeletedInstance`. Main will bounce `DropJsWindow` back
+            // after GPU teardown, by which time the commit has drained.
             let proxy = with_state(state, |s| {
-                s.windows.remove(&wid);
+                if let Some(entry) = s.windows.get_mut(&wid) {
+                    entry.window = None;
+                }
                 s.proxy.clone()
             });
             let _ = proxy.send_event(UserEvent::CloseWindow { id: wid });
@@ -880,11 +893,10 @@ fn refresh_cursor_blink_timer(state: &SharedJsState, id: WindowEntryId) {
     }
 }
 
-/// Handle a CursorBlink user-event delivered back into the JS thread (forwarded
-/// by main via `MainToJs` is unnecessary — the timer fires here directly and
-/// re-enters this function via the same MainToJs path? No: we handle it via
-/// `UserEvent` on the main thread side, which then forwards a synthetic
-/// message. See `app::Application::user_event` for the round-trip.)
+/// Handle a CursorBlink tick forwarded from main. The blink timer task lives
+/// on tokio (JS thread) but can't capture non-Send JS state, so it sends a
+/// `UserEvent::CursorBlink` to main, which round-trips back here via
+/// `MainToJs::CursorBlink`.
 pub fn handle_cursor_blink(state: &SharedJsState, id: WindowEntryId, generation: u64) {
     let should_redraw = with_state_ref(state, |s| {
         s.windows

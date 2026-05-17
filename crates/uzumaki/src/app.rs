@@ -159,12 +159,15 @@ impl Application {
     }
 
     fn close_window(&mut self, event_loop: &ActiveEventLoop, id: WindowEntryId) {
-        // JS already dispatched the windowClose lifecycle event and removed its
-        // JsWindow before sending CloseWindow; here we just drop GPU resources.
+        // JS already dispatched the windowClose lifecycle event and dropped
+        // its native window handle. Here we drop GPU resources, then bounce a
+        // `DropJsWindow` back so JS releases the `JsWindow` entry only after
+        // any deferred React commit / microtask work has drained.
         if let Some(win) = self.windows.remove(&id) {
             self.winit_id_to_entry_id.remove(&win.gpu.id());
         }
         self.frame_build_outstanding.remove(&id);
+        let _ = self.main_to_js.send(MainToJs::DropJsWindow { id });
         if self.windows.is_empty() {
             event_loop.exit();
         }
@@ -206,7 +209,6 @@ impl ApplicationHandler<UserEvent> for Application {
                 if let Some(win) = self.windows.get(&id) {
                     win.gpu.winit_window.set_cursor(icon.to_winit());
                 }
-                let _ = icon; // (UzCursorIcon::to_winit is the conversion)
             }
             UserEvent::SetImeArea { id, position, size } => {
                 if let Some(win) = self.windows.get(&id) {

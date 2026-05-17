@@ -168,7 +168,5 @@ const core: Core = {
   writeClipboardText: op_write_clipboard_text,
   onAppEvent,
 };
-// const core: Core = (globalThis as unknown as any)
-//   .__uzumaki_ops_dont_touch_this__;
 
 export default core;

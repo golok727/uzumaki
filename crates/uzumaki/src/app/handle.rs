@@ -217,6 +217,13 @@ pub enum MainToJs {
         id: WindowEntryId,
         generation: u64,
     },
+    /// Sent by main after a window has finished closing (GPU resources
+    /// dropped). Triggers the JS thread to remove its `JsWindow` entry. The
+    /// round-trip lets any deferred React commit / microtask work run with
+    /// the entry still present before its DOM is dropped.
+    DropJsWindow {
+        id: WindowEntryId,
+    },
     Shutdown,
 }
 
