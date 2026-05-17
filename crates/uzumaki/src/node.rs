@@ -221,6 +221,26 @@ impl Node {
         self.computed_style().text_selectable.selectable()
     }
 
+    /// Estimated total heap footprint of this node. Used to keep V8's
+    /// external-memory accounting honest so the GC schedules collections
+    /// based on real cost (image pixels, editor buffers) instead of a flat
+    /// per-node constant.
+    pub fn heap_bytes(&self) -> usize {
+        let mut bytes = std::mem::size_of::<Self>();
+        bytes += self.children.capacity() * std::mem::size_of::<UzNodeId>();
+        bytes += self.layout_children.borrow().capacity() * std::mem::size_of::<UzNodeId>();
+        if let Some(img) = self.as_image() {
+            bytes += img.heap_bytes();
+        }
+        if let Some(input) = self.as_text_input() {
+            bytes += input.heap_bytes();
+        }
+        if let Some(text) = self.get_text_content() {
+            bytes += text.content.capacity();
+        }
+        bytes
+    }
+
     pub fn set_text_selectable(&mut self, text_selectable: TextSelectable) {
         self.style_slot(StyleSlot::Base).text_selectable = Some(text_selectable);
     }

@@ -102,11 +102,6 @@ export class Element<M extends UzEventMap = UzEventMap> extends UzNode {
   getAttribute(name: string): unknown {
     return this._native.getAttribute(name);
   }
-
-  override destroy(): void {
-    this._emitter._clear();
-    super.destroy();
-  }
 }
 
 export function createNativeElement(window: Window, type: string): CoreNode {

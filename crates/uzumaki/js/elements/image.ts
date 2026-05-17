@@ -64,7 +64,6 @@ export interface ImageEventMap extends UzEventMap {
 
 export class UzImageElement extends UzElement<ImageEventMap> {
   private _generation = 0;
-  private _disposed = false;
   private _src: string | undefined;
 
   constructor(window: Window) {
@@ -131,16 +130,6 @@ export class UzImageElement extends UzElement<ImageEventMap> {
   }
 
   private _isCurrent(generation: number): boolean {
-    return (
-      !this._disposed &&
-      !this.window.isDisposed &&
-      generation === this._generation
-    );
-  }
-
-  override destroy(): void {
-    this._disposed = true;
-    this._generation++;
-    super.destroy();
+    return !this.window.isDisposed && generation === this._generation;
   }
 }

@@ -12,9 +12,7 @@ pub mod handle;
 pub mod js;
 
 pub use handle::{MainToJs, UserEvent, WindowEntryId, WindowShared, WinitHandle};
-pub use js::{
-    JsState, JsWindow, NODE_EXTERNAL_BYTES, SharedJsState, WindowMirror, with_state, with_state_ref,
-};
+pub use js::{JsState, JsWindow, SharedJsState, WindowMirror, with_state, with_state_ref};
 
 use crate::clipboard::SystemClipboard;
 use crate::gpu::GpuContext;

@@ -294,6 +294,21 @@ impl UIState {
         self.nodes[parent_id].children.insert(index, child_id);
     }
 
+    /// Walks the parent chain from `node_id` and returns true if it reaches
+    /// the document root. Used by the pending-destroy drain to decide whether
+    /// a wrapper-less native node still belongs to the tree.
+    pub fn is_connected(&self, node_id: UzNodeId) -> bool {
+        let root = self.root;
+        let mut cur = Some(node_id);
+        while let Some(id) = cur {
+            if Some(id) == root {
+                return true;
+            }
+            cur = self.nodes.get(id).and_then(|n| n.parent);
+        }
+        false
+    }
+
     pub fn first_child(&self, node_id: UzNodeId) -> Option<UzNodeId> {
         self.nodes
             .get(node_id)

@@ -71,7 +71,6 @@ node.insertBefore(child, beforeNode);
 node.removeChild(child);
 node.remove();
 node.removeChildren();
-node.destroy();
 
 window.createElement('button');
 window.createTextNode('Hello');

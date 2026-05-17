@@ -80,7 +80,6 @@ declare module 'uzumaki' {
     protected readonly _native: CoreNode;
     readonly window: Window;
     constructor(window: Window, native: CoreNode);
-    static fromNodeId(window: Window, nodeId: NodeId | null): UzNode | null;
     get nodeId(): NodeId;
     get windowId(): number;
     get nodeType(): number;
@@ -99,7 +98,6 @@ declare module 'uzumaki' {
      */
     remove(): void;
     removeChildren(): void;
-    destroy(): void;
   }
   declare class UzTextNode extends UzNode {
     constructor(window: Window, text: string);
@@ -273,7 +271,6 @@ declare module 'uzumaki' {
     setAttributes(attributes: Record<string, number | string | boolean>): void;
     removeAttribute(name: string): void;
     getAttribute(name: string): unknown;
-    destroy(): void;
   }
   //#endregion
   //#region js/elements/root.d.ts
@@ -329,7 +326,6 @@ declare module 'uzumaki' {
     private _loadAsync;
     private _safeEmit;
     private _isCurrent;
-    destroy(): void;
   }
   //#endregion
   //#region js/elements/input.d.ts

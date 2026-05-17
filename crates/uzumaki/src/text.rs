@@ -8,18 +8,6 @@ use vello::peniko::{Brush, Color, Fill};
 
 use crate::style::TextStyle;
 
-#[allow(unused_imports)]
-pub(crate) use InlineBox as _;
-/// One contribution to an inline-root parent's parley layout.
-///
-/// Mirrors blitz's "atomic inline box per inline element" pattern: bare text
-/// nodes flow into parent's text run as styled spans; inline `<text>` elements
-/// (with bg/border/padding) become a single opaque `InlineBox` of pre-measured
-/// size, identified by their `node_id`. Their text content is rendered later
-/// via the chip's own parley layout, painted through the normal render_node
-/// recursion.
-/// Re-exported so callers driving `build_inline_layout` can push spans and
-/// inline boxes directly without depending on parley.
 pub(crate) use parley::{InlineBox, TreeBuilder};
 
 impl From<crate::selection::Affinity> for ParleyAffinity {

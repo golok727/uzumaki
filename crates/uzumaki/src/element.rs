@@ -179,6 +179,19 @@ impl ImageData {
         matches!(self, Self::None)
     }
 
+    /// Estimated bytes held on the heap by the decoded image. Reported to V8
+    /// via `adjust_amount_of_external_allocated_memory` so a 4K image
+    /// pressures GC accordingly instead of looking like a 1KB node.
+    pub fn heap_bytes(&self) -> usize {
+        match self {
+            Self::None => 0,
+            Self::Raster(r) => (r.width as usize) * (r.height as usize) * 4,
+            // Rough estimate for the parsed usvg tree; real cost depends on
+            // node count but a few KB is closer than zero.
+            Self::Svg { .. } => 4 * 1024,
+        }
+    }
+
     pub fn natural_size(&self) -> Option<(f32, f32)> {
         match self {
             Self::Raster(r) => Some((r.width as f32, r.height as f32)),
@@ -214,6 +227,10 @@ pub struct ImageNode {
 impl ImageNode {
     pub fn clear(&mut self) {
         self.data = ImageData::None;
+    }
+
+    pub fn heap_bytes(&self) -> usize {
+        self.data.heap_bytes()
     }
 }
 

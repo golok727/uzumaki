@@ -13,8 +13,6 @@ use crate::ui::{DragMode, ScrollDragState, ScrollWheelTarget, UIState};
 use crate::window::Window;
 
 bitflags! {
-    /// Modifier keys currently held. Serializes as the raw bits so the JS
-    /// wire format stays a plain integer (1 = ctrl, 2 = alt, 4 = shift, 8 = super).
     #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
     pub struct KeyModifiers: u32 {
         const CTRL  = 1 << 0;
@@ -23,8 +21,6 @@ bitflags! {
         const SUPER = 1 << 3;
     }
 
-    /// Mouse buttons currently held. Bit layout matches DOM `MouseEvent.buttons`
-    /// (1 = primary/left, 2 = secondary/right, 4 = auxiliary/middle).
     #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
     pub struct MouseButtons: u8 {
         const LEFT   = 1 << 0;
