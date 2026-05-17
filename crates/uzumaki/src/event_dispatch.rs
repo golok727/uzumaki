@@ -1,7 +1,8 @@
+use bitflags::bitflags;
 use serde::Serialize;
 use winit::keyboard::{Key, NamedKey};
 
-use crate::clipboard::SystemClipboard;
+use crate::clipboard::ClipboardBridge;
 use crate::input::{KeyResult, input_align_offset};
 use crate::layout::TaffyLayoutExt;
 use crate::node::{ScrollAxis, UzNodeId};
@@ -10,6 +11,39 @@ use crate::style::TextStyle;
 use crate::text::{apply_text_style_to_editor, secure_cursor_geometry};
 use crate::ui::{DragMode, ScrollDragState, ScrollWheelTarget, UIState};
 use crate::window::Window;
+
+bitflags! {
+    /// Modifier keys currently held. Serializes as the raw bits so the JS
+    /// wire format stays a plain integer (1 = ctrl, 2 = alt, 4 = shift, 8 = super).
+    #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+    pub struct KeyModifiers: u32 {
+        const CTRL  = 1 << 0;
+        const ALT   = 1 << 1;
+        const SHIFT = 1 << 2;
+        const SUPER = 1 << 3;
+    }
+
+    /// Mouse buttons currently held. Bit layout matches DOM `MouseEvent.buttons`
+    /// (1 = primary/left, 2 = secondary/right, 4 = auxiliary/middle).
+    #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+    pub struct MouseButtons: u8 {
+        const LEFT   = 1 << 0;
+        const RIGHT  = 1 << 1;
+        const MIDDLE = 1 << 2;
+    }
+}
+
+impl Serialize for KeyModifiers {
+    fn serialize<S: serde::Serializer>(&self, s: S) -> Result<S::Ok, S::Error> {
+        s.serialize_u32(self.bits())
+    }
+}
+
+impl Serialize for MouseButtons {
+    fn serialize<S: serde::Serializer>(&self, s: S) -> Result<S::Ok, S::Error> {
+        s.serialize_u8(self.bits())
+    }
+}
 
 #[derive(Serialize)]
 #[serde(rename_all = "camelCase")]
@@ -21,7 +55,7 @@ pub struct MouseEventData {
     pub screen_x: f32,
     pub screen_y: f32,
     pub button: u8,
-    pub buttons: u8,
+    pub buttons: MouseButtons,
 }
 
 #[derive(Serialize)]
@@ -32,7 +66,7 @@ pub struct KeyEventData {
     pub key: String,
     pub code: String,
     pub key_code: u32,
-    pub modifiers: u32,
+    pub modifiers: KeyModifiers,
     pub repeat: bool,
 }
 
@@ -96,10 +130,6 @@ pub enum AppEvent {
     #[serde(rename = "windowClose")]
     WindowClose(WindowLoadEventData),
     HotReload,
-}
-
-pub fn handle_redraw(dom: &mut UIState, handle: &mut Window) {
-    handle.paint_and_present(dom);
 }
 
 pub struct FocusedInputLayoutMeta {
@@ -184,7 +214,7 @@ fn set_ime_cursor_area(
         (ime_area.x1 - ime_area.x0).max(24.0) as f32,
         (ime_area.y1 - ime_area.y0).max(1.0) as f32,
     );
-    handle.winit_window.set_ime_cursor_area(position, size);
+    handle.set_ime_cursor_area(position, size);
 }
 
 pub fn update_ime_cursor_area(dom: &mut UIState, handle: &mut Window) {
@@ -311,10 +341,10 @@ pub fn handle_cursor_moved(
     dom: &mut UIState,
     handle: &mut Window,
     position: winit::dpi::PhysicalPosition<f64>,
-    mouse_buttons: u8,
+    mouse_buttons: MouseButtons,
 ) -> bool {
     let mut needs_redraw = false;
-    let scale = handle.winit_window.scale_factor();
+    let scale = handle.scale_factor();
     let logical_x = position.x / scale;
     let logical_y = position.y / scale;
     // Burst-scroll inputs may have left the hit tree stale before this
@@ -350,7 +380,7 @@ pub fn handle_cursor_moved(
     }
 
     // Input drag selection
-    if mouse_buttons & 1 != 0 {
+    if mouse_buttons.contains(MouseButtons::LEFT) {
         if let DragMode::InputSelection(drag_nid) = dom.drag_mode {
             let hit_info = dom.nodes.get(drag_nid).and_then(|node| {
                 let is = node.as_text_input()?;
@@ -648,14 +678,14 @@ pub fn handle_mouse_input(
     wid: u32,
     btn_state: winit::event::ElementState,
     button: winit::event::MouseButton,
-    mouse_buttons: u8,
+    mouse_buttons: MouseButtons,
 ) -> (bool, Vec<AppEvent>) {
     use winit::event::ElementState;
 
     // Defensive: a programmatic scroll or other mutation since the last
     // input event may have flagged the hit tree dirty. Refresh before
     // dispatching so clicks land where the user sees them.
-    let scale = handle.winit_window.scale_factor();
+    let scale = handle.scale_factor();
     dom.ensure_hit_tree_fresh(&mut handle.text_renderer, scale);
     if let Some((mx, my)) = dom.hit_state.mouse_position {
         dom.update_hit_test(mx, my);
@@ -1028,7 +1058,7 @@ pub fn build_key_event(
     dom: &UIState,
     wid: u32,
     key_event: &winit::event::KeyEvent,
-    modifiers: u32,
+    modifiers: KeyModifiers,
 ) -> Option<AppEvent> {
     use winit::event::ElementState;
     use winit::keyboard::PhysicalKey;
@@ -1074,7 +1104,7 @@ pub fn handle_key_for_input(
     handle: &mut Window,
     wid: u32,
     key_event: &winit::event::KeyEvent,
-    modifiers: u32,
+    modifiers: KeyModifiers,
 ) -> (bool, Vec<AppEvent>) {
     use winit::event::ElementState;
 
@@ -1241,7 +1271,7 @@ pub fn handle_key_for_button(
             screen_x: x,
             screen_y: y,
             button: 0,
-            buttons: 0,
+            buttons: MouseButtons::empty(),
         })],
     )
 }
@@ -1258,7 +1288,7 @@ pub fn handle_tab_focus(
     dom: &mut UIState,
     wid: u32,
     key_event: &winit::event::KeyEvent,
-    modifiers: u32,
+    modifiers: KeyModifiers,
 ) -> TabFocusOutcome {
     use winit::event::ElementState;
 
@@ -1276,7 +1306,7 @@ pub fn handle_tab_focus(
 
     outcome.consumed = true;
 
-    let shift = modifiers & 4 != 0;
+    let shift = modifiers.contains(KeyModifiers::SHIFT);
     let change = if shift {
         dom.focus_prev_node()
     } else {
@@ -1308,7 +1338,7 @@ pub fn handle_tab_focus(
 pub fn handle_key_for_view_selection(
     dom: &mut UIState,
     key_event: &winit::event::KeyEvent,
-    modifiers: u32,
+    modifiers: KeyModifiers,
 ) -> bool {
     use winit::event::ElementState;
 
@@ -1344,8 +1374,8 @@ pub fn handle_key_for_view_selection(
         return false;
     }
 
-    let shift = modifiers & 4 != 0;
-    let ctrl = modifiers & 1 != 0;
+    let shift = modifiers.contains(KeyModifiers::SHIFT);
+    let ctrl = modifiers.contains(KeyModifiers::CTRL);
 
     match &key_event.logical_key {
         Key::Named(NamedKey::ArrowLeft) if shift && ctrl => {
@@ -1458,8 +1488,8 @@ fn resolve_clipboard_target(dom: &UIState) -> Option<ClipboardTarget> {
 pub fn build_clipboard_command(
     dom: &UIState,
     key_event: &winit::event::KeyEvent,
-    modifiers: u32,
-    clipboard: &mut SystemClipboard,
+    modifiers: KeyModifiers,
+    clipboard: &ClipboardBridge<'_>,
 ) -> Option<ClipboardCommand> {
     use winit::event::ElementState;
 
@@ -1467,7 +1497,7 @@ pub fn build_clipboard_command(
         return None;
     }
 
-    let ctrl = modifiers & 1 != 0;
+    let ctrl = modifiers.contains(KeyModifiers::CTRL);
     if !ctrl {
         return None;
     }
@@ -1609,7 +1639,7 @@ pub fn apply_clipboard_command(
     cmd: ClipboardCommand,
     dom: &mut UIState,
     wid: u32,
-    clipboard: &mut SystemClipboard,
+    clipboard: &ClipboardBridge<'_>,
     text_renderer: &mut crate::text::TextRenderer,
 ) -> (bool, Vec<AppEvent>) {
     let mut events = Vec::new();
@@ -1694,7 +1724,7 @@ pub fn handle_mouse_wheel(
         // the next, before paint) see post-scroll geometry. The scroll
         // bug was: clicks during a fast wheel burst hit the previous
         // frame's hitboxes because paint hadn't refreshed them yet.
-        let scale = handle.winit_window.scale_factor();
+        let scale = handle.scale_factor();
         crate::hit_tree::rebuild(dom, &mut handle.text_renderer, scale);
         // And re-hit-test the cursor so hover/active state matches what
         // the user now sees under the pointer.

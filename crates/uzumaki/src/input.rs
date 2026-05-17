@@ -660,9 +660,10 @@ impl InputState {
     pub fn handle_key(
         &mut self,
         key: &Key,
-        modifiers: u32,
+        modifiers: crate::event_dispatch::KeyModifiers,
         renderer: &mut TextRenderer,
     ) -> KeyResult {
+        use crate::event_dispatch::KeyModifiers;
         if self.disabled {
             return KeyResult::Ignored;
         }
@@ -670,8 +671,8 @@ impl InputState {
             return KeyResult::Ignored;
         }
 
-        let shift = modifiers & 4 != 0;
-        let ctrl = modifiers & 1 != 0;
+        let shift = modifiers.contains(KeyModifiers::SHIFT);
+        let ctrl = modifiers.contains(KeyModifiers::CTRL);
 
         let edit_or_handled = |opt: Option<EditEvent>| -> KeyResult {
             opt.map_or(KeyResult::Handled, KeyResult::Edit)

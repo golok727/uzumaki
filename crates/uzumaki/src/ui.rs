@@ -105,8 +105,7 @@ pub struct UIState {
 
     /// Set when something invalidates the hit tree (scroll, layout,
     /// mutation) and a fresh hit-test is needed before input dispatch.
-    /// `hit_tree::rebuild` clears it. Input handlers — which know the
-    /// current scale — call `ensure_hit_tree_fresh` to act on it.
+    /// `hit_tree::rebuild` clears it.
     pub hit_tree_dirty: bool,
 }
 

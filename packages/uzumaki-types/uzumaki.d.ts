@@ -462,8 +462,8 @@ declare module 'uzumaki' {
   //#endregion
   //#region js/clipboard.d.ts
   declare const Clipboard: {
-    readText(): string | null;
-    writeText(text: string): boolean;
+    readText(): Promise<string | null>;
+    writeText(text: string): Promise<boolean>;
   };
   //#endregion
   //#region js/runtime.d.ts

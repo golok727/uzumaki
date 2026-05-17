@@ -1,6 +1,6 @@
 use serde_json::Value;
 
-use crate::app::WindowEntry;
+use crate::app::JsWindow;
 use crate::cursor::UzCursorIcon;
 use crate::interactivity::StyleSlot;
 use crate::node::{Node, UzNodeId};
@@ -8,7 +8,7 @@ use crate::prop_keys::{AttrValue, AttributeKind, StyleProp};
 use crate::style::*;
 use crate::ui::UIState;
 
-impl WindowEntry {
+impl JsWindow {
     pub(crate) fn set_attribute<'a>(
         &mut self,
         node_id: UzNodeId,

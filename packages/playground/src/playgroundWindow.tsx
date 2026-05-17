@@ -1,5 +1,6 @@
 import { getWindow, Window } from 'uzumaki';
 import { createRoot } from 'uzumaki-react';
+import { TemplateApp } from './template';
 
 function WindowPreview({
   title,
@@ -52,9 +53,8 @@ function getOrCreateWindow(
     ...attrs,
     title,
   });
-  createRoot(window).render(
-    <WindowPreview title={title} detail={detail} bg={bg} />,
-  );
+  const root = createRoot(window);
+  root.render(<WindowPreview title={title} detail={detail} bg={bg} />);
   return window;
 }
 
@@ -192,4 +192,23 @@ export function showHiddenPreview() {
     hiddenWindow.visible = true;
     hiddenWindow.focus();
   }
+}
+
+export function openTemplateWindow() {
+  const existing = getWindow('template');
+  if (existing) {
+    existing.visible = true;
+    existing.focus();
+    return existing;
+  }
+
+  const window = new Window('template', {
+    width: 800,
+    height: 600,
+    title: 'Template Preview',
+    theme: 'dark',
+  });
+  const root = createRoot(window);
+  root.render(<TemplateApp />);
+  return window;
 }
