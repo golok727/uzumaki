@@ -50,7 +50,7 @@ export function TemplateApp() {
           Uzumaki
         </view>
         <view fontSize={30} fontWeight={700} color="#71717a">
-          +
+          💖
         </view>
         <view fontSize={34} fontWeight={700} color="#61dafb">
           React
