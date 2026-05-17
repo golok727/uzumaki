@@ -3,6 +3,7 @@ use std::{
     ops::{Deref, DerefMut},
 };
 
+use bitflags::bitflags;
 use refineable::Refineable;
 
 use crate::cursor::UzCursorIcon;
@@ -13,30 +14,15 @@ use crate::style::{Outline, TextSelectable, UzStyle, UzStyleRefinement};
 
 pub type UzNodeId = usize;
 
-// todo replace with bitflags!
-#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
-pub struct NodeFlags(u8);
+bitflags! {
+    #[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+    pub struct NodeFlags: u8 {
+        const ANONYMOUS = 1 << 0;
+        const INLINE_ROOT = 1 << 1;
+    }
+}
 
 impl NodeFlags {
-    pub const ANONYMOUS: Self = Self(0b0000_0001);
-    pub const INLINE_ROOT: Self = Self(0b0000_0010);
-
-    pub fn empty() -> Self {
-        Self(0)
-    }
-
-    pub fn contains(self, other: Self) -> bool {
-        self.0 & other.0 == other.0
-    }
-
-    pub fn insert(&mut self, other: Self) {
-        self.0 |= other.0;
-    }
-
-    pub fn remove(&mut self, other: Self) {
-        self.0 &= !other.0;
-    }
-
     pub fn reset_construction_flags(&mut self) {
         self.remove(Self::INLINE_ROOT);
     }

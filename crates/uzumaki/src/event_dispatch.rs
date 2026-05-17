@@ -1,3 +1,4 @@
+use bitflags::bitflags;
 use serde::Serialize;
 use winit::keyboard::{Key, NamedKey};
 
@@ -11,6 +12,39 @@ use crate::text::{apply_text_style_to_editor, secure_cursor_geometry};
 use crate::ui::{DragMode, ScrollDragState, ScrollWheelTarget, UIState};
 use crate::window::Window;
 
+bitflags! {
+    /// Modifier keys currently held. Serializes as the raw bits so the JS
+    /// wire format stays a plain integer (1 = ctrl, 2 = alt, 4 = shift, 8 = super).
+    #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+    pub struct KeyModifiers: u32 {
+        const CTRL  = 1 << 0;
+        const ALT   = 1 << 1;
+        const SHIFT = 1 << 2;
+        const SUPER = 1 << 3;
+    }
+
+    /// Mouse buttons currently held. Bit layout matches DOM `MouseEvent.buttons`
+    /// (1 = primary/left, 2 = secondary/right, 4 = auxiliary/middle).
+    #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+    pub struct MouseButtons: u8 {
+        const LEFT   = 1 << 0;
+        const RIGHT  = 1 << 1;
+        const MIDDLE = 1 << 2;
+    }
+}
+
+impl Serialize for KeyModifiers {
+    fn serialize<S: serde::Serializer>(&self, s: S) -> Result<S::Ok, S::Error> {
+        s.serialize_u32(self.bits())
+    }
+}
+
+impl Serialize for MouseButtons {
+    fn serialize<S: serde::Serializer>(&self, s: S) -> Result<S::Ok, S::Error> {
+        s.serialize_u8(self.bits())
+    }
+}
+
 #[derive(Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct MouseEventData {
@@ -21,7 +55,7 @@ pub struct MouseEventData {
     pub screen_x: f32,
     pub screen_y: f32,
     pub button: u8,
-    pub buttons: u8,
+    pub buttons: MouseButtons,
 }
 
 #[derive(Serialize)]
@@ -32,7 +66,7 @@ pub struct KeyEventData {
     pub key: String,
     pub code: String,
     pub key_code: u32,
-    pub modifiers: u32,
+    pub modifiers: KeyModifiers,
     pub repeat: bool,
 }
 
@@ -307,7 +341,7 @@ pub fn handle_cursor_moved(
     dom: &mut UIState,
     handle: &mut Window,
     position: winit::dpi::PhysicalPosition<f64>,
-    mouse_buttons: u8,
+    mouse_buttons: MouseButtons,
 ) -> bool {
     let mut needs_redraw = false;
     let scale = handle.scale_factor();
@@ -346,7 +380,7 @@ pub fn handle_cursor_moved(
     }
 
     // Input drag selection
-    if mouse_buttons & 1 != 0 {
+    if mouse_buttons.contains(MouseButtons::LEFT) {
         if let DragMode::InputSelection(drag_nid) = dom.drag_mode {
             let hit_info = dom.nodes.get(drag_nid).and_then(|node| {
                 let is = node.as_text_input()?;
@@ -644,7 +678,7 @@ pub fn handle_mouse_input(
     wid: u32,
     btn_state: winit::event::ElementState,
     button: winit::event::MouseButton,
-    mouse_buttons: u8,
+    mouse_buttons: MouseButtons,
 ) -> (bool, Vec<AppEvent>) {
     use winit::event::ElementState;
 
@@ -1024,7 +1058,7 @@ pub fn build_key_event(
     dom: &UIState,
     wid: u32,
     key_event: &winit::event::KeyEvent,
-    modifiers: u32,
+    modifiers: KeyModifiers,
 ) -> Option<AppEvent> {
     use winit::event::ElementState;
     use winit::keyboard::PhysicalKey;
@@ -1070,7 +1104,7 @@ pub fn handle_key_for_input(
     handle: &mut Window,
     wid: u32,
     key_event: &winit::event::KeyEvent,
-    modifiers: u32,
+    modifiers: KeyModifiers,
 ) -> (bool, Vec<AppEvent>) {
     use winit::event::ElementState;
 
@@ -1237,7 +1271,7 @@ pub fn handle_key_for_button(
             screen_x: x,
             screen_y: y,
             button: 0,
-            buttons: 0,
+            buttons: MouseButtons::empty(),
         })],
     )
 }
@@ -1254,7 +1288,7 @@ pub fn handle_tab_focus(
     dom: &mut UIState,
     wid: u32,
     key_event: &winit::event::KeyEvent,
-    modifiers: u32,
+    modifiers: KeyModifiers,
 ) -> TabFocusOutcome {
     use winit::event::ElementState;
 
@@ -1272,7 +1306,7 @@ pub fn handle_tab_focus(
 
     outcome.consumed = true;
 
-    let shift = modifiers & 4 != 0;
+    let shift = modifiers.contains(KeyModifiers::SHIFT);
     let change = if shift {
         dom.focus_prev_node()
     } else {
@@ -1304,7 +1338,7 @@ pub fn handle_tab_focus(
 pub fn handle_key_for_view_selection(
     dom: &mut UIState,
     key_event: &winit::event::KeyEvent,
-    modifiers: u32,
+    modifiers: KeyModifiers,
 ) -> bool {
     use winit::event::ElementState;
 
@@ -1340,8 +1374,8 @@ pub fn handle_key_for_view_selection(
         return false;
     }
 
-    let shift = modifiers & 4 != 0;
-    let ctrl = modifiers & 1 != 0;
+    let shift = modifiers.contains(KeyModifiers::SHIFT);
+    let ctrl = modifiers.contains(KeyModifiers::CTRL);
 
     match &key_event.logical_key {
         Key::Named(NamedKey::ArrowLeft) if shift && ctrl => {
@@ -1454,7 +1488,7 @@ fn resolve_clipboard_target(dom: &UIState) -> Option<ClipboardTarget> {
 pub fn build_clipboard_command(
     dom: &UIState,
     key_event: &winit::event::KeyEvent,
-    modifiers: u32,
+    modifiers: KeyModifiers,
     clipboard: &ClipboardBridge<'_>,
 ) -> Option<ClipboardCommand> {
     use winit::event::ElementState;
@@ -1463,7 +1497,7 @@ pub fn build_clipboard_command(
         return None;
     }
 
-    let ctrl = modifiers & 1 != 0;
+    let ctrl = modifiers.contains(KeyModifiers::CTRL);
     if !ctrl {
         return None;
     }

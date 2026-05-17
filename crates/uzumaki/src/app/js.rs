@@ -28,8 +28,6 @@ pub const NODE_EXTERNAL_BYTES: i64 = 1024;
 pub struct JsState {
     pub proxy: EventLoopProxy<UserEvent>,
     pub windows: HashMap<WindowEntryId, JsWindow>,
-    pub mouse_buttons: u8,
-    pub modifiers: u32,
     pub image_cache: HashMap<String, ImageData>,
     pub pending_destroy: VecDeque<PendingDestroy>,
     /// Net change in external bytes attributable to retained DOM nodes since
@@ -43,8 +41,6 @@ impl JsState {
         Self {
             proxy,
             windows: HashMap::new(),
-            mouse_buttons: 0,
-            modifiers: 0,
             image_cache: HashMap::new(),
             pending_destroy: VecDeque::new(),
             external_memory_delta: 0,
@@ -95,6 +91,13 @@ pub struct JsWindow {
     /// (not awaited) when the timer is refreshed or the window closes so that
     /// rapid typing doesn't accumulate sleeping tasks.
     pub blink_timer: Option<tokio::task::JoinHandle<()>>,
+    /// Currently-pressed mouse buttons. Per-window so two windows don't share
+    /// a phantom "still held" state when focus moves between them.
+    pub mouse_buttons: event_dispatch::MouseButtons,
+    /// Currently-held modifier keys. Per-window for the same reason as
+    /// `mouse_buttons`: some platforms don't emit a release when focus leaves
+    /// the window.
+    pub modifiers: event_dispatch::KeyModifiers,
     pub state: WindowMirror,
 }
 
@@ -153,6 +156,8 @@ impl JsWindow {
             rem_base: 16.0,
             cursor_blink_generation: 0,
             blink_timer: None,
+            mouse_buttons: event_dispatch::MouseButtons::empty(),
+            modifiers: event_dispatch::KeyModifiers::empty(),
             state: WindowMirror::from_options(options),
         }
     }
@@ -457,8 +462,8 @@ fn handle_window_event(
         }
         WindowEvent::CursorMoved { position, .. } => {
             with_state(state, |s| {
-                let mouse_buttons = s.mouse_buttons;
                 if let Some(entry) = s.windows.get_mut(&wid) {
+                    let mouse_buttons = entry.mouse_buttons;
                     let JsWindow { window, dom, .. } = entry;
                     if let Some(window) = window
                         && event_dispatch::handle_cursor_moved(dom, window, position, mouse_buttons)
@@ -475,37 +480,37 @@ fn handle_window_event(
         } => {
             refresh_blink_timer = true;
             let events = with_state(state, |s| {
+                use event_dispatch::MouseButtons;
                 use winit::event::{ElementState, MouseButton};
 
-                let button_bit: u8 = match button {
-                    MouseButton::Left => 1,
-                    MouseButton::Right => 2,
-                    MouseButton::Middle => 4,
-                    _ => 0,
+                let button_bit = match button {
+                    MouseButton::Left => MouseButtons::LEFT,
+                    MouseButton::Right => MouseButtons::RIGHT,
+                    MouseButton::Middle => MouseButtons::MIDDLE,
+                    _ => MouseButtons::empty(),
                 };
 
+                let entry = s.windows.get_mut(&wid)?;
                 match btn_state {
-                    ElementState::Pressed => s.mouse_buttons |= button_bit,
-                    ElementState::Released => s.mouse_buttons &= !button_bit,
+                    ElementState::Pressed => entry.mouse_buttons.insert(button_bit),
+                    ElementState::Released => entry.mouse_buttons.remove(button_bit),
                 }
-                let mouse_buttons = s.mouse_buttons;
+                let mouse_buttons = entry.mouse_buttons;
 
-                s.windows.get_mut(&wid).and_then(|entry| {
-                    let JsWindow { window, dom, .. } = entry;
-                    let window = window.as_mut()?;
-                    let (redraw, mouse_events) = event_dispatch::handle_mouse_input(
-                        dom,
-                        window,
-                        wid,
-                        btn_state,
-                        button,
-                        mouse_buttons,
-                    );
-                    if redraw {
-                        needs_redraw = true;
-                    }
-                    Some(mouse_events)
-                })
+                let JsWindow { window, dom, .. } = entry;
+                let window = window.as_mut()?;
+                let (redraw, mouse_events) = event_dispatch::handle_mouse_input(
+                    dom,
+                    window,
+                    wid,
+                    btn_state,
+                    button,
+                    mouse_buttons,
+                );
+                if redraw {
+                    needs_redraw = true;
+                }
+                Some(mouse_events)
             });
 
             if let Some(events) = events {
@@ -517,7 +522,9 @@ fn handle_window_event(
         WindowEvent::KeyboardInput {
             event: key_event, ..
         } => {
-            let modifiers = with_state_ref(state, |s| s.modifiers);
+            let modifiers = with_state_ref(state, |s| {
+                s.windows.get(&wid).map(|e| e.modifiers).unwrap_or_default()
+            });
 
             let raw_event = with_state_ref(state, |s| {
                 s.windows.get(&wid).and_then(|entry| {
@@ -674,22 +681,17 @@ fn handle_window_event(
             refresh_blink_timer = true;
         }
         WindowEvent::ModifiersChanged(mods) => {
+            use event_dispatch::KeyModifiers;
+            let m = mods.state();
+            let mut flags = KeyModifiers::empty();
+            flags.set(KeyModifiers::CTRL, m.control_key());
+            flags.set(KeyModifiers::ALT, m.alt_key());
+            flags.set(KeyModifiers::SHIFT, m.shift_key());
+            flags.set(KeyModifiers::SUPER, m.super_key());
             with_state(state, |s| {
-                let m = mods.state();
-                let mut bits: u32 = 0;
-                if m.control_key() {
-                    bits |= 1;
+                if let Some(entry) = s.windows.get_mut(&wid) {
+                    entry.modifiers = flags;
                 }
-                if m.alt_key() {
-                    bits |= 2;
-                }
-                if m.shift_key() {
-                    bits |= 4;
-                }
-                if m.super_key() {
-                    bits |= 8;
-                }
-                s.modifiers = bits;
             });
         }
         WindowEvent::Focused(focused) => {
@@ -823,15 +825,20 @@ fn handle_window_event(
                     }
                     winit::event::MouseScrollDelta::PixelDelta(pos) => (pos.x, pos.y),
                 };
-                if s.modifiers & 4 != 0 && dx == 0.0 {
-                    dx = dy;
-                    dy = 0.0;
-                }
-                if let Some(entry) = s.windows.get_mut(&wid)
-                    && let Some(window) = entry.window.as_mut()
-                    && event_dispatch::handle_mouse_wheel(&mut entry.dom, window, dx, dy)
-                {
-                    needs_redraw = true;
+                if let Some(entry) = s.windows.get_mut(&wid) {
+                    if entry
+                        .modifiers
+                        .contains(event_dispatch::KeyModifiers::SHIFT)
+                        && dx == 0.0
+                    {
+                        dx = dy;
+                        dy = 0.0;
+                    }
+                    if let Some(window) = entry.window.as_mut()
+                        && event_dispatch::handle_mouse_wheel(&mut entry.dom, window, dx, dy)
+                    {
+                        needs_redraw = true;
+                    }
                 }
             });
         }
