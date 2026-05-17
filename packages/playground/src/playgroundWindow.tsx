@@ -1,5 +1,6 @@
 import { getWindow, Window } from 'uzumaki';
 import { createRoot } from 'uzumaki-react';
+import { TemplateApp } from './template';
 
 function WindowPreview({
   title,
@@ -192,4 +193,22 @@ export function showHiddenPreview() {
     hiddenWindow.visible = true;
     hiddenWindow.focus();
   }
+}
+
+export function openTemplateWindow() {
+  const existing = getWindow('template');
+  if (existing) {
+    existing.visible = true;
+    existing.focus();
+    return existing;
+  }
+
+  const window = new Window('template', {
+    width: 800,
+    height: 600,
+    title: 'Template Preview',
+    theme: 'dark',
+  });
+  createRoot(window).render(<TemplateApp />);
+  return window;
 }

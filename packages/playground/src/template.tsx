@@ -1,17 +1,9 @@
 import { useEffect, useState } from 'react';
-import { Window } from 'uzumaki';
-import { createRoot } from 'uzumaki-react';
-
-const window = new Window('main', {
-  width: 800,
-  height: 600,
-  title: '{{PROJECT_NAME}}',
-});
 
 const uzumakiLogo = Uz.path.resource('assets/logo.svg');
 const reactLogo = Uz.path.resource('assets/react.svg');
 
-function App() {
+export function TemplateApp() {
   const [count, setCount] = useState(0);
   const [spin, setSpin] = useState(20);
 
@@ -70,5 +62,3 @@ function App() {
     </view>
   );
 }
-
-createRoot(window).render(<App />);

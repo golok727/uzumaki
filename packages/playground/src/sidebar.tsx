@@ -1,6 +1,9 @@
 import { C } from './theme';
 import { Icon } from './icon';
 import type { Tab } from './types';
+import { openTemplateWindow } from './playgroundWindow';
+
+const uzumakiLogo = Uz.path.resource('assets/logo.svg');
 
 const TABS: { id: Tab; label: string; icon: string }[] = [
   { id: 'dashboard', label: 'Dashboard', icon: 'layout-dashboard' },
@@ -102,8 +105,29 @@ export function Sidebar({
           my={8}
         >
           <Icon name="square-stack" color={C.accentHi} size={16} />
+
           <text fontSize={13} fontWeight={700} color={C.accentHi}>
             Open Modal
+          </text>
+        </button>
+        <button
+          onClick={() => openTemplateWindow()}
+          display="flex"
+          flexDir="row"
+          items="center"
+          gap={10}
+          px={12}
+          py={10}
+          rounded={8}
+          bg="transparent"
+          hover:bg={C.surface3}
+          border={1}
+          borderColor={C.border}
+          cursor="pointer"
+        >
+          <image src={uzumakiLogo} w={16} h={16} />
+          <text fontSize={13} fontWeight={600} color={C.textSub}>
+            Open Template
           </text>
         </button>
       </view>
