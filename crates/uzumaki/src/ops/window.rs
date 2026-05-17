@@ -416,25 +416,34 @@ impl CoreWindow {
             .is_ok()
     }
 
+    /// Sync the local `WindowMirror` and forward the matching `UserEvent` to
+    /// the main thread in one step. The closure returns the event to send
+    /// after applying its mirror update; if the entry doesn't exist (window
+    /// already closed) the event is skipped.
+    fn sync_and_send(
+        &self,
+        state: &OpState,
+        apply: impl FnOnce(&mut JsWindow) -> UserEvent,
+    ) -> bool {
+        match self.with_entry_mut(state, apply) {
+            Some(event) => self.proxy_send(state, event),
+            None => false,
+        }
+    }
+
     fn toggle_button(&self, state: &OpState, button: WindowButtons, enabled: bool) -> bool {
-        let buttons = self.with_entry_mut(state, |entry| {
+        let id = self.id;
+        self.sync_and_send(state, |entry| {
             if enabled {
                 entry.state.enabled_buttons |= button;
             } else {
                 entry.state.enabled_buttons &= !button;
             }
-            entry.state.enabled_buttons
-        });
-        match buttons {
-            Some(buttons) => self.proxy_send(
-                state,
-                UserEvent::SetEnabledButtons {
-                    id: self.id,
-                    buttons,
-                },
-            ),
-            None => false,
-        }
+            UserEvent::SetEnabledButtons {
+                id,
+                buttons: entry.state.enabled_buttons,
+            }
+        })
     }
 }
 
@@ -483,10 +492,11 @@ impl CoreWindow {
     #[fast]
     #[setter]
     pub fn title(&self, state: &OpState, #[string] title: String) -> bool {
-        self.with_entry_mut(state, |entry| {
+        let id = self.id;
+        self.sync_and_send(state, move |entry| {
             entry.state.title = title.clone();
-        });
-        self.proxy_send(state, UserEvent::SetTitle { id: self.id, title })
+            UserEvent::SetTitle { id, title }
+        })
     }
 
     #[getter]
@@ -497,14 +507,11 @@ impl CoreWindow {
     #[fast]
     #[setter]
     pub fn visible(&self, state: &OpState, visible: bool) -> bool {
-        self.with_entry_mut(state, |entry| entry.state.visible = visible);
-        self.proxy_send(
-            state,
-            UserEvent::SetVisible {
-                id: self.id,
-                visible,
-            },
-        )
+        let id = self.id;
+        self.sync_and_send(state, move |entry| {
+            entry.state.visible = visible;
+            UserEvent::SetVisible { id, visible }
+        })
     }
 
     #[getter]
@@ -515,14 +522,11 @@ impl CoreWindow {
     #[fast]
     #[setter]
     pub fn transparent(&self, state: &OpState, transparent: bool) -> bool {
-        self.with_entry_mut(state, |entry| entry.state.transparent = transparent);
-        self.proxy_send(
-            state,
-            UserEvent::SetTransparent {
-                id: self.id,
-                transparent,
-            },
-        )
+        let id = self.id;
+        self.sync_and_send(state, move |entry| {
+            entry.state.transparent = transparent;
+            UserEvent::SetTransparent { id, transparent }
+        })
     }
 
     #[getter]
@@ -533,14 +537,11 @@ impl CoreWindow {
     #[fast]
     #[setter]
     pub fn resizable(&self, state: &OpState, resizable: bool) -> bool {
-        self.with_entry_mut(state, |entry| entry.state.resizable = resizable);
-        self.proxy_send(
-            state,
-            UserEvent::SetResizable {
-                id: self.id,
-                resizable,
-            },
-        )
+        let id = self.id;
+        self.sync_and_send(state, move |entry| {
+            entry.state.resizable = resizable;
+            UserEvent::SetResizable { id, resizable }
+        })
     }
 
     #[getter]
@@ -551,14 +552,11 @@ impl CoreWindow {
     #[fast]
     #[setter]
     pub fn decorations(&self, state: &OpState, decorations: bool) -> bool {
-        self.with_entry_mut(state, |entry| entry.state.decorations = decorations);
-        self.proxy_send(
-            state,
-            UserEvent::SetDecorations {
-                id: self.id,
-                decorations,
-            },
-        )
+        let id = self.id;
+        self.sync_and_send(state, move |entry| {
+            entry.state.decorations = decorations;
+            UserEvent::SetDecorations { id, decorations }
+        })
     }
 
     #[getter]
@@ -569,14 +567,11 @@ impl CoreWindow {
     #[fast]
     #[setter]
     pub fn maximized(&self, state: &OpState, maximized: bool) -> bool {
-        self.with_entry_mut(state, |entry| entry.state.maximized = maximized);
-        self.proxy_send(
-            state,
-            UserEvent::SetMaximized {
-                id: self.id,
-                maximized,
-            },
-        )
+        let id = self.id;
+        self.sync_and_send(state, move |entry| {
+            entry.state.maximized = maximized;
+            UserEvent::SetMaximized { id, maximized }
+        })
     }
 
     #[getter]
@@ -587,14 +582,11 @@ impl CoreWindow {
     #[fast]
     #[setter]
     pub fn minimized(&self, state: &OpState, minimized: bool) -> bool {
-        self.with_entry_mut(state, |entry| entry.state.minimized = minimized);
-        self.proxy_send(
-            state,
-            UserEvent::SetMinimized {
-                id: self.id,
-                minimized,
-            },
-        )
+        let id = self.id;
+        self.sync_and_send(state, move |entry| {
+            entry.state.minimized = minimized;
+            UserEvent::SetMinimized { id, minimized }
+        })
     }
 
     #[getter]
@@ -605,14 +597,11 @@ impl CoreWindow {
     #[fast]
     #[setter]
     pub fn fullscreen(&self, state: &OpState, fullscreen: bool) -> bool {
-        self.with_entry_mut(state, |entry| entry.state.fullscreen = fullscreen);
-        self.proxy_send(
-            state,
-            UserEvent::SetFullscreen {
-                id: self.id,
-                fullscreen,
-            },
-        )
+        let id = self.id;
+        self.sync_and_send(state, move |entry| {
+            entry.state.fullscreen = fullscreen;
+            UserEvent::SetFullscreen { id, fullscreen }
+        })
     }
 
     #[getter]
@@ -629,8 +618,11 @@ impl CoreWindow {
     #[setter]
     pub fn windowLevel(&self, state: &OpState, #[string] level: &str) -> bool {
         let level = UzWindowLevel::from(level).to_winit();
-        self.with_entry_mut(state, |entry| entry.state.window_level = level);
-        self.proxy_send(state, UserEvent::SetWindowLevel { id: self.id, level })
+        let id = self.id;
+        self.sync_and_send(state, move |entry| {
+            entry.state.window_level = level;
+            UserEvent::SetWindowLevel { id, level }
+        })
     }
 
     #[fast]
@@ -725,8 +717,11 @@ impl CoreWindow {
     #[setter]
     pub fn theme(&self, state: &OpState, #[string] theme: &str) -> bool {
         let theme = WindowTheme::from(theme).to_winit();
-        self.with_entry_mut(state, |entry| entry.state.theme = theme);
-        self.proxy_send(state, UserEvent::SetTheme { id: self.id, theme })
+        let id = self.id;
+        self.sync_and_send(state, move |entry| {
+            entry.state.theme = theme;
+            UserEvent::SetTheme { id, theme }
+        })
     }
 
     #[getter]
@@ -746,14 +741,11 @@ impl CoreWindow {
 
     #[fast]
     pub fn setContentProtected(&self, state: &OpState, protected: bool) -> bool {
-        self.with_entry_mut(state, |entry| entry.state.content_protected = protected);
-        self.proxy_send(
-            state,
-            UserEvent::SetContentProtected {
-                id: self.id,
-                protected,
-            },
-        )
+        let id = self.id;
+        self.sync_and_send(state, move |entry| {
+            entry.state.content_protected = protected;
+            UserEvent::SetContentProtected { id, protected }
+        })
     }
 
     #[getter]
