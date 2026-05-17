@@ -1731,7 +1731,7 @@ pub fn handle_mouse_wheel(
 }
 
 fn apply_wheel_axis(dom: &mut UIState, mx: f64, my: f64, axis: ScrollAxis, delta: f64) -> bool {
-    const SCROLL_LOCK_TIMEOUT: std::time::Duration = std::time::Duration::from_millis(150);
+    const SCROLL_LOCK_TIMEOUT: std::time::Duration = std::time::Duration::from_millis(200);
 
     // Honour the existing wheel capture for momentum/inertia continuity, but
     // only when the captured node is actually scrollable on this axis.
@@ -1745,14 +1745,17 @@ fn apply_wheel_axis(dom: &mut UIState, mx: f64, my: f64, axis: ScrollAxis, delta
         }
     });
 
-    let target = if let Some(t) = locked {
-        Some(t.node_id)
+    let (target, locked_to_target) = if let Some(t) = locked {
+        (Some(t.node_id), true)
     } else {
-        dom.scroll_thumbs
-            .iter()
-            .rev()
-            .find(|t| t.axis == axis && t.view_bounds.contains(mx, my))
-            .map(|t| t.node_id)
+        (
+            dom.scroll_thumbs
+                .iter()
+                .rev()
+                .find(|t| t.axis == axis && t.view_bounds.contains(mx, my))
+                .map(|t| t.node_id),
+            false,
+        )
     };
 
     let Some(mut nid) = target else {
@@ -1773,6 +1776,15 @@ fn apply_wheel_axis(dom: &mut UIState, mx: f64, my: f64, axis: ScrollAxis, delta
             if remaining == 0.0 {
                 break;
             }
+        }
+
+        // While the wheel is locked to a previously-captured node, refuse
+        // to chain into ancestors even if the captured node is saturated.
+        // The user must pause wheeling for SCROLL_LOCK_TIMEOUT before the
+        // parent can take over — matches browser overscroll behaviour.
+        if locked_to_target {
+            capture_node = Some(nid);
+            break;
         }
 
         // Wheel bubbles up the layout tree (matches CSS scroll
