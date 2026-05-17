@@ -1,7 +1,7 @@
 use serde::Serialize;
 use winit::keyboard::{Key, NamedKey};
 
-use crate::clipboard::SystemClipboard;
+use crate::clipboard::ClipboardBridge;
 use crate::input::{KeyResult, input_align_offset};
 use crate::layout::TaffyLayoutExt;
 use crate::node::{ScrollAxis, UzNodeId};
@@ -98,10 +98,6 @@ pub enum AppEvent {
     HotReload,
 }
 
-pub fn handle_redraw(dom: &mut UIState, handle: &mut Window) {
-    handle.paint_and_present(dom);
-}
-
 pub struct FocusedInputLayoutMeta {
     pub taffy_x: f64,
     pub taffy_y: f64,
@@ -184,7 +180,7 @@ fn set_ime_cursor_area(
         (ime_area.x1 - ime_area.x0).max(24.0) as f32,
         (ime_area.y1 - ime_area.y0).max(1.0) as f32,
     );
-    handle.winit_window.set_ime_cursor_area(position, size);
+    handle.set_ime_cursor_area(position, size);
 }
 
 pub fn update_ime_cursor_area(dom: &mut UIState, handle: &mut Window) {
@@ -314,7 +310,7 @@ pub fn handle_cursor_moved(
     mouse_buttons: u8,
 ) -> bool {
     let mut needs_redraw = false;
-    let scale = handle.winit_window.scale_factor();
+    let scale = handle.scale_factor();
     let logical_x = position.x / scale;
     let logical_y = position.y / scale;
     // Burst-scroll inputs may have left the hit tree stale before this
@@ -655,7 +651,7 @@ pub fn handle_mouse_input(
     // Defensive: a programmatic scroll or other mutation since the last
     // input event may have flagged the hit tree dirty. Refresh before
     // dispatching so clicks land where the user sees them.
-    let scale = handle.winit_window.scale_factor();
+    let scale = handle.scale_factor();
     dom.ensure_hit_tree_fresh(&mut handle.text_renderer, scale);
     if let Some((mx, my)) = dom.hit_state.mouse_position {
         dom.update_hit_test(mx, my);
@@ -1459,7 +1455,7 @@ pub fn build_clipboard_command(
     dom: &UIState,
     key_event: &winit::event::KeyEvent,
     modifiers: u32,
-    clipboard: &mut SystemClipboard,
+    clipboard: &ClipboardBridge<'_>,
 ) -> Option<ClipboardCommand> {
     use winit::event::ElementState;
 
@@ -1609,7 +1605,7 @@ pub fn apply_clipboard_command(
     cmd: ClipboardCommand,
     dom: &mut UIState,
     wid: u32,
-    clipboard: &mut SystemClipboard,
+    clipboard: &ClipboardBridge<'_>,
     text_renderer: &mut crate::text::TextRenderer,
 ) -> (bool, Vec<AppEvent>) {
     let mut events = Vec::new();
@@ -1694,7 +1690,7 @@ pub fn handle_mouse_wheel(
         // the next, before paint) see post-scroll geometry. The scroll
         // bug was: clicks during a fast wheel burst hit the previous
         // frame's hitboxes because paint hadn't refreshed them yet.
-        let scale = handle.winit_window.scale_factor();
+        let scale = handle.scale_factor();
         crate::hit_tree::rebuild(dom, &mut handle.text_renderer, scale);
         // And re-hit-test the cursor so hover/active state matches what
         // the user now sees under the pointer.

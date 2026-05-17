@@ -5,7 +5,7 @@ use deno_error::JsErrorBox;
 use image::GenericImageView;
 
 use crate::{
-    app::{SharedAppState, with_state},
+    app::{SharedJsState, with_state},
     element::{ImageData, RasterImageData},
     node::UzNodeId,
 };
@@ -57,21 +57,21 @@ pub fn op_set_encoded_image_data(
     #[buffer] data: JsBuffer,
 ) -> Result<(), JsErrorBox> {
     let nid = node_id as UzNodeId;
-    let app_state = state.borrow::<SharedAppState>().clone();
+    let js_state = state.borrow::<SharedJsState>().clone();
 
-    let cached = with_state(&app_state, |s| s.image_cache.get(&cache_key).cloned());
+    let cached = with_state(&js_state, |s| s.image_cache.get(&cache_key).cloned());
     let image = match cached {
         Some(img) => img,
         None => {
             let decoded = decode(&data)?;
-            with_state(&app_state, |s| {
+            with_state(&js_state, |s| {
                 s.image_cache.insert(cache_key.clone(), decoded.clone());
             });
             decoded
         }
     };
 
-    with_state(&app_state, |s| {
+    with_state(&js_state, |s| {
         let Some(entry) = s.windows.get_mut(&window_id) else {
             return Err(window_not_found());
         };
@@ -88,14 +88,14 @@ pub fn op_apply_cached_image(
     #[string] cache_key: String,
 ) -> bool {
     let nid = node_id as UzNodeId;
-    let app_state = state.borrow::<SharedAppState>().clone();
+    let js_state = state.borrow::<SharedJsState>().clone();
 
-    let cached = with_state(&app_state, |s| s.image_cache.get(&cache_key).cloned());
+    let cached = with_state(&js_state, |s| s.image_cache.get(&cache_key).cloned());
     let Some(image) = cached else {
         return false;
     };
 
-    with_state(&app_state, |s| {
+    with_state(&js_state, |s| {
         if let Some(entry) = s.windows.get_mut(&window_id) {
             entry.dom.set_image_data(nid, image);
         }
@@ -110,8 +110,8 @@ pub fn op_clear_image_data(
     #[smi] node_id: u32,
 ) -> Result<(), JsErrorBox> {
     let nid = node_id as UzNodeId;
-    let app_state = state.borrow::<SharedAppState>().clone();
-    with_state(&app_state, |s| {
+    let js_state = state.borrow::<SharedJsState>().clone();
+    with_state(&js_state, |s| {
         let Some(entry) = s.windows.get_mut(&window_id) else {
             return Err(window_not_found());
         };
