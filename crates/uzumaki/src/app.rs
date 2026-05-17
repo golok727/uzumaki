@@ -190,15 +190,7 @@ impl ApplicationHandler<UserEvent> for Application {
         let _ = self.main_to_js.send(MainToJs::Resumed);
     }
 
-    fn about_to_wait(&mut self, _event_loop: &ActiveEventLoop) {
-        for win in self
-            .windows
-            .values()
-            .filter(|win| win.animation_frame_pending)
-        {
-            win.gpu.winit_window.request_redraw();
-        }
-    }
+    fn about_to_wait(&mut self, _event_loop: &ActiveEventLoop) {}
 
     fn user_event(&mut self, event_loop: &ActiveEventLoop, event: UserEvent) {
         match event {
@@ -212,11 +204,18 @@ impl ApplicationHandler<UserEvent> for Application {
                 self.frame_build_outstanding.remove(&id);
                 if let Some(win) = self.windows.get_mut(&id) {
                     win.gpu.present_pending_frame();
+                    if win.animation_frame_pending {
+                        win.gpu.winit_window.request_redraw();
+                    }
                 }
             }
             UserEvent::AnimationFramePending { id, pending } => {
                 if let Some(win) = self.windows.get_mut(&id) {
+                    let was_pending = win.animation_frame_pending;
                     win.animation_frame_pending = pending;
+                    if pending && !was_pending {
+                        win.gpu.winit_window.request_redraw();
+                    }
                 }
             }
             UserEvent::SetCursor { id, icon } => {

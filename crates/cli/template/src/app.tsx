@@ -6,7 +6,7 @@ const uzumakiLogo = Uz.path.resource('assets/logo.svg');
 const reactLogo = Uz.path.resource('assets/react.svg');
 const SPIN_DEGREES_PER_SECOND = 90;
 
-export function TemplateApp() {
+export function App() {
   const window = useWindow();
   const [count, setCount] = useState(0);
   const [spin, setSpin] = useState(0);
@@ -19,7 +19,7 @@ export function TemplateApp() {
     };
     frame = window.requestAnimationFrame(tick);
     return () => window.cancelAnimationFrame(frame);
-  }, [window]);
+  }, []);
 
   return (
     <view
@@ -40,7 +40,7 @@ export function TemplateApp() {
           Uzumaki
         </view>
         <view fontSize={30} fontWeight={700} color="#71717a">
-          💖
+          +
         </view>
         <view fontSize={34} fontWeight={700} color="#61dafb">
           React
