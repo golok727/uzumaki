@@ -734,6 +734,17 @@ impl CoreWindow {
         self.proxy_send(state, UserEvent::Focus { id: self.id })
     }
 
+    #[fast]
+    pub fn setAnimationFramePending(&self, state: &OpState, pending: bool) -> bool {
+        self.proxy_send(
+            state,
+            UserEvent::AnimationFramePending {
+                id: self.id,
+                pending,
+            },
+        )
+    }
+
     #[getter]
     pub fn contentProtected(&self, state: &OpState) -> Option<bool> {
         self.with_entry(state, |entry| entry.state.content_protected)

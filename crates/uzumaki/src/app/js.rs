@@ -227,7 +227,7 @@ fn run_js_thread(
         })?
     };
 
-    let global_dispatch_fn = {
+    let (global_dispatch_fn, animation_frame_fn) = {
         let context = worker.js_runtime.main_context();
         deno_core::scope!(scope, &mut worker.js_runtime);
         let context_local = v8::Local::new(scope, context);
@@ -240,7 +240,19 @@ fn run_js_thread(
             .ok_or_else(|| anyhow::anyhow!("__uzumaki_on_app_event__ not found on globalThis"))?;
         let func = v8::Local::<v8::Function>::try_from(val)
             .map_err(|_| anyhow::anyhow!("__uzumaki_on_app_event__ is not a function"))?;
-        v8::Global::new(scope, func)
+        let dispatch = v8::Global::new(scope, func);
+
+        let key =
+            v8::String::new_external_onebyte_static(scope, b"__uzumaki_flush_animation_frame__")
+                .ok_or_else(|| anyhow::anyhow!("failed to create v8 string"))?;
+        let val = global_obj.get(scope, key.into()).ok_or_else(|| {
+            anyhow::anyhow!("__uzumaki_flush_animation_frame__ not found on globalThis")
+        })?;
+        let func = v8::Local::<v8::Function>::try_from(val)
+            .map_err(|_| anyhow::anyhow!("__uzumaki_flush_animation_frame__ is not a function"))?;
+        let animation_frame = v8::Global::new(scope, func);
+
+        (dispatch, animation_frame)
     };
 
     let state: SharedJsState = Rc::new(RefCell::new(JsState::new(proxy.clone())));
@@ -264,7 +276,14 @@ fn run_js_thread(
         )?;
         worker.execute_main_module(&specifier).await?;
 
-        run_main_loop(&mut worker, &state, &global_dispatch_fn, &main_to_js).await
+        run_main_loop(
+            &mut worker,
+            &state,
+            &global_dispatch_fn,
+            &animation_frame_fn,
+            &main_to_js,
+        )
+        .await
     })
 }
 
@@ -272,6 +291,7 @@ async fn run_main_loop(
     worker: &mut MainWorker,
     state: &SharedJsState,
     dispatch_fn: &v8::Global<v8::Function>,
+    animation_frame_fn: &v8::Global<v8::Function>,
     main_to_js: &flume::Receiver<MainToJs>,
 ) -> Result<()> {
     loop {
@@ -279,7 +299,7 @@ async fn run_main_loop(
             biased;
             msg = main_to_js.recv_async() => {
                 let Ok(msg) = msg else { break };
-                if !handle_message(msg, worker, state, dispatch_fn) {
+                if !handle_message(msg, worker, state, dispatch_fn, animation_frame_fn) {
                     break;
                 }
             }
@@ -291,7 +311,7 @@ async fn run_main_loop(
                 // message. We don't re-enter `run_event_loop` because it
                 // would return immediately and busy-loop.
                 let Ok(msg) = main_to_js.recv_async().await else { break };
-                if !handle_message(msg, worker, state, dispatch_fn) {
+                if !handle_message(msg, worker, state, dispatch_fn, animation_frame_fn) {
                     break;
                 }
             }
@@ -309,6 +329,7 @@ fn handle_message(
     worker: &mut MainWorker,
     state: &SharedJsState,
     dispatch_fn: &v8::Global<v8::Function>,
+    animation_frame_fn: &v8::Global<v8::Function>,
 ) -> bool {
     match msg {
         MainToJs::WindowCreated { id, shared } => {
@@ -327,6 +348,7 @@ fn handle_message(
             );
         }
         MainToJs::BuildFrame { id } => {
+            flush_animation_frame_callbacks(worker, animation_frame_fn, id);
             build_frame(state, id);
             let proxy = with_state_ref(state, |s| s.proxy.clone());
             let _ = proxy.send_event(UserEvent::FrameReady { id });
@@ -346,6 +368,26 @@ fn handle_message(
         MainToJs::Shutdown => return false,
     }
     true
+}
+
+fn flush_animation_frame_callbacks(
+    worker: &mut MainWorker,
+    animation_frame_fn: &v8::Global<v8::Function>,
+    id: WindowEntryId,
+) {
+    deno_core::scope!(scope, &mut worker.js_runtime);
+    v8::tc_scope!(scope, scope);
+
+    let func = v8::Local::new(scope, animation_frame_fn);
+    let undefined = v8::undefined(scope);
+    let window_id = v8::Number::new(scope, id as f64);
+
+    let _ = func.call(scope, undefined.into(), &[window_id.into()]);
+
+    if let Some(exception) = scope.exception() {
+        let error = deno_core::error::JsError::from_v8_exception(scope, exception);
+        eprintln!("{} {error}", crate::terminal_colors::red_bold("Error"));
+    }
 }
 
 /// Run layout + paint on the JS thread and park the resulting `Scene` in

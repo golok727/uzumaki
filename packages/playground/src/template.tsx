@@ -1,18 +1,33 @@
 import { useEffect, useState } from 'react';
+import type { Window } from 'uzumaki';
 
 const uzumakiLogo = Uz.path.resource('assets/logo.svg');
 const reactLogo = Uz.path.resource('assets/react.svg');
+const SPIN_DEGREES_PER_SECOND = 90;
 
-export function TemplateApp() {
+export function TemplateApp({ window }: { window: Window }) {
   const [count, setCount] = useState(0);
   const [spin, setSpin] = useState(20);
 
   useEffect(() => {
-    const id = setInterval(() => {
-      setSpin((deg) => (deg + 6) % 360);
-    }, 40);
-    return () => clearInterval(id);
-  }, []);
+    let frame = 0;
+    let previousTimestamp: number | null = null;
+
+    const tick = (timestamp: number) => {
+      if (previousTimestamp !== null) {
+        const elapsed = Math.min(timestamp - previousTimestamp, 100);
+        setSpin(
+          (deg) => (deg + (elapsed * SPIN_DEGREES_PER_SECOND) / 1000) % 360,
+        );
+      }
+      previousTimestamp = timestamp;
+      frame = window.requestAnimationFrame(tick);
+    };
+
+    frame = window.requestAnimationFrame(tick);
+
+    return () => window.cancelAnimationFrame(frame);
+  }, [window]);
 
   return (
     <view
@@ -37,7 +52,7 @@ export function TemplateApp() {
           Uzumaki
         </view>
         <view fontSize={30} fontWeight={700} color="#71717a">
-          💖
+          +
         </view>
         <view fontSize={34} fontWeight={700} color="#61dafb">
           React

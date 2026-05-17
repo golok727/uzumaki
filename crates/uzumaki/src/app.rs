@@ -45,6 +45,7 @@ pub struct AppConfig {
 /// `Window` so size/scale/frame coordination is lock-free.
 struct MainWindow {
     gpu: GpuWindow,
+    animation_frame_pending: bool,
 }
 
 pub struct Application {
@@ -150,7 +151,13 @@ impl Application {
         options.apply_post_create_state(&winit_window);
         winit_window.set_visible(target_visible);
 
-        self.windows.insert(id, MainWindow { gpu: gpu_window });
+        self.windows.insert(
+            id,
+            MainWindow {
+                gpu: gpu_window,
+                animation_frame_pending: false,
+            },
+        );
         self.winit_id_to_entry_id.insert(winit_id, id);
 
         let _ = self.main_to_js.send(MainToJs::WindowCreated { id, shared });
@@ -187,7 +194,15 @@ impl ApplicationHandler<UserEvent> for Application {
         let _ = self.main_to_js.send(MainToJs::Resumed);
     }
 
-    fn about_to_wait(&mut self, _event_loop: &ActiveEventLoop) {}
+    fn about_to_wait(&mut self, _event_loop: &ActiveEventLoop) {
+        for win in self
+            .windows
+            .values()
+            .filter(|win| win.animation_frame_pending)
+        {
+            win.gpu.winit_window.request_redraw();
+        }
+    }
 
     fn user_event(&mut self, event_loop: &ActiveEventLoop, event: UserEvent) {
         match event {
@@ -201,6 +216,11 @@ impl ApplicationHandler<UserEvent> for Application {
                 self.frame_build_outstanding.remove(&id);
                 if let Some(win) = self.windows.get_mut(&id) {
                     win.gpu.present_pending_frame();
+                }
+            }
+            UserEvent::AnimationFramePending { id, pending } => {
+                if let Some(win) = self.windows.get_mut(&id) {
+                    win.animation_frame_pending = pending;
                 }
             }
             UserEvent::SetCursor { id, icon } => {

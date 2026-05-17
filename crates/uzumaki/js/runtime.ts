@@ -13,7 +13,11 @@ import 'ext:uzumaki/window.ts';
 import 'ext:uzumaki/events.ts';
 import 'ext:uzumaki/dispatcher.ts';
 
-import { Window, disposeWindow } from 'ext:uzumaki/window.ts';
+import {
+  Window,
+  disposeWindow,
+  flushAnimationFrameCallbacks,
+} from 'ext:uzumaki/window.ts';
 import { EventType as UzEventType } from 'ext:uzumaki/events.ts';
 import { dispatchDomEvent } from 'ext:uzumaki/dispatcher.ts';
 import { AppPath } from 'ext:uzumaki/types.ts';
@@ -41,11 +45,7 @@ declare global {
   };
 }
 
-export {
-  __internalDebugNodeCount,
-  getWindow,
-  Window,
-} from 'ext:uzumaki/window.ts';
+export { getWindow, Window } from 'ext:uzumaki/window.ts';
 export type {
   WindowOptions,
   WindowLevel,
@@ -101,6 +101,12 @@ ObjectDefineProperty(globalThis, '__uzumaki_on_app_event__', {
   value: function (event: any /** Todo type */) {
     return dispatchAppEvent(event);
   },
+  writable: false,
+  configurable: false,
+});
+
+ObjectDefineProperty(globalThis, '__uzumaki_flush_animation_frame__', {
+  value: flushAnimationFrameCallbacks,
   writable: false,
   configurable: false,
 });

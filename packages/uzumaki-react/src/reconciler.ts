@@ -1,4 +1,4 @@
-import { isValidElement as isReactElement } from 'react';
+import { createElement, isValidElement as isReactElement } from 'react';
 import ReactReconciler, { type EventPriority } from 'react-reconciler';
 import { DefaultEventPriority } from 'react-reconciler/constants.js';
 
@@ -18,6 +18,7 @@ import {
   resetText,
   unhide,
 } from './host';
+import { WindowProvider } from './window-context';
 
 /**
  * Get text content of a <text> node. will throw an error if you nest a react element inside this
@@ -274,7 +275,12 @@ export function createRoot(window: Window): Root {
       if (unmounted) {
         throw new Error('[uzumaki] cannot render into an unmounted root');
       }
-      reconciler.updateContainer(element, container, null, null);
+      reconciler.updateContainer(
+        createElement(WindowProvider, { window } as never, element),
+        container,
+        null,
+        null,
+      );
     },
     unmount,
   };
