@@ -91,6 +91,10 @@ pub struct JsWindow {
     pub dom: UIState,
     pub rem_base: f32,
     pub cursor_blink_generation: u64,
+    /// Handle to the currently-scheduled blink timer task, if any. Aborted
+    /// (not awaited) when the timer is refreshed or the window closes so that
+    /// rapid typing doesn't accumulate sleeping tasks.
+    pub blink_timer: Option<tokio::task::JoinHandle<()>>,
     pub state: WindowMirror,
 }
 
@@ -148,6 +152,7 @@ impl JsWindow {
             dom,
             rem_base: 16.0,
             cursor_blink_generation: 0,
+            blink_timer: None,
             state: WindowMirror::from_options(options),
         }
     }
@@ -845,6 +850,9 @@ fn handle_window_event(
             let proxy = with_state(state, |s| {
                 if let Some(entry) = s.windows.get_mut(&wid) {
                     entry.window = None;
+                    if let Some(timer) = entry.blink_timer.take() {
+                        timer.abort();
+                    }
                 }
                 s.proxy.clone()
             });
@@ -870,8 +878,17 @@ fn handle_window_event(
 }
 
 fn refresh_cursor_blink_timer(state: &SharedJsState, id: WindowEntryId) {
-    let next_timer = with_state(state, |s| {
-        let entry = s.windows.get_mut(&id)?;
+    // Cancel the in-flight timer (if any) before computing the next one. The
+    // generation counter still guards against an event that's already been
+    // sent through the proxy but hasn't been pumped back yet.
+    let (next_timer, proxy) = with_state(state, |s| {
+        let proxy = s.proxy.clone();
+        let Some(entry) = s.windows.get_mut(&id) else {
+            return (None, proxy);
+        };
+        if let Some(prev) = entry.blink_timer.take() {
+            prev.abort();
+        }
         entry.cursor_blink_generation = entry.cursor_blink_generation.wrapping_add(1);
         let generation = entry.cursor_blink_generation;
         let focused = entry.dom.window_focused;
@@ -881,14 +898,20 @@ fn refresh_cursor_blink_timer(state: &SharedJsState, id: WindowEntryId) {
             .and_then(|focused_id| entry.dom.nodes.get(focused_id))
             .and_then(|node| node.as_text_input())
             .and_then(|input| input.next_blink_toggle_in(true, focused));
-        next_delay.map(|delay| (generation, delay))
+        (next_delay.map(|delay| (generation, delay)), proxy)
     });
 
     if let Some((generation, delay)) = next_timer {
-        let proxy = with_state_ref(state, |s| s.proxy.clone());
-        tokio::spawn(async move {
+        let task = tokio::spawn(async move {
             tokio::time::sleep(delay).await;
             let _ = proxy.send_event(UserEvent::CursorBlink { id, generation });
+        });
+        with_state(state, |s| {
+            if let Some(entry) = s.windows.get_mut(&id) {
+                entry.blink_timer = Some(task);
+            } else {
+                task.abort();
+            }
         });
     }
 }
