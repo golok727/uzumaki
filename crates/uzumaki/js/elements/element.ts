@@ -7,6 +7,7 @@ import {
 import {
   EVENT_NAME_TO_TYPE,
   EventPhase,
+  EventType,
   UzEvent,
   type EventName,
   type UzEventMap,
@@ -78,7 +79,10 @@ export class Element<M extends UzEventMap = UzEventMap> extends UzNode {
   }
 
   focus(): void {
-    core.focusElement(this.window.id, this._native.id);
+    const focusedNodeId = core.focusElement(this.window.id, this._native.id);
+    if (focusedNodeId != null) {
+      dispatchDomEvent(this.window, EventType.Focus, focusedNodeId, null);
+    }
   }
 
   setAttribute(name: string, value: string | number | boolean): void {

@@ -112,7 +112,7 @@ interface Core {
   ): void;
   applyCachedImage(windowId: number, nodeId: NodeId, cacheKey: string): boolean;
   clearImageData(windowId: number, nodeId: NodeId): void;
-  focusElement(windowId: number, nodeId: NodeId): void;
+  focusElement(windowId: number, nodeId: NodeId): NodeId | null;
   getAncestorPath(windowId: number, nodeId: NodeId): NodeId[];
   readClipboardText(): Promise<string | null>;
   writeClipboardText(text: string): Promise<boolean>;
