@@ -104,8 +104,8 @@ interface Core {
   clearImageData(windowId: number, nodeId: NodeId): void;
   focusElement(windowId: number, nodeId: NodeId): void;
   getAncestorPath(windowId: number, nodeId: NodeId): NodeId[];
-  readClipboardText(): string | null;
-  writeClipboardText(text: string): boolean;
+  readClipboardText(): Promise<string | null>;
+  writeClipboardText(text: string): Promise<boolean>;
   onAppEvent(
     handler: (
       event: any,

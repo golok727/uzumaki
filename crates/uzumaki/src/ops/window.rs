@@ -359,28 +359,32 @@ pub fn op_request_redraw(
 
 #[op2]
 #[string]
-pub fn op_read_clipboard_text(state: &mut OpState) -> Option<String> {
-    let proxy = state.borrow::<EventLoopProxy<UserEvent>>();
-    let bridge = crate::clipboard::ClipboardBridge::new(proxy);
-    match bridge.read_text() {
-        Ok(text) => text,
-        Err(e) => {
-            eprintln!("[uzumaki] clipboard read error: {e}");
-            None
-        }
+pub fn op_read_clipboard_text(
+    state: std::rc::Rc<std::cell::RefCell<OpState>>,
+) -> impl std::future::Future<Output = Option<String>> {
+    let proxy = state.borrow().borrow::<EventLoopProxy<UserEvent>>().clone();
+    async move {
+        let (reply, rx) = flume::bounded(1);
+        proxy.send_event(UserEvent::ClipboardRead { reply }).ok()?;
+        rx.recv_async().await.ok().flatten()
     }
 }
 
-#[op2(fast)]
-pub fn op_write_clipboard_text(state: &mut OpState, #[string] text: String) -> bool {
-    let proxy = state.borrow::<EventLoopProxy<UserEvent>>();
-    let bridge = crate::clipboard::ClipboardBridge::new(proxy);
-    match bridge.write_text(&text) {
-        Ok(()) => true,
-        Err(e) => {
-            eprintln!("[uzumaki] clipboard write error: {e}");
-            false
+#[op2]
+pub fn op_write_clipboard_text(
+    state: std::rc::Rc<std::cell::RefCell<OpState>>,
+    #[string] text: String,
+) -> impl std::future::Future<Output = bool> {
+    let proxy = state.borrow().borrow::<EventLoopProxy<UserEvent>>().clone();
+    async move {
+        let (reply, rx) = flume::bounded(1);
+        if proxy
+            .send_event(UserEvent::ClipboardWrite { text, reply })
+            .is_err()
+        {
+            return false;
         }
+        rx.recv_async().await.unwrap_or(false)
     }
 }
 
