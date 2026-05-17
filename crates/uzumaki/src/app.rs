@@ -31,12 +31,8 @@ pub struct AppConfig {
     /// In dev: project dir (where `uzumaki.config.json` sits, or the entry's parent).
     /// In standalone: `<exe_dir>/resources` (or wherever the host stages bundled files).
     pub resource_root: PathBuf,
-    /// App identifier (e.g. `com.uzumaki.playground`). Used as the per-app
-    /// folder name under the platform cache/data/config dirs.
+    /// App identifier (e.g. `com.uzumaki.playground`)
     pub identifier: String,
-    /// `import_source` injected by the automatic JSX transform. Defaults to
-    /// `uzumaki-react`; configurable via `jsxImportSource` in
-    /// `uzumaki.config.json` for users running their own renderer.
     pub jsx_import_source: Option<String>,
 }
 

@@ -1,6 +1,7 @@
 import { getWindow, Window } from 'uzumaki';
 import { createRoot } from 'uzumaki-react';
 import { TemplateApp } from './template';
+import { C } from './theme';
 
 function WindowPreview({
   title,
@@ -206,7 +207,11 @@ export function openTemplateWindow() {
     width: 800,
     height: 600,
     title: 'Template Preview',
-    theme: 'dark',
+    rootStyles: {
+      bg: C.bg,
+      color: C.text,
+      fontSize: 14,
+    },
   });
   const root = createRoot(window);
   root.render(<TemplateApp />);

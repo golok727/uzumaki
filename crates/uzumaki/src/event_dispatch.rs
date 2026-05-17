@@ -1730,10 +1730,6 @@ pub fn handle_mouse_wheel(
     needs_redraw
 }
 
-/// Route a single-axis wheel delta to the innermost scrollable under the
-/// pointer that can scroll on that axis. Scroll thumbs are registered in
-/// tree-walk order (parents before children); iterating in reverse picks the
-/// deepest match — which is what users expect for nested scrollables.
 fn apply_wheel_axis(dom: &mut UIState, mx: f64, my: f64, axis: ScrollAxis, delta: f64) -> bool {
     const SCROLL_LOCK_TIMEOUT: std::time::Duration = std::time::Duration::from_millis(150);
 

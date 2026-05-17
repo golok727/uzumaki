@@ -263,10 +263,9 @@ pub struct InlineTextEntry {
 
 #[derive(Clone, Default)]
 pub enum InlineLayoutKind {
-    /// Standalone text leaf — single source, no per-span chip painting.
     #[default]
     Leaf,
-    /// Inline-formatting context — multiple inline children contribute
+    /// Inline-formatting context: multiple inline children contribute
     /// styled spans. Entries map flat byte ranges back to source nodes
     /// for selection and per-span box painting.
     InlineRoot { entries: Vec<InlineTextEntry> },

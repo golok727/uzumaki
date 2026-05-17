@@ -1,10 +1,3 @@
-//! Shared scrolling math, scrollbar geometry, and painting.
-//!
-//! The render walker registers per-axis hit rects and emits paint commands;
-//! the actual visual style of the thumb (width, colors, radius) lives in
-//! `ScrollbarStyle` on the owning node and is plumbed through here so every
-//! scrollable surface — views and multiline inputs — agrees.
-
 use vello::Scene;
 use vello::kurbo::{Affine, Rect, RoundedRect, RoundedRectRadii};
 use vello::peniko::Fill;

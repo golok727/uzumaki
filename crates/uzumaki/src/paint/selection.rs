@@ -598,10 +598,6 @@ mod tests {
         }
     }
 
-    /// Drive enough of the frame pipeline that `build_text_select_runs`
-    /// has cascaded styles and resolved `layout_children` to walk. Skips
-    /// the parley layout pass — the selection-run builder doesn't need
-    /// glyph geometry.
     fn prepare_for_select_runs(dom: &mut UIState) {
         let Some(root) = dom.root else { return };
         fn cascade(dom: &mut UIState, id: UzNodeId, parent: Option<UzStyle>) {

@@ -89,16 +89,9 @@ pub struct JsWindow {
     pub dom: UIState,
     pub rem_base: f32,
     pub cursor_blink_generation: u64,
-    /// Handle to the currently-scheduled blink timer task, if any. Aborted
-    /// (not awaited) when the timer is refreshed or the window closes so that
-    /// rapid typing doesn't accumulate sleeping tasks.
+
     pub blink_timer: Option<tokio::task::JoinHandle<()>>,
-    /// Currently-pressed mouse buttons. Per-window so two windows don't share
-    /// a phantom "still held" state when focus moves between them.
     pub mouse_buttons: event_dispatch::MouseButtons,
-    /// Currently-held modifier keys. Per-window for the same reason as
-    /// `mouse_buttons`: some platforms don't emit a release when focus leaves
-    /// the window.
     pub modifiers: event_dispatch::KeyModifiers,
     pub state: WindowMirror,
 }
