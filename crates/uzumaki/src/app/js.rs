@@ -94,6 +94,8 @@ pub struct JsWindow {
     pub mouse_buttons: event_dispatch::MouseButtons,
     pub modifiers: event_dispatch::KeyModifiers,
     pub state: WindowMirror,
+    /// Theme variables addressable from style attrs as `$$name`.
+    pub vars: HashMap<String, String>,
 }
 
 /// Mirror of every window attribute that JS may read synchronously. Updates
@@ -154,6 +156,7 @@ impl JsWindow {
             mouse_buttons: event_dispatch::MouseButtons::empty(),
             modifiers: event_dispatch::KeyModifiers::empty(),
             state: WindowMirror::from_options(options),
+            vars: HashMap::new(),
         }
     }
 

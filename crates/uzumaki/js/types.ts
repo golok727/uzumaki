@@ -37,6 +37,7 @@ export interface WindowOptions {
   minimizable?: boolean;
   maximizable?: boolean;
   rootStyles?: Record<string, string | number | boolean>;
+  vars?: Record<string, string>;
 }
 
 export interface ListenerEntry {

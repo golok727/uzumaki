@@ -83,11 +83,17 @@ export class Window {
       throw new Error(`Window with label ${label} already exists`);
     }
 
-    const { rootStyles, ...createOptions } = attributes;
+    const { rootStyles, vars, ...createOptions } = attributes;
 
     this._label = label;
     this._native = core.createWindow(createOptions);
     this._id = this._native.id;
+
+    if (vars) {
+      for (const [key, value] of Object.entries(vars)) {
+        if (value != null) this._native.setVar(key, value);
+      }
+    }
 
     if (rootStyles) {
       const root = this.root;
@@ -175,6 +181,16 @@ export class Window {
 
   requestRedraw(): void {
     core.requestRedraw(this._id);
+  }
+
+  setVar(key: string, value: string | null): void {
+    this._native.setVar(key, value);
+  }
+
+  setVars(patch: Record<string, string | null | undefined>): void {
+    for (const [key, value] of Object.entries(patch)) {
+      this._native.setVar(key, value ?? null);
+    }
   }
 
   requestAnimationFrame(callback: AnimationFrameCallback): number {
