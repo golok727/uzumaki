@@ -9,7 +9,7 @@ use crate::style::*;
 use crate::ui::UIState;
 
 /// Prefix that marks an attribute value as a window var reference.
-const VAR_PREFIX: &str = "$$";
+const VAR_PREFIX: &str = "$";
 
 impl JsWindow {
     pub(crate) fn set_attribute(&mut self, node_id: UzNodeId, name: &str, value: &str) {

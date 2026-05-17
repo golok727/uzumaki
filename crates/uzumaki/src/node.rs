@@ -14,7 +14,7 @@ use crate::style::{Outline, TextSelectable, UzStyle, UzStyleRefinement};
 
 pub type UzNodeId = usize;
 
-/// Records that an attribute was set with a `$var` reference. Kept per-node so
+/// Records that an attribute was set with a `$name` reference. Kept per-node so
 /// `setVar` can re-apply just the affected attributes without rescanning the
 /// whole DOM by string.
 #[derive(Clone, Debug)]
@@ -151,7 +151,7 @@ pub struct Node {
     /// anonymous inline wrappers around runs of inline-level children.
     pub layout_children: RefCell<Vec<UzNodeId>>,
 
-    /// Attributes on this node authored as `$$var` references. Re-resolved
+    /// Attributes on this node authored as `$name` references. Re-resolved
     /// when `JsWindow::set_var` mutates the window var table.
     pub var_bindings: Vec<VarBinding>,
 }

@@ -94,7 +94,7 @@ pub struct JsWindow {
     pub mouse_buttons: event_dispatch::MouseButtons,
     pub modifiers: event_dispatch::KeyModifiers,
     pub state: WindowMirror,
-    /// Theme variables addressable from style attrs as `$$name`.
+    /// Theme variables addressable from style attrs as `$name`.
     pub vars: HashMap<String, String>,
 }
 

@@ -1,9 +1,4 @@
-function defineVars<T extends Record<string, string>>(tokens: T) {
-  const theme = Object.fromEntries(
-    Object.keys(tokens).map((k) => [k, `$$${k}`]),
-  ) as { [K in keyof T]: string };
-  return { vars: tokens, theme };
-}
+import { defineVars } from 'uzumaki';
 
 const dark = {
   bg: '#0a0a0a',
