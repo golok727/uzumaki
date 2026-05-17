@@ -6,15 +6,11 @@
 
 React renderer for [Uzumaki](https://uzumaki.run). Mount a React tree into an Uzumaki `Window` using the same JSX you already know.
 
-> Status: experimental. APIs may change.
-
 ## Install
 
 ```sh
-npm install uzumaki-react react
+pnpm install uzumaki-react react
 ```
-
-`react` is a peer dependency.
 
 ## Usage
 
@@ -38,7 +34,8 @@ function App() {
   );
 }
 
-createRoot(window).render(<App />);
+const root = createRoot(window);
+root.render(<App />);
 ```
 
 ## JSX setup
@@ -54,23 +51,14 @@ In `tsconfig.json`:
 }
 ```
 
-This wires the intrinsic elements (`<view>`, `<text>`, `<image>`, ...) and their props.
-
 ## API
 
 ### `createRoot(window)`
 
-Creates a root bound to `window`. Returns `{ render, unmount }`:
-
 ```ts
 const root = createRoot(window);
 root.render(<App />);
-// later — re-render preserves React state:
-root.render(<App />);
-root.unmount();
 ```
-
-The root registers itself with the window, so it unmounts automatically when the window is disposed.
 
 ## Docs
 

@@ -17,7 +17,8 @@ const window = new Window('main', {
   rootStyles: { bg: '#09090b', color: '#f4f4f5', fontSize: 14 },
 });
 
-createRoot(window).render(<App />);
+const root = createRoot(window);
+root.render(<App />);
 ```
 
 The first argument is a unique label. Use it to find an existing window later.

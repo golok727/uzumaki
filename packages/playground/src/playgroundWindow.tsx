@@ -53,9 +53,8 @@ function getOrCreateWindow(
     ...attrs,
     title,
   });
-  createRoot(window).render(
-    <WindowPreview title={title} detail={detail} bg={bg} />,
-  );
+  const root = createRoot(window);
+  root.render(<WindowPreview title={title} detail={detail} bg={bg} />);
   return window;
 }
 
@@ -209,6 +208,7 @@ export function openTemplateWindow() {
     title: 'Template Preview',
     theme: 'dark',
   });
-  createRoot(window).render(<TemplateApp />);
+  const root = createRoot(window);
+  root.render(<TemplateApp />);
   return window;
 }

@@ -7,7 +7,8 @@ import { Window } from "uzumaki"
 import { createRoot } from "uzumaki-react"
 
 const window = new Window("main", { width: 800, height: 600 });
-createRoot(window).render(<view><text>Uzumaki</text></view>)`.trim();
+const root = createRoot(window);
+root.render(<view><text>Uzumaki</text></view>)`.trim();
 
 interface TokenRenderer {
   content: string;

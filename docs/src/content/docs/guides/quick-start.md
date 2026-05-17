@@ -30,7 +30,8 @@ const window = new Window('main', {
   title: 'My App',
 });
 
-createRoot(window).render(<App />);
+const root = createRoot(window);
+root.render(<App />);
 ```
 
 `Window` comes from the built-in `uzumaki` module. `createRoot` comes from `uzumaki-react`, the adapter that lets React manage Uzumaki elements. It returns a root with `render` and `unmount` methods — keep the root around if you want to re-render later (HMR does this for you).
@@ -94,7 +95,8 @@ function App() {
   );
 }
 
-createRoot(window).render(<App />);
+const root = createRoot(window);
+root.render(<App />);
 ```
 
 These tags are Uzumaki elements:

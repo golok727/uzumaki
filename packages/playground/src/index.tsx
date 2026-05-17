@@ -28,4 +28,5 @@ window.on('load', () => {
   );
 });
 
-createRoot(window).render(<App />);
+const root = createRoot(window);
+root.render(<App />);
