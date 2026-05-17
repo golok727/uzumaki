@@ -12,7 +12,7 @@ use crate::app::handle::{MainToJs, PendingDestroy, UserEvent, WindowEntryId};
 use crate::app::{AppConfig, print_runtime_error};
 use crate::cursor::UzCursorIcon;
 use crate::element::ImageData;
-use crate::event_dispatch;
+use crate::event_dispatch::{self, AppEvent};
 use crate::ops::window::WindowOptions;
 use crate::runtime::worker::{WorkerBuildOptions, create_worker};
 use crate::ui::UIState;
@@ -85,7 +85,7 @@ pub fn with_state_ref<R>(state: &SharedJsState, f: impl FnOnce(&JsState) -> R) -
 /// stay synchronous without round-tripping to main.
 ///
 /// `window` is `None` between `op_create_window` and the matching
-/// `MainToJs::WindowCreated` reply — i.e. before the winit window exists.
+/// `MainToJs::WindowCreated` reply i.e. before the winit window exists.
 pub struct JsWindow {
     pub window: Option<window::Window>,
     pub dom: UIState,
@@ -275,8 +275,8 @@ async fn run_main_loop(
                 if let Err(e) = res {
                     print_runtime_error(&anyhow::Error::new(e));
                 }
-                // JS event loop is fully drained — park until the next message
-                // arrives. We don't re-enter `run_event_loop` because it would
+                // JS event loop is fully drained , park until the next meesage
+                // We don't re-enter `run_event_loop` because it would
                 // return immediately and busy-loop.
                 let Ok(msg) = main_to_js.recv_async().await else { break };
                 if !handle_message(msg, worker, state, dispatch_fn) {
@@ -311,9 +311,7 @@ fn handle_message(
             dispatch_event_to_js(
                 worker,
                 dispatch_fn,
-                &event_dispatch::AppEvent::WindowLoad(event_dispatch::WindowLoadEventData {
-                    window_id: id,
-                }),
+                &AppEvent::WindowLoad(event_dispatch::WindowLoadEventData { window_id: id }),
             );
         }
         MainToJs::BuildFrame { id } => {
@@ -375,7 +373,7 @@ fn flush_external_memory(worker: &mut MainWorker, state: &SharedJsState) {
 pub fn dispatch_event_to_js(
     worker: &mut MainWorker,
     dispatch_fn: &v8::Global<v8::Function>,
-    event: &event_dispatch::AppEvent,
+    event: &AppEvent,
 ) -> bool {
     let context = worker.js_runtime.main_context();
     deno_core::scope!(scope, &mut worker.js_runtime);
@@ -423,8 +421,7 @@ fn handle_window_event(
 
     match event {
         WindowEvent::Resized(_) => {
-            // Main has already updated `shared.inner_size` and reconfigured the
-            // GPU surface; we just need to notify JS using the new logical size.
+            // Main thread has already updated `shared.inner_size`
             let logical = with_state_ref(state, |s| {
                 s.windows
                     .get(&wid)
@@ -437,7 +434,7 @@ fn handle_window_event(
                 dispatch_event_to_js(
                     worker,
                     dispatch_fn,
-                    &event_dispatch::AppEvent::Resize(event_dispatch::ResizeEventData {
+                    &AppEvent::Resize(event_dispatch::ResizeEventData {
                         window_id: wid,
                         width: w,
                         height: h,
@@ -446,8 +443,7 @@ fn handle_window_event(
             }
         }
         WindowEvent::ScaleFactorChanged { .. } => {
-            // Main has already updated `shared.scale_factor`; no JS-side mirror
-            // to keep in sync since `Window::scale_factor()` reads the atomic.
+            // Main has already updated `shared.scale_factor`
         }
         WindowEvent::CursorMoved { position, .. } => {
             with_state(state, |s| {
@@ -526,8 +522,8 @@ fn handle_window_event(
             };
 
             if !prevented {
-                if let Some(event_dispatch::AppEvent::HotReload) = raw_event {
-                    // todo hotreload
+                if let Some(AppEvent::HotReload) = raw_event {
+                    // todo refresh
                 } else {
                     let tab_outcome = with_state(state, |s| {
                         s.windows.get_mut(&wid).map(|entry| {
@@ -833,9 +829,7 @@ fn handle_window_event(
             dispatch_event_to_js(
                 worker,
                 dispatch_fn,
-                &event_dispatch::AppEvent::WindowClose(event_dispatch::WindowLoadEventData {
-                    window_id: wid,
-                }),
+                &AppEvent::WindowClose(event_dispatch::WindowLoadEventData { window_id: wid }),
             );
             let proxy = with_state(state, |s| {
                 s.windows.remove(&wid);

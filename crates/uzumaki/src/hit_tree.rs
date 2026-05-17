@@ -1,11 +1,6 @@
 //! Hit-tree construction. Walks the layout tree from the current
 //! `final_layout` + `scroll_state` and rebuilds the cache of node
 //! hitboxes and scroll-thumb rects used by input dispatch.
-//!
-//! Decoupled from paint so the cache can be refreshed *eagerly* whenever
-//! state changes (scroll, layout, mutation) instead of only as a
-//! side-effect of painting. Painting may lag behind input by a frame or
-//! more during a fast scroll burst — hit-test must not.
 
 use vello::kurbo::Affine;
 
