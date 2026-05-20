@@ -16,7 +16,11 @@ class ThemeStore {
     if (this.current === name) return;
     this.current = name;
     const vars = themes[name];
-    for (const w of this.windows) w.setVars(vars);
+
+    for (const w of this.windows) {
+      w.setVars(vars);
+      w.theme = name === 'dark' ? 'dark' : 'light';
+    }
     for (const l of this.listeners) l();
   }
 
@@ -33,10 +37,10 @@ class ThemeStore {
     if (this.windows.has(window)) return;
     this.windows.add(window);
     window.setVars(themes[this.current]);
-  }
-
-  detachWindow(window: Window): void {
-    this.windows.delete(window);
+    window.theme = this.current === 'dark' ? 'dark' : 'light';
+    window.on('close', () => {
+      this.windows.delete(window);
+    });
   }
 }
 
