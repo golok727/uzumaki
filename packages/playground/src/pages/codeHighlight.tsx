@@ -1,5 +1,6 @@
 import { memo, useMemo, useState } from 'react';
 import { C } from '../theme';
+import { useTheme } from '../useTheme';
 import { highlightTsx } from '../utils/highlighter';
 
 const INITIAL_CODE = `
@@ -53,8 +54,9 @@ const LineRenderer = memo(function LineComponent({
 
 export function ShikiPage() {
   const [code, setCode] = useState(INITIAL_CODE);
+  const theme = useTheme();
 
-  const lineTokens = useMemo(() => highlightTsx(code), [code]);
+  const lineTokens = useMemo(() => highlightTsx(code, theme), [code, theme]);
 
   return (
     <view

@@ -2,6 +2,7 @@ import { getWindow, Window } from 'uzumaki';
 import { createRoot } from 'uzumaki-react';
 import { TemplateApp } from './template';
 import { C } from './theme';
+import { themeStore } from './themeStore';
 
 function WindowPreview({
   title,
@@ -54,6 +55,7 @@ function getOrCreateWindow(
     ...attrs,
     title,
   });
+  themeStore.attachWindow(window);
   const root = createRoot(window);
   root.render(<WindowPreview title={title} detail={detail} bg={bg} />);
   return window;
@@ -213,6 +215,7 @@ export function openTemplateWindow() {
       fontSize: 14,
     },
   });
+  themeStore.attachWindow(window);
   const root = createRoot(window);
   root.render(<TemplateApp />);
   return window;

@@ -40,6 +40,7 @@ declare module 'uzumaki' {
     minimizable?: boolean;
     maximizable?: boolean;
     rootStyles?: Record<string, string | number | boolean>;
+    vars?: Record<string, string>;
   }
   interface AppPath {
     readonly resourceDir: string;
@@ -407,6 +408,8 @@ declare module 'uzumaki' {
     set theme(theme: WindowTheme);
     focus(): void;
     requestRedraw(): void;
+    setVar(key: string, value: string | null): void;
+    setVars(patch: Record<string, string | null | undefined>): void;
     requestAnimationFrame(callback: AnimationFrameCallback): number;
     cancelAnimationFrame(handle: number): void;
     set contentProtected(contentProtected: boolean);
@@ -473,6 +476,24 @@ declare module 'uzumaki' {
       path: AppPath;
     };
   }
+  /**
+   * Build a theme ref object from a map of tokens.
+   *
+   * Returns `{ vars, theme }`. Pass `vars` to a window's `vars` option (or
+   * `window.setVars(...)`); use `theme.token` anywhere a style prop value is
+   * expected. Values that start with `$` are looked up from the window's
+   * theme at paint time.
+   *
+   * @example
+   * const { vars, theme } = defineVars({ bg: '#0a0a0a', text: '#e4e4e7' });
+   * new Window('main', { vars, rootStyles: { bg: theme.bg, color: theme.text } });
+   */
+  declare function defineVars<T extends Record<string, string>>(
+    tokens: T,
+  ): {
+    vars: T;
+    theme: { [K in keyof T]: string };
+  };
   declare const RUNTIME_VERSION: number;
   //#endregion
   export {
@@ -513,6 +534,7 @@ declare module 'uzumaki' {
     type WindowPosition,
     type WindowSize,
     type WindowTheme,
+    defineVars,
     getWindow,
   };
 }
